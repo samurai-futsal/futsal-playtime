@@ -224,3 +224,13 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .adj input{width:150px;font-size:36px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
 .col{display:flex;flex-direction:column;gap:8px}
 @media (max-width:1100px){.clock{font-size:70px}.clockbox{min-width:200px}.big{width:96px;font-size:28px}.cb{font-size:13px;padding:6px}}
+
+/* 背番号＋姓を横並びで大きく。カードの幅に合わせて同じ割合で大きさが決まる（どのカードも同じ大きさ） */
+.pc,.bc{container-type:inline-size}
+.nr{display:flex;align-items:center;justify-content:center;gap:3cqi;width:100%;padding:0 2cqi}
+.nr .pnum{width:25cqi;height:25cqi;font-size:15cqi;flex:none;letter-spacing:-.04em}
+.nr .pn{font-size:21cqi;line-height:1.1;font-weight:900;max-width:none;overflow:visible;letter-spacing:-.02em}
+.nr .pn.long{font-size:15.5cqi}
+.bc .nr .pnum{width:25cqi;height:25cqi;font-size:15cqi}
+.bc .nr .pn{font-size:21cqi}
+.bc .nr .pn.long{font-size:15.5cqi}

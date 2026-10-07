@@ -68,6 +68,8 @@ export function vPlay(m) {
     const mm = m.members[pid] || {};
     return `<span class="pnum ${mm.pos === 'GK' ? 'gk' : 'fp'} ${mm.pp ? 'pp' : ''} ${cls}">${esc(mm.no ?? '')}</span>`;
   };
+  // 背番号と姓を横に並べて大きく（どのカードも同じ大きさ。姓は3文字まで同じ大きさ、4文字以上だけ少し小さく）
+  const nameRow = (pid, last) => `<div class="nr">${num(pid)}<div class="pn ${[...(last || '')].length > 3 ? 'long' : ''}">${esc(last || '')}</div></div>`;
   const stats = (pid) => {
     const pc = playerCounts(st, pid, st.current);
     return `<div class="pst"><span>ピリオド</span><b data-pt="${pid}">${mmssFloor(playerPeriodTime(st, pid, st.current, el))}</b><i>×${pc.period}</i>
@@ -86,7 +88,7 @@ export function vPlay(m) {
     const c = live ? contTime(st, v.pid, el, v) : 0;
     const col = mm.pos === 'GK' ? '' : c >= ct.red * 1000 ? 'red' : c >= ct.orange * 1000 ? 'orange' : '';
     return `<button class="pc ${v.waiting ? 'waiting' : ''} ${v.tentative ? 'tent' : ''} ${ejectMode ? 'ejpick' : ''}" data-p="${v.pid}" data-kind="${v.waiting ? 'waiting' : v.tentative ? 'tent' : v.draft ? 'draft' : 'on'}">
-      ${num(v.pid)}<div class="pn">${esc(p?.last || '')}${mm.pos === 'GK' ? '<small>GK</small>' : ''}</div>
+      ${nameRow(v.pid, p?.last)}
       ${v.waiting ? `<div class="wt">交代待ち（OUT ${mmss(len - v.outAt)}）</div>` : `<div class="ct ${col}" data-ct="${v.pid}">${mmssFloor(c)}</div>`}
       ${stats(v.pid)}</button>`;
   };
@@ -98,7 +100,7 @@ export function vPlay(m) {
     const carry = st.carry[pid];
     const rest = live ? restTime(st, pid, el) : restTime(st, pid, 0);
     return `<button class="bc ${ej ? 'ej' : ''} ${waitingOut ? 'wout' : ''}" data-b="${pid}" ${ej ? 'disabled' : ''}>
-      ${num(pid)}<div class="pn">${esc(mb.p?.last || '')}</div>
+      ${nameRow(pid, mb.p?.last)}
       ${ej ? '<div class="tag ej">退場</div>' : waitingOut ? '<div class="tag w">交代待ち（押すと取り消し）</div>' : ''}
       ${carry != null ? `<span class="cont" data-cont="${pid}">続き ${mmssFloor(carry)}</span>` : ''}
       ${stats(pid)}<div class="rest"><span>休憩</span><b data-rest="${pid}">${rest == null ? '—' : mmssFloor(rest)}</b></div></button>`;
