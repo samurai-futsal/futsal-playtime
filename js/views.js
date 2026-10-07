@@ -229,6 +229,7 @@ function playerForm(p) {
       ${p.status === 'former' ? '<button class="btn sm" data-act="active">在籍に戻す</button>' : '<button class="btn sm" data-act="former">過去所属にする（移籍・退団）</button>'}
       ${canDelete ? '<button class="btn sm dangerline" data-act="delete">削除</button>' : '<span class="mu">試合に登録されたことがある選手は削除できません（過去所属にしてください）</span>'}</div>`}
   </div><div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-s>保存</button></div>`);
+  autoKana($('#pLast'), $('#pFirst'), $('#pKana'), !p.kana);
   m.querySelector('[data-c]').onclick = closeModal;
   m.querySelector('[data-s]').onclick = () => {
     const v = formVals(m.querySelector('.mbody'));
@@ -247,6 +248,29 @@ function playerForm(p) {
   });
 }
 
+// ふりがなの自動入力：姓・名を日本語入力で打つとき、漢字に変換する前のひらがなを拾って
+// ふりがな欄に入れる（変換の辞書は使わない）。ふりがな欄を自分で直したら、それ以降は上書きしない。
+function autoKana(lastEl, firstEl, kanaEl, enabled) {
+  let auto = enabled;
+  const read = new Map([[lastEl, ''], [firstEl, '']]);
+  const kata2hira = (s) => s.replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+  const isKana = (s) => /^[\u3041-\u309f\u30a1-\u30fcー\s]+$/.test(s);
+  const pending = new Map();
+  const fill = () => { if (auto) kanaEl.value = [read.get(lastEl), read.get(firstEl)].filter(Boolean).join(' '); };
+  for (const el of [lastEl, firstEl]) {
+    el.addEventListener('compositionupdate', (e) => { if (e.data && isKana(e.data)) pending.set(el, kata2hira(e.data)); });
+    el.addEventListener('compositionend', () => {
+      if (pending.get(el)) { read.set(el, read.get(el) + pending.get(el)); pending.delete(el); fill(); }
+    });
+    el.addEventListener('input', (e) => {
+      if (!el.value) { read.set(el, ''); fill(); return; }
+      // かなをそのまま確定した場合（変換しない名前など）は、その文字をふりがなとして使う
+      if (!e.isComposing && isKana(el.value)) { read.set(el, kata2hira(el.value)); fill(); }
+    });
+  }
+  kanaEl.addEventListener('input', () => { auto = false; });
+}
+
 // ---------- 活動と試合 ----------
 function vActivities() {
   const list = [...S.activities].sort((a, b) => (b.start || '').localeCompare(a.start || ''));
@@ -263,10 +287,14 @@ function vActivities() {
   };
 }
 function timesFields(t) {
+  // 延長戦の長さは「延長戦あり」のときだけ出す
   return `<div><label for="fHalf">前後半の長さ（分）</label><input id="fHalf" name="half" type="number" min="1" max="40" inputmode="numeric" value="${esc(t.half)}"></div>
-    <div><label for="fExtraHalf">延長戦の長さ（分・前後半それぞれ）</label><input id="fExtraHalf" name="extraHalf" type="number" min="1" max="20" inputmode="numeric" value="${esc(t.extraHalf)}"></div>
-    <div class="span2"><label class="chk"><input id="fExtra" type="checkbox" name="extra" ${t.extra ? 'checked' : ''}> 延長戦あり</label></div>`;
+    <div><label class="chk" style="margin-top:34px"><input id="fExtra" type="checkbox" name="extra" ${t.extra ? 'checked' : ''}> 延長戦あり</label></div>
+    <div id="extraBox" ${t.extra ? '' : 'hidden'}><label for="fExtraHalf">延長戦の長さ（分・前後半それぞれ）</label><input id="fExtraHalf" name="extraHalf" type="number" min="1" max="20" inputmode="numeric" value="${esc(t.extraHalf)}"></div>`;
 }
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'fExtra') { const b = document.getElementById('extraBox'); if (b) b.hidden = !e.target.checked; }
+});
 function readTimes(v) {
   const half = Math.max(1, Math.min(40, parseInt(v.half, 10) || DEFAULT_TIMES.half));
   const extraHalf = Math.max(1, Math.min(20, parseInt(v.extraHalf, 10) || DEFAULT_TIMES.extraHalf));
