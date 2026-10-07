@@ -112,7 +112,6 @@ export function vPlay(m) {
   const stateMsg = st.matchOver ? '試合終了' : st.askExtra ? '後半終了' : !live ? (per.status === 'none' ? '開始前' : '') : running ? '計測中' : '停止中';
   const banner = [];
   if (other) banner.push(`<div class="pbanner warn">別の端末（${esc(other)}）で記録中です。同じ試合を2台で操作しないでください。<button class="btn sm" id="btnTake">この端末で記録する</button></div>`);
-  if (st.batch.outs.length) banner.push(`<div class="pbanner">交代待ち ${st.batch.outs.length}人 — ベンチの選手を押すと入ります</div>`);
   if (ejectMode) banner.push('<div class="pbanner red">退場する選手をピッチから押してください <button class="btn sm" id="btnEjCancel">やめる</button></div>');
 
   return {
@@ -128,8 +127,6 @@ export function vPlay(m) {
         <div class="row">
           <span class="stchip ${running ? 'on' : ''}">${stateMsg}</span>
           <a class="stchip rv" href="#/soon/${encodeURIComponent('マッチレビュー')}">マッチレビュー ›</a>
-          ${st.ppActive ? `<span class="stchip pp ${t - lastPpAuto < 4000 ? 'flash' : ''}">5x4 ${st.ppActive.team === 'own' ? '自' : '相手'}</span>` : ''}
-          ${st.setplay ? `<span class="stchip sp" id="spChip">セットプレー中（自動終了まで ${mmss(setplayLeft(st, el))}）</span>` : ''}
         </div>
       </div>
       <div class="cbs">
@@ -150,7 +147,10 @@ export function vPlay(m) {
     ${banner.join('')}
     ${st.matchOver ? `<div class="pbanner done">試合が終わりました。お疲れさまでした。<a class="btn sm" href="#/m/${m.id}">試合ページへ</a></div>` : ''}
     ${st.askExtra ? `<div class="pbanner">後半が終わりました。延長戦を行いますか？ <button class="btn sm pri" id="btnExtraYes">延長戦を行う</button><button class="btn sm" id="btnExtraNo">行わない（試合終了）</button></div>` : ''}
-    <div class="plabel"><span>ピッチ</span><span>${view.filter((v) => v.pid).length} / 5</span></div>
+    <div class="plabel st"><span>ピッチ</span><div class="stmid">
+      ${st.ppActive ? `<span class="stchip pp ${t - lastPpAuto < 4000 ? 'flash' : ''}">5×4（パワープレー）${st.ppActive.team === 'own' ? '自チーム' : '相手チーム'}</span>` : ''}
+      ${st.setplay ? `<span class="stchip sp" id="spChip">セットプレー中（自動終了まで ${mmss(setplayLeft(st, el))}）</span>` : ''}
+    </div><span>${view.filter((v) => v.pid).length} / 5</span></div>
     <div class="pitch">${view.map(pitchCard).join('')}</div>
     <div class="plabel"><span>ベンチ（並びは固定）</span>${!live && !st.matchOver && !st.askExtra ? '<span>先発の5人を選んで「スタート」</span>' : ''}</div>
     <div class="bench" style="grid-template-columns:repeat(${cols},minmax(0,1fr));flex-grow:${Math.ceil(n / cols) * 0.8}">${members.map(benchCard).join('')}</div>

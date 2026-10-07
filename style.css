@@ -281,3 +281,10 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .bc .pst .sr{grid-column:1/-1;margin-top:2cqh;display:flex;justify-content:center;align-items:baseline;gap:4cqi}
 .bc .pst .sr .sl{font-size:min(9cqi,8.5cqh)}
 .bc .pst .sr .sv{font-size:min(14cqi,12cqh)}
+
+/* 0.3.6: 5x4・セットプレーの表示はピッチの見出しの行の真ん中に。行の高さはいつも同じ（上部の見た目を崩さない） */
+.plabel.st{height:40px;min-height:40px;flex:0 0 auto;align-items:center;gap:10px}
+.plabel.st .stmid{flex:1;min-width:0;display:flex;gap:10px;justify-content:center;align-items:center;overflow:hidden}
+.plabel.st .stchip{font-size:17px;padding:6px 16px;border-radius:9px;margin:0;white-space:nowrap}
+.plabel.st .stchip.pp{background:#F2C200;color:#1A1A1A}
+.plabel.st .stchip.sp{background:#2F6FE0;color:#fff}
