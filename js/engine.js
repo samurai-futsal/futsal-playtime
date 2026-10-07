@@ -50,6 +50,21 @@ export function effectiveOps(ops) {
 }
 
 const isGK = (cfg, pid) => cfg.members?.[pid]?.pos === 'GK';
+// Decide which incoming player takes which waiting seat (spec 3章「交代待ち方式」).
+// A GK coming in takes the seat of a GK going out, or else the leftmost seat (seat 0) if it is being
+// vacated, so the GK stays in the leftmost card. Everyone else fills the remaining seats in OUT order.
+export function pairBatch(batch, cfg) {
+  const outs = [...batch.outs].sort((a, b) => a.outAt - b.outAt);
+  const used = new Set(); const pairs = []; const rest = [];
+  for (const pid of batch.ins) {
+    if (!isGK(cfg, pid)) { rest.push(pid); continue; }
+    const o = outs.find((x) => !used.has(x) && isGK(cfg, x.pid)) || outs.find((x) => !used.has(x) && x.seat === 0);
+    if (o) { used.add(o); pairs.push([o, pid]); } else rest.push(pid);
+  }
+  const free = outs.filter((x) => !used.has(x));
+  rest.forEach((pid, i) => { if (free[i]) pairs.push([free[i], pid]); });
+  return pairs;
+}
 const isPP = (cfg, pid) => !!cfg.members?.[pid]?.pp;
 
 function newPeriod(key) {
@@ -109,11 +124,7 @@ export function replay(ops, cfg) {
   }
 
   function commitBatch(at, partial = false) {
-    const outs = [...S.batch.outs].sort((a, b) => a.outAt - b.outAt);
-    const ins = [...S.batch.ins];
-    const n = partial ? Math.min(outs.length, ins.length) : outs.length;
-    const pairs = [];
-    for (let i = 0; i < n; i++) pairs.push([outs[i], ins[i]]);
+    const pairs = pairBatch(S.batch, cfg);
     for (const [o, inPid] of pairs) {
       closeStint(o.pid, o.outAt);
       S.lastOut[o.pid] = cum(o.outAt);
@@ -373,7 +384,7 @@ export function playerMatchTime(S, pid, at) {
 export function seatView(S, at) {
   const outs = [...S.batch.outs].sort((a, b) => a.outAt - b.outAt);
   const tentative = {}; // seat -> {inPid, outPid, outAt}
-  outs.forEach((o, i) => { if (S.batch.ins[i]) tentative[o.seat] = { inPid: S.batch.ins[i], outPid: o.pid, outAt: o.outAt }; });
+  pairBatch(S.batch, S.cfg).forEach(([o, inPid]) => { tentative[o.seat] = { inPid, outPid: o.pid, outAt: o.outAt }; });
   return S.seats.map((pid, i) => {
     const out = outs.find((o) => o.seat === i);
     if (tentative[i]) return { seat: i, pid: tentative[i].inPid, tentative: true, replacing: tentative[i].outPid, since: tentative[i].outAt };

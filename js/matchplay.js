@@ -24,7 +24,18 @@ function cfgOf(m) {
   return { times: m.times || {}, members: m.members || {}, setplayAuto: (D.team?.settings?.setplayAuto) || 60 };
 }
 function draftKey(m, period) { return `fpt.lineup.${m.id}.${period}`; }
-function getDraft(m, period) { try { return JSON.parse(localStorage.getItem(draftKey(m, period)) || '[]').filter((p) => m.members?.[p]); } catch { return []; } }
+// 先発の5枠（左から seat 0〜4）。空いた枠は詰めずに空欄のまま残す。
+function getDraft(m, period) {
+  let a = []; try { a = JSON.parse(localStorage.getItem(draftKey(m, period)) || '[]'); } catch {}
+  return [0, 1, 2, 3, 4].map((i) => (a[i] && m.members?.[a[i]] ? a[i] : null));
+}
+const filled = (d) => d.filter(Boolean).length;
+// GKは一番左の枠、FPは左から2番目以降を順に埋め、最後に一番左の枠（GKを入れない場合）
+function slotFor(m, draft, pid) {
+  const gk = m.members?.[pid]?.pos === 'GK';
+  const order = gk ? [0, 1, 2, 3, 4] : [1, 2, 3, 4, 0];
+  return order.find((i) => !draft[i]);
+}
 function setDraft(m, period, arr) { try { localStorage.setItem(draftKey(m, period), JSON.stringify(arr)); } catch {} }
 
 // ---------- view ----------
@@ -41,7 +52,7 @@ export function vPlay(m) {
   const running = per.runningSince != null;
   const members = Object.entries(m.members || {}).map(([pid, v]) => ({ pid, ...v, p: playerById(pid) }))
     .sort((a, b) => (a.pos === 'GK') - (b.pos === 'GK') || (parseInt(a.no, 10) || 999) - (parseInt(b.no, 10) || 999));
-  const draft = live ? [] : getDraft(m, st.current);
+  const draft = live ? [null, null, null, null, null] : getDraft(m, st.current);
   const view = live ? seatView(st, el) : [0, 1, 2, 3, 4].map((i) => ({ seat: i, pid: draft[i] || null, draft: true }));
   const onPitch = new Set(view.filter((v) => v.pid).map((v) => v.pid));
   const replacedOuts = st.batch.outs.filter((o) => !view.some((v) => v.pid === o.pid)).map((o) => o.pid);
@@ -129,7 +140,7 @@ export function vPlay(m) {
         ${btn('btnReset', 'リセット', '', 'reset')}
       </div>
       <div class="ss">
-        <button class="big start" id="btnStart" ${running || st.matchOver || st.askExtra || (!live && draft.length !== 5) || (live && el >= len) ? 'disabled' : ''}>▶<span>スタート</span></button>
+        <button class="big start" id="btnStart" ${running || st.matchOver || st.askExtra || (!live && filled(draft) !== 5) || (live && el >= len) ? 'disabled' : ''}>▶<span>スタート</span></button>
         <button class="big stop" id="btnStop" ${!running ? 'disabled' : ''}>❚❚<span>ストップ</span></button>
       </div>
     </div>
@@ -188,7 +199,7 @@ function bindPlay(root, m, st, cfg, draft) {
     }
     if (pc) {
       const pid = pc.dataset.p, kind = pc.dataset.kind;
-      if (kind === 'draft') { setDraft(m, st.current, draft.filter((x) => x !== pid)); rerender(); return; }
+      if (kind === 'draft') { setDraft(m, st.current, draft.map((x) => (x === pid ? null : x))); rerender(); return; } // 枠は空欄のまま
       if (ejectMode) {
         ejectMode = false;
         if (await confirmBox({ title: `${m.members[pid]?.no} ${playerName(playerById(pid))} を退場にしますか？`, body: '<p>その枠は空席になり、補充まで2:00を数えます。自チームのレッドカードとして記録します（理由は試合後に選べます）。</p>', ok: '退場にする', danger: true })) send({ type: 'eject', pid });
@@ -203,8 +214,9 @@ function bindPlay(root, m, st, cfg, draft) {
       if (!live) {
         if (st.matchOver || st.askExtra) return;
         if (draft.includes(pid)) return;
-        if (draft.length >= 5) { toast('先発は5人です。ピッチの選手を押すとベンチに戻せます'); return; }
-        setDraft(m, st.current, [...draft, pid]); rerender(); return;
+        const slot = slotFor(m, draft, pid);
+        if (slot == null) { toast('先発は5人です。ピッチの選手を押すとベンチに戻せます'); return; }
+        const next = [...draft]; next[slot] = pid; setDraft(m, st.current, next); rerender(); return;
       }
       if (st.batch.outs.some((o) => o.pid === pid)) { send({ type: 'in', pid }); return; } // 取り消し
       if (st.batch.outs.length > st.batch.ins.length) { send({ type: 'in', pid }); return; }
@@ -224,7 +236,7 @@ function bindPlay(root, m, st, cfg, draft) {
   const on = (id, fn) => { const b = $('#' + id, root.parentNode || document); b && (b.onclick = fn); };
   on('btnStart', () => {
     if (!live) {
-      if (draft.length !== 5) return toast('先発の5人を選んでください');
+      if (filled(draft) !== 5) return toast('先発の5人を選んでください');
       send({ type: 'kickoff', lineup: draft }); setDraft(m, st.current, []);
     } else send({ type: 'start' });
   });

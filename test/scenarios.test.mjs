@@ -138,6 +138,18 @@ T('休憩時間はハーフタイムをはさんでも前半から続けて数�
   eq(Math.round(restTime(b.S(), 'A', 60000) / 1000), 1258, 'A rest 1:00 into 2H');
 });
 
+T('GKの交代：入るGKはGKの席（一番左）に入る', () => {
+  const b = mk(); ko(b); b.add(10, { type: 'stop' });
+  b.add(11, { type: 'out', pid: 'B' }); b.add(12, { type: 'out', pid: 'G' }); // FPを先にOUT
+  b.add(13, { type: 'in', pid: 'G2' }); b.add(14, { type: 'in', pid: 'E' });  // GKを先にIN
+  const S = b.S(); eq(S.seats[0], 'G2', 'GK2 in seat 0'); eq(S.seats[2], 'E', 'E in B seat');
+});
+T('パワープレーから戻るGKは、一番左の席が空くならそこに入る', () => {
+  const b = mk(); ko(b); b.add(100, { type: 'out', pid: 'G' }); b.add(101, { type: 'in', pid: 'I' }); // PP: I in seat 0
+  b.add(200, { type: 'out', pid: 'C' }); b.add(200, { type: 'out', pid: 'I' }); b.add(201, { type: 'in', pid: 'E' }); b.add(201, { type: 'in', pid: 'G' });
+  const S = b.S(); eq(S.seats[0], 'G', 'GK back in seat 0'); eq(S.seats[3], 'E', 'E in C seat');
+});
+
 console.log(`scenarios: ${ok} passed, ${fails.length} failed`);
 fails.forEach((f) => console.log('  FAIL ' + f));
 if (fails.length) process.exit(1);
