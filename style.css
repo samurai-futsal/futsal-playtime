@@ -156,3 +156,71 @@ input[type=checkbox],input[type=radio]{width:auto;margin:0 6px 0 0;transform:sca
   .bar .nv{padding:7px 8px}
 }
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
+
+/* ===== MATCH PLAY (spec 11章) ===== */
+body.playmode{background:#0B1E46;overscroll-behavior:none}
+.play{height:100vh;height:100dvh;display:flex;flex-direction:column;gap:6px;padding:calc(8px + env(safe-area-inset-top)) 10px calc(8px + env(safe-area-inset-bottom));color:#fff;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.ptop{display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;align-items:stretch;background:#0D2654;border-radius:14px;padding:8px}
+.pl{display:flex;flex-direction:column;gap:6px;justify-content:space-between}
+.cb{font:inherit;font-size:14px;white-space:nowrap;font-weight:700;border:0;border-radius:10px;background:#1F3D7A;color:#fff;padding:8px 10px;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;text-align:center;line-height:1.2}
+.cb small{font-size:10.5px;font-weight:500;opacity:.85;margin-top:2px}
+.cb:disabled{opacity:.35;cursor:default}
+.cb.back{font-size:13px;min-height:36px}
+.cb.per{font-size:22px;border:2px solid #4A64A0;background:#1A3368;flex:1}
+.cb.teal{background:#1E6B6E}.cb.amber{background:#8A5A10}.cb.purple{background:#5B3A9A}
+.cb.reset{background:transparent;border:2px solid #E0705F;color:#FFB0A8}
+.cb.on{background:#F2C200;color:#222}
+.cb.review{background:#2F6FE0}
+.clockbox{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;min-width:260px}
+.clock{font-size:88px;font-weight:900;line-height:.95;color:#F7D547;font-variant-numeric:tabular-nums;letter-spacing:-2px}
+.clock:not(.run){color:#C9A93A}
+.stchip{display:inline-block;font-size:13px;font-weight:700;border-radius:7px;padding:3px 9px;background:#3A4B70;margin-right:6px}
+.stchip.on{background:#1F9E5B}.stchip.pp{background:#F2C200;color:#222}.stchip.sp{background:#2F6FE0}
+.stchip.flash{animation:fl .5s ease-in-out 6 alternate}
+@keyframes fl{from{opacity:1;transform:scale(1)}to{opacity:.4;transform:scale(1.15)}}
+.cbs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-content:center}
+.stchip.rv{background:#2F6FE0;color:#fff}
+.ss{display:flex;gap:8px}
+.big{font:inherit;border:0;border-radius:14px;width:118px;font-size:34px;font-weight:900;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;line-height:1}
+.big span{font-size:19px;margin-top:6px}
+.big.start{background:#1F9E5B;color:#fff}.big.stop{background:#F2C200;color:#1A1A1A}
+.big:disabled{background:#1B3A3A;color:#5E7B7B;cursor:default}
+.big.stop:disabled{background:#3D3720;color:#7C7350}
+.pbanner{background:#1F3D7A;border-radius:10px;padding:8px 12px;font-weight:700;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pbanner.warn{background:#7A5A10}.pbanner.red{background:#8E2A20}.pbanner.done{background:#1F6E46}
+.plabel{display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:#AFC2E6;padding:0 4px}
+.pitch{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;flex:0 0 auto}
+.pc{font:inherit;background:#fff;color:#18233A;border:4px solid #1F9E5B;border-radius:14px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;min-height:170px;min-width:0}
+.pc.waiting{border:4px dashed #F2C200;background:#FFF8DC}
+.pc.tent{border-color:#2F6FE0}
+.pc.ejpick{border-color:#E0705F;box-shadow:0 0 0 3px #E0705F}
+.pc.emptyd{background:transparent;border:3px dashed #4A64A0;color:#AFC2E6;justify-content:center}
+.pc.empty{background:#2A2F3E;border:3px solid #8E2A20;color:#fff;justify-content:center}
+.pc .emp{font-size:22px;font-weight:800}
+.ejw{font-size:15px;margin-top:6px}
+.pnum{display:inline-grid;place-items:center;width:52px;height:52px;border-radius:50%;color:#fff;font-weight:900;font-size:26px;font-variant-numeric:tabular-nums}
+.pnum.fp{background:#1F5FBF}.pnum.gk{background:#C8372D}.pnum.pp{color:#F7D547}
+.pn{font-size:19px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.pn small{font-size:11px;color:#C8372D;margin-left:4px}
+.ct{font-size:30px;font-weight:900;color:#fff;background:#1F5FBF;border-radius:9px;padding:0 10px;font-variant-numeric:tabular-nums;line-height:1.25}
+.ct.orange{background:#E8771A}.ct.red{background:#C8372D}
+.wt{font-size:13px;font-weight:800;color:#8A5A10;background:#FFE9A8;border-radius:7px;padding:3px 8px;margin:4px 0}
+.pst{display:grid;grid-template-columns:auto auto auto;gap:0 6px;font-size:12.5px;align-items:baseline;font-variant-numeric:tabular-nums}
+.pst span{color:#5F6B80}.pst b{text-align:right}.pst i{font-style:normal;color:#5F6B80}
+.bench{display:grid;gap:8px;flex:1 1 auto;min-height:0;grid-auto-rows:minmax(0,1fr)}
+.bc{font:inherit;background:#fff;color:#18233A;border:0;border-radius:12px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;position:relative;min-width:0;min-height:0;overflow:hidden}
+.bc .pnum{width:42px;height:42px;font-size:21px}
+.bc .pn{font-size:16px}
+.bc .pst{font-size:11.5px}
+.bc.ghost{background:transparent;border:2px dashed #3E5A93;color:#7F95C2;font-weight:700;cursor:default}
+.bc.ghost b{font-size:18px}
+.bc.ej{background:#3A3F4E;color:#9AA3B5}
+.bc.wout{outline:4px dashed #F2C200;outline-offset:-4px;background:#FFF8DC}
+.bc .tag{font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px}
+.bc .tag.ej{background:#8E2A20;color:#fff}.bc .tag.w{background:#FFE9A8;color:#6A4A00}
+.rest{font-size:11.5px;display:flex;gap:6px;font-variant-numeric:tabular-nums}.rest span{color:#5F6B80}
+.cont{position:absolute;top:4px;right:4px;font-size:11px;font-weight:800;background:#2F6FE0;color:#fff;border-radius:6px;padding:2px 6px}
+.adj{display:flex;gap:10px;align-items:center;justify-content:center}
+.adj input{width:150px;font-size:36px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+.col{display:flex;flex-direction:column;gap:8px}
+@media (max-width:1100px){.clock{font-size:70px}.clockbox{min-width:200px}.big{width:96px;font-size:28px}.cb{font-size:13px;padding:6px}}

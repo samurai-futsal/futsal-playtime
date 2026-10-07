@@ -4,6 +4,7 @@ import {
   matchById, playerName, sortPlayers, matchesOf, matchStatus, playedPlayerIds, inAnyMatch, today,
   DEFAULT_TIMES, DEFAULT_TEAM_SETTINGS, lastError,
 } from './store.js';
+import { vPlay, unmountPlay } from './matchplay.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
@@ -68,6 +69,12 @@ export function render() {
   const v = VIEWS[name] || vHome;
   const keep = captureInputs(main);
   const out = v(r);
+  if (out.full) { // MATCH PLAY: whole screen, no top bar (spec 14章)
+    main.innerHTML = out.html;
+    out.bind && out.bind(main.querySelector('.play') || main);
+    return;
+  }
+  unmountPlay();
   main.innerHTML = topbar(out.active ?? name) + `<div class="page">${out.html}</div>`;
   restoreInputs(main, keep);
   bindFrame();
@@ -460,6 +467,10 @@ function vMatch(r) {
   if (!m) return { active: 'acts', html: '<div class="card empty">この試合は見つかりません（削除された可能性があります）。<a href="#/acts">活動と試合へ</a></div>' };
   if (r.sub === 'setup') return vMatchSetup(m);
   if (r.sub === 'members') return vMatchMembers(m);
+  if (r.sub === 'play') {
+    if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
+    return vPlay(m);
+  }
   const a = activityById(m.activityId);
   const st = matchStatus(m);
   const nMem = Object.keys(m.members || {}).length;
@@ -478,7 +489,7 @@ function vMatch(r) {
     </div>
     <h2 class="h">試合中</h2>
     <div class="acts">
-      ${btn('MATCH PLAY', '試合中はここで操作（交代・時計・出場時間）', '', { soon: true })}
+      ${btn('MATCH PLAY', '試合中はここで操作（交代・時計・出場時間）', `#/m/${m.id}/play`, { pri: nMem >= 5 })}
       ${btn('マッチレビュー', '出場記録、試合データを確認 ※試合後も確認可能', '', { soon: true })}
       ${btn('マッチスタッツ（PDF）・マッチレポート（PDF）', 'その時点までの記録で書き出す', '', { soon: true })}
     </div>

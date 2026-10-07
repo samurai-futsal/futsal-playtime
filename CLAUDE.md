@@ -12,3 +12,8 @@
   One shared team account (email/password). Firestore rules restrict access to that account's UID.
 - Releasing: bump APP_VERSION in app.js AND VERSION in sw.js together. Updates apply only when the
   user presses 「更新する」 (no skipWaiting on install).
+- MATCH PLAY: js/engine.js is a pure replay of an append-only op log (teams/{t}/matches/{m}/ops).
+  Undo/reset are new ops. Tests: `node test/scenarios.test.mjs` (spec cases) and
+  `node test/engine.test.mjs [seed] [runs]` (random-operation invariants, spec 10章). Run both before pushing.
+- UI testing in the workspace: serve the repo with `python3 -m http.server` and drive it with Playwright,
+  routing the three gstatic Firebase URLs to in-memory fakes (Firebase itself is unreachable from here).

@@ -136,3 +136,38 @@ export function playedPlayerIds(activityId = null) {
 }
 export function inAnyMatch(playerId) { return S.matches.some((m) => (m.members || {})[playerId]); }
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+// ---------- MATCH PLAY operations (teams/{t}/matches/{m}/ops/{id}) ----------
+// Append-only: an op is never changed or deleted (undo and reset are new ops). See engine.js.
+const opsCache = {}; // matchId -> { list, unsub, pending }
+export function watchOps(matchId) {
+  if (opsCache[matchId]) return opsCache[matchId];
+  const c = (opsCache[matchId] = { list: [], unsub: null, ready: false, pending: false });
+  const { onSnapshot, collection } = F.fsM;
+  c.unsub = onSnapshot(collection(F.db, 'teams', S.teamId, 'matches', matchId, 'ops'), { includeMetadataChanges: true }, (snap) => {
+    track('ops_' + matchId, snap);
+    c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    c.ready = true; c.pending = snap.metadata.hasPendingWrites;
+    emit();
+  }, onErr);
+  return c;
+}
+let opSeq = (() => { try { return +localStorage.getItem('fpt.opSeq') || 0; } catch { return 0; } })();
+export function addOp(matchId, op) {
+  const id = newId();
+  const rec = { ...op, t: op.t ?? Date.now(), n: ++opSeq, dev: deviceId() };
+  try { localStorage.setItem('fpt.opSeq', String(opSeq)); } catch {}
+  const c = watchOps(matchId);
+  c.list = [...c.list, { id, ...rec }]; // show immediately (the snapshot confirms it a moment later)
+  const { setDoc, doc } = F.fsM;
+  setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'ops', id), rec).catch(onErr);
+  emit();
+  return { id, ...rec };
+}
+export function deviceId() {
+  try {
+    let id = localStorage.getItem('fpt.deviceId');
+    if (!id) { id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36); localStorage.setItem('fpt.deviceId', id); }
+    return id;
+  } catch { return 'unknown'; }
+}
