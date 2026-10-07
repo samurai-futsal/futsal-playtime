@@ -70,10 +70,10 @@ export function vPlay(m) {
   };
   // 背番号と姓を横に並べて大きく（どのカードも同じ大きさ。姓は3文字まで同じ大きさ、4文字以上だけ少し小さく）
   const nameRow = (pid, last) => `<div class="nr">${num(pid)}<div class="pn ${[...(last || '')].length > 3 ? 'long' : ''}">${esc(last || '')}</div></div>`;
-  const stats = (pid) => {
+  const stats = (pid, rest) => {
     const pc = playerCounts(st, pid, st.current);
     return `<div class="pst"><span>ピリオド</span><b data-pt="${pid}">${mmssFloor(playerPeriodTime(st, pid, st.current, el))}</b><i>×${pc.period}</i>
-      <span>試合</span><b data-mt="${pid}">${mmssFloor(playerMatchTime(st, pid, el))}</b><i>×${pc.match}</i></div>`;
+      <span>試合</span><b data-mt="${pid}">${mmssFloor(playerMatchTime(st, pid, el))}</b><i>×${pc.match}</i>${rest !== undefined ? `<span>休憩</span><b data-rest="${pid}">${rest == null ? '—' : mmssFloor(rest)}</b><i></i>` : ''}</div>`;
   };
   const pitchCard = (v) => {
     if (!v.pid) {
@@ -94,7 +94,7 @@ export function vPlay(m) {
   };
   const benchCard = (mb) => {
     const pid = mb.pid;
-    if (onPitch.has(pid)) return `<div class="bc ghost"><b>${esc(mb.no ?? '')}</b>出場中</div>`;
+    if (onPitch.has(pid)) return `<div class="bc ghost"><span class="gx"><b>${esc(mb.no ?? '')}</b>出場中</span></div>`;
     const ej = st.ejected.has(pid);
     const waitingOut = replacedOuts.includes(pid);
     const carry = st.carry[pid];
@@ -103,7 +103,7 @@ export function vPlay(m) {
       ${nameRow(pid, mb.p?.last)}
       ${ej ? '<div class="tag ej">退場</div>' : waitingOut ? '<div class="tag w">交代待ち（押すと取り消し）</div>' : ''}
       ${carry != null ? `<span class="cont" data-cont="${pid}">続き ${mmssFloor(carry)}</span>` : ''}
-      ${stats(pid)}<div class="rest"><span>休憩</span><b data-rest="${pid}">${rest == null ? '—' : mmssFloor(rest)}</b></div></button>`;
+      ${stats(pid, rest)}</button>`;
   };
 
   const btn = (id, label, sub = '', cls = '', dis = false) => `<button class="cb ${cls}" id="${id}" ${dis ? 'disabled' : ''}>${label}${sub ? `<small>${sub}</small>` : ''}</button>`;
@@ -152,7 +152,7 @@ export function vPlay(m) {
     <div class="plabel"><span>ピッチ</span><span>${view.filter((v) => v.pid).length} / 5</span></div>
     <div class="pitch">${view.map(pitchCard).join('')}</div>
     <div class="plabel"><span>ベンチ（並びは固定）</span>${!live && !st.matchOver && !st.askExtra ? '<span>先発の5人を選んで「スタート」</span>' : ''}</div>
-    <div class="bench" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${members.map(benchCard).join('')}</div>
+    <div class="bench" style="grid-template-columns:repeat(${cols},minmax(0,1fr));flex-grow:${Math.ceil(n / cols) * 0.8}">${members.map(benchCard).join('')}</div>
   </div>`,
     bind(root) { bindPlay(root, m, st, cfg, draft); },
   };

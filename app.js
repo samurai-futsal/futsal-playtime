@@ -4,7 +4,7 @@ import { initStore } from './js/store.js';
 import { startApp, render } from './js/views.js';
 import { $, esc } from './js/ui.js';
 
-const APP_VERSION = '0.3.2';
+const APP_VERSION = '0.3.3';
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const firebaseConfig = {
   apiKey: 'AIzaSyC0r2kAsSyq9HCcj9IT4WsRMlC8mleBoV4',

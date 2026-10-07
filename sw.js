@@ -1,7 +1,7 @@
 // Service worker: keeps the app usable offline.
 // Updates are applied only when the coach presses 「更新する」 (spec 5章).
 // When releasing, bump VERSION here AND APP_VERSION in app.js.
-const VERSION = '0.3.2';
+const VERSION = '0.3.3';
 const CACHE = 'fpt-' + VERSION;
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const SHELL = [
