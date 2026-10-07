@@ -154,6 +154,14 @@ export function replay(ops, cfg) {
     }
   }
 
+  // GKはピッチに1人まで：交代で出るGKを除き、すでに入る予定のGKを足して1人以上いれば入れない
+  function gkWouldDouble(pid) {
+    if (!isGK(cfg, pid)) return false;
+    const outIds = new Set(S.batch.outs.map((o) => o.pid));
+    const stay = S.seats.filter((x) => x && !outIds.has(x) && isGK(cfg, x)).length;
+    return stay + S.batch.ins.filter((x) => isGK(cfg, x)).length >= 1;
+  }
+
   function endPeriod(at) {
     const p = P();
     // 交代待ちが残っていたら、入った分だけ交代し、残りは最後まで出場したものとする（spec 3章）
@@ -299,6 +307,7 @@ export function replay(ops, cfg) {
           break;
         }
         if (S.seats.includes(pid) || S.batch.ins.includes(pid)) break;
+        if (gkWouldDouble(pid)) { S.notices.push({ kind: 'twoGK' }); break; } // GKはピッチに1人まで
         if (S.batch.outs.length > S.batch.ins.length) {
           S.batch.ins.push(pid);
           if (S.batch.ins.length === S.batch.outs.length) commitBatch(at);

@@ -266,3 +266,18 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .bc .pst{font-size:min(11.5cqi,11cqh);gap:0 2cqi;line-height:1.25}
 .bc .pst span{font-size:min(8cqi,8cqh)}
 .bc .pst i{font-size:min(8.5cqi,8.5cqh)}
+
+/* 0.3.5: 時間は見出しを小さく上・数字を大きく・回数を下の2列。休憩だけは横並び */
+.pc .pst,.bc .pst{display:grid;grid-template-columns:1fr 1fr;gap:0 4cqi;width:100%;text-align:center;line-height:1.05;font-size:inherit}
+.pst .sc{display:flex;flex-direction:column;align-items:center}
+.pst .sl,.pst .sn{color:#5F6B80;font-weight:600}
+.pst .sv{font-weight:900;text-align:center}
+.pc .pst .sl{font-size:min(7cqi,7.5cqh)}
+.pc .pst .sv{font-size:min(14cqi,13cqh)}
+.pc .pst .sn{font-size:min(7.5cqi,8cqh)}
+.bc .pst .sl{font-size:min(8.5cqi,8cqh)}
+.bc .pst .sv{font-size:min(15cqi,13cqh)}
+.bc .pst .sn{font-size:min(8.5cqi,8cqh)}
+.bc .pst .sr{grid-column:1/-1;margin-top:2cqh;display:flex;justify-content:center;align-items:baseline;gap:4cqi}
+.bc .pst .sr .sl{font-size:min(9cqi,8.5cqh)}
+.bc .pst .sr .sv{font-size:min(14cqi,12cqh)}

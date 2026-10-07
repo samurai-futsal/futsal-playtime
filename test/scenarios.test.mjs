@@ -150,6 +150,13 @@ T('パワープレーから戻るGKは、一番左の席が空くならそこに
   const S = b.S(); eq(S.seats[0], 'G', 'GK back in seat 0'); eq(S.seats[3], 'E', 'E in C seat');
 });
 
+T('GKはピッチに1人まで：FPのOUTにGKは入れない／GK同士の交代は入れる', () => {
+  const b = mk(); ko(b); b.add(10, { type: 'out', pid: 'A' }); b.add(11, { type: 'in', pid: 'G2' });
+  let S = b.S(); eq(S.seats.includes('G2'), false, 'G2 refused'); eq(S.notices[0]?.kind, 'twoGK', 'notice');
+  b.add(12, { type: 'in', pid: 'E' }); b.add(20, { type: 'out', pid: 'G' }); b.add(21, { type: 'in', pid: 'G2' });
+  S = b.S(); eq(S.seats[0], 'G2', 'GK swap ok'); eq(S.seats.includes('G'), false, 'G out');
+});
+
 console.log(`scenarios: ${ok} passed, ${fails.length} failed`);
 fails.forEach((f) => console.log('  FAIL ' + f));
 if (fails.length) process.exit(1);

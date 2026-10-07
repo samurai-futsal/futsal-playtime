@@ -72,8 +72,9 @@ export function vPlay(m) {
   const nameRow = (pid, last) => `<div class="nr">${num(pid)}<div class="pn ${[...(last || '')].length > 3 ? 'long' : ''}">${esc(last || '')}</div></div>`;
   const stats = (pid, rest) => {
     const pc = playerCounts(st, pid, st.current);
-    return `<div class="pst"><span>ピリオド</span><b data-pt="${pid}">${mmssFloor(playerPeriodTime(st, pid, st.current, el))}</b><i>×${pc.period}</i>
-      <span>試合</span><b data-mt="${pid}">${mmssFloor(playerMatchTime(st, pid, el))}</b><i>×${pc.match}</i>${rest !== undefined ? `<span>休憩</span><b data-rest="${pid}">${rest == null ? '—' : mmssFloor(rest)}</b><i></i>` : ''}</div>`;
+    // 見出しを小さく上、時間を大きく、回数を下。休憩だけは「休憩 0:00」と横並び（0.3.5）
+    const col = (label, attr, v, cnt) => `<div class="sc"><span class="sl">${label}</span><b class="sv" ${attr}="${pid}">${v}</b><span class="sn">${cnt}回</span></div>`;
+    return `<div class="pst">${col('ピリオド', 'data-pt', mmssFloor(playerPeriodTime(st, pid, st.current, el)), pc.period)}${col('試合', 'data-mt', mmssFloor(playerMatchTime(st, pid, el)), pc.match)}${rest !== undefined ? `<div class="sr"><span class="sl">休憩</span><b class="sv" data-rest="${pid}">${rest == null ? '—' : mmssFloor(rest)}</b></div>` : ''}</div>`;
   };
   const pitchCard = (v) => {
     if (!v.pid) {
@@ -175,6 +176,7 @@ function bindPlay(root, m, st, cfg, draft) {
     after.notices.forEach((nt) => {
       if (nt.kind === 'needOut') toast('先に交代する選手のOUTを押してください');
       if (nt.kind === 'noGK') toast('GKがピッチにいません');
+      if (nt.kind === 'twoGK') toast('GKはピッチに1人までです。先にピッチのGKを押してください');
       if (nt.kind === 'ppAuto') { lastPpAuto = Date.now(); toast('5x4（自チームのパワープレー）を開始しました'); }
     });
     syncStatus(m, after);
@@ -216,11 +218,20 @@ function bindPlay(root, m, st, cfg, draft) {
       if (!live) {
         if (st.matchOver || st.askExtra) return;
         if (draft.includes(pid)) return;
+        const isG = (x) => m.members?.[x]?.pos === 'GK';
+        if (isG(pid) && draft.some((x) => x && isG(x))) { toast('GKは1人までです。ピッチのGKを押すとベンチに戻せます'); return; }
         const slot = slotFor(m, draft, pid);
         if (slot == null) { toast('先発は5人です。ピッチの選手を押すとベンチに戻せます'); return; }
         const next = [...draft]; next[slot] = pid; setDraft(m, st.current, next); rerender(); return;
       }
       if (st.batch.outs.some((o) => o.pid === pid)) { send({ type: 'in', pid }); return; } // 取り消し
+      { // GKはピッチに1人まで（交代で出るGKの代わりなら入れる）
+        const isG = (x) => m.members?.[x]?.pos === 'GK';
+        const outIds = new Set(st.batch.outs.map((o) => o.pid));
+        if (isG(pid) && st.seats.filter((x) => x && !outIds.has(x) && isG(x)).length + st.batch.ins.filter(isG).length >= 1) {
+          toast('GKはピッチに1人までです。先にピッチのGKを押してください'); return;
+        }
+      }
       if (st.batch.outs.length > st.batch.ins.length) { send({ type: 'in', pid }); return; }
       const es = st.empty.findIndex((x) => x);
       if (es >= 0) {
