@@ -256,3 +256,13 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .bc.ghost .gx b{font-size:min(16cqi,17cqh)}
 .pc .emp{font-size:min(11cqi,12cqh)}
 .pc.empty .mu,.pc .ejw{font-size:min(7.5cqi,8cqh)}
+/* ベンチ：背番号・姓をカードの幅いっぱいに（姓3文字＋背番号が1行に収まる最大の大きさ） */
+.bc{padding:4px 3px}
+.bc .nr{gap:1.5cqi;padding:0}
+.bc .nr .pnum{width:min(23cqi,24cqh);height:min(23cqi,24cqh);font-size:min(15cqi,15.5cqh)}
+.bc .nr .pn{font-size:min(24.5cqi,25cqh);letter-spacing:-.04em}
+.bc .nr .pn.long{font-size:min(18cqi,19cqh)}
+/* 時間は数字を大きく、見出し（ピリオド・試合・休憩）は小さめに */
+.bc .pst{font-size:min(11.5cqi,11cqh);gap:0 2cqi;line-height:1.25}
+.bc .pst span{font-size:min(8cqi,8cqh)}
+.bc .pst i{font-size:min(8.5cqi,8.5cqh)}
