@@ -1,6 +1,7 @@
 // Scenario tests: the cases written in the spec (3章「想定ケース」, 4章 セットプレーの例, 6章 5x4).
 // Run: node test/scenarios.test.mjs
 import { replay, nowElapsed, playerPeriodTime, playerCounts, seatView, contTime, restTime } from '../js/engine.js';
+import { matchModel, playerTable, setTable } from '../js/model.js';
 
 const M = { G: { pos: 'GK' }, A: { pos: 'FP' }, B: { pos: 'FP' }, C: { pos: 'FP' }, D: { pos: 'FP' },
   E: { pos: 'FP' }, F: { pos: 'FP' }, G2: { pos: 'GK' }, H: { pos: 'FP' }, I: { pos: 'FP', pp: true }, J: { pos: 'FP' } };
@@ -185,6 +186,18 @@ T('退場2人：補充は押した空席に入る', () => {
   const b = mk(); ko(b); b.add(10, { type: 'eject', pid: 'A' }); b.add(11, { type: 'eject', pid: 'C' });
   b.add(200, { type: 'in', pid: 'E', seat: 3 });
   const S = b.S(); eq(S.seats[3], 'E', 'E in C seat'); eq(S.seats[1], null, 'A seat still empty');
+});
+
+T('マッチレビュー：出場時間・回数とセット（パワープレー中は除く）', () => {
+  const b = mk(); ko(b); b.add(300, { type: 'out', pid: 'A' }); b.add(300, { type: 'in', pid: 'E' });
+  b.add(600, { type: 'out', pid: 'G' }); b.add(600, { type: 'in', pid: 'I' }); // 5x4（GKなし）
+  b.add(660, { type: 'out', pid: 'I' }); b.add(660, { type: 'in', pid: 'G' });
+  b.add(1200, { type: 'periodEnd' });
+  const M = matchModel(b.S()); const T = playerTable(M);
+  eq(T.A.total / sec, 300, 'A time'); eq(T.E.total / sec, 900, 'E time'); eq(T.G.count, 2, 'G count');
+  const sets = setTable(M);
+  eq(sets[0].pids.join(), 'B,C,D,E', 'longest set'); eq(sets[0].time / sec, 840, 'B,C,D,E without PP'); eq(sets[0].count, 2, 'two appearances around PP');
+  eq(sets[1].time / sec, 300, 'A,B,C,D');
 });
 
 console.log(`scenarios: ${ok} passed, ${fails.length} failed`);

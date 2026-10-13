@@ -131,7 +131,7 @@ export function vPlay(m) {
         <div class="clock ${running ? 'run' : ''}" id="clock">${mmss(len - el)}</div>
         <div class="row">
           <span class="stchip ${running ? 'on' : ''}">${stateMsg}</span>
-          <a class="stchip rv" href="#/soon/${encodeURIComponent('マッチレビュー')}">マッチレビュー ›</a>
+          <a class="stchip rv" href="#/m/${m.id}/review">マッチレビュー ›</a>
         </div>
       </div>
       <div class="cbs">

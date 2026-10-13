@@ -1,6 +1,7 @@
 // Random-operation test for the MATCH PLAY engine (spec 10章「自動テスト」).
 // Run: node test/engine.test.mjs
 import { replay, nowElapsed, playerPeriodTime, seatView, periodLen, PERIODS } from '../js/engine.js';
+import { matchModel, checkTotal, setTable, playedTime } from '../js/model.js';
 
 let seed = Number(process.argv[2] || 12345);
 const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
@@ -37,6 +38,12 @@ function check(S, t, ctx) {
     const emptyMs = S.empties.filter((e) => e.period === pk.key).reduce((s, e) => s + (e.to - e.from), 0);
     if (Math.abs(total + emptyMs - 5 * pp.elapsed) > 1) fail(`done ${pk.key} sum ${total}+${emptyMs} != 5×${pp.elapsed}`);
   }
+  // review model (spec 7章): all players' time = 5 × played time − empty seats; sets are 4 distinct FP and fit in the played time
+  const M = matchModel(S, t); const ct = checkTotal(M);
+  if (Math.abs(ct.players - ct.expected) > 2) fail(`model total ${ct.players} != ${ct.expected}`);
+  const sets = setTable(M);
+  if (sets.some((x) => new Set(x.pids).size !== 4 || x.pids.some((pid) => MEMBERS[pid].pos === 'GK'))) fail('bad set');
+  if (sets.reduce((a, x) => a + x.time, 0) > playedTime(M) + 1) fail('sets longer than played time');
   // no overlapping stints for one player
   for (const pid of ALL) {
     const st = S.stints.filter((s) => s.pid === pid).sort((a, b) => a.period.localeCompare(b.period) || a.from - b.from);

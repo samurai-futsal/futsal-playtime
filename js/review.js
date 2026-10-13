@@ -1,0 +1,143 @@
+// マッチレビュー (spec 7章「マッチレビュー」). Items 1〜3 are built from the MATCH PLAY record only,
+// so they are always shown. Items 4〜6 need events (④) and are not shown until then.
+import { S, matchById, playerById, matchesOf, teamSettings, watchOps } from './store.js';
+import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
+import { matchModel, playerTable, setTable, playedTime } from './model.js';
+import { esc, fmtShort } from './ui.js';
+import { render } from './views.js';
+
+const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
+const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const mmssUp = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+let tick = null;
+const compactKey = 'fpt.reviewCompact';
+const isCompact = () => { try { return localStorage.getItem(compactKey) === '1'; } catch { return false; } };
+
+export function stopReviewTick() { clearInterval(tick); tick = null; }
+
+export function vReview(m) {
+  const opsC = watchOps(m.id);
+  if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
+  const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 };
+  const st = replay(opsC.list, cfg);
+  const M = matchModel(st);
+  const running = M.live && st.periods[st.current].runningSince != null;
+  // 出場中の時間を進める：時計が動いている間だけ1秒ごとに描き直す
+  stopReviewTick();
+  if (running) tick = setInterval(() => { if (!location.hash.endsWith('/review')) return stopReviewTick(); render(); }, 1000);
+
+  const mem = (pid) => m.members?.[pid] || {};
+  const order = Object.keys(m.members || {}).sort((a, b) => (mem(a).pos === 'GK' ? 0 : 1) - (mem(b).pos === 'GK' ? 0 : 1) || (parseInt(mem(a).no, 10) || 999) - (parseInt(mem(b).no, 10) || 999));
+  const byNo = Object.keys(m.members || {}).sort((a, b) => (parseInt(mem(a).no, 10) || 999) - (parseInt(mem(b).no, 10) || 999));
+  const last = (pid) => playerById(pid)?.last || '';
+  const badge = (pid) => `<span class="no ${mem(pid).pos === 'GK' ? 'gk' : 'fp'}">${esc(mem(pid).no ?? '')}</span>`;
+  const played = playedTime(M);
+  const started = M.periods.some((p) => p.status !== 'none');
+
+  // ---------- 試合の状況 ----------
+  const pDone = (k) => st.periods[k]?.status === 'done';
+  let state;
+  if (st.matchOver) state = '<span class="rvst done">試合終了</span>';
+  else if (M.live) {
+    const len = periodLen(cfg, st.current);
+    state = `<span class="rvst ${running ? 'run' : ''}">${running ? '試合進行中' : '停止中'}</span><span class="rvclk">${periodLabel(st.current)}　残り <b>${mmssUp(len - nowElapsed(st))}</b></span>`;
+  } else if (st.askExtra) state = '<span class="rvst half">後半終了</span>';
+  else if (pDone('1H') && !pDone('2H')) state = '<span class="rvst half">ハーフタイム</span><span class="rvclk">前半終了</span>';
+  else if (pDone('2H') && !st.matchOver) state = '<span class="rvst half">延長前</span>';
+  else state = '<span class="rvst">開始前</span>';
+
+  const others = matchesOf(m.activityId).filter((x) => x.status === 'playing' || x.status === 'done' || x.id === m.id);
+  const sw = `<select id="rvMatch" class="rvsel">${others.map((x) => `<option value="${x.id}" ${x.id === m.id ? 'selected' : ''}>vs ${esc(x.opponent)}（${fmtShort(x.date)}）</option>`).join('')}</select>`;
+  const jumps = [[1, '出場時間'], [2, 'タイムライン'], [3, 'セット']].map(([n, t]) => `<a class="rvjp" href="#rv${n}" data-jump="rv${n}"><b>${n}</b>${t}</a>`).join('');
+  const head = `<div class="rvhead">
+      <div class="rvrow"><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
+        <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button></div>
+      <div class="rvjumps">${jumps}<span class="rvnote">4〜6（マッチ・ペース、スコア、スタッツ）はイベントを入力すると表示します</span></div></div>`;
+
+  if (!started) {
+    return { active: 'acts', html: `<div class="rvw">${head}<div class="card empty">まだ記録がありません。MATCH PLAYで先発を選んでスタートすると、ここに出場時間が表示されます。</div></div>`, bind: bindReview(m) };
+  }
+
+  const T = playerTable(M);
+  const shownP = M.periods.filter((p) => p.status !== 'none' || !p.extra);
+  const denomTxt = M.periods.filter((p) => p.status !== 'none').map((p) => `${p.label}${mmss(p.elapsed)}`).join('＋');
+
+  // ---------- 1. 出場時間 ----------
+  const maxT = Math.max(M.periods.reduce((s, p) => s + p.len, 0), 60000);
+  const gridStep = maxT > 30 * 60000 ? 10 : 5; // 分
+  const W = 1040, Hc = 170, L = 52;
+  const n = byNo.length, cw = (W - L) / Math.max(n, 1), bw = Math.min(46, cw * 0.62);
+  const sv = [`<svg class="rvbar" viewBox="0 0 ${W + 10} ${Hc + 64}" preserveAspectRatio="xMinYMin meet">`];
+  for (let mi = 0; mi * 60000 <= maxT; mi += gridStep) {
+    const y = 20 + Hc - Hc * (mi * 60000) / maxT;
+    sv.push(`<line x1="${L}" y1="${y}" x2="${W + 8}" y2="${y}" stroke="${mi === 0 ? '#18233A' : '#E1E6EF'}"/><text x="${L - 6}" y="${y + 4}" font-size="12" fill="#8A94A6" text-anchor="end">${mi}:00</text>`);
+  }
+  byNo.forEach((pid, k) => {
+    const x = L + 6 + k * cw + (cw - bw) / 2; let y = 20 + Hc;
+    for (const p of M.periods) {
+      const t = T[pid]?.per[p.key]?.time || 0; if (!t) continue;
+      const h = Hc * t / maxT; y -= h;
+      sv.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${COL[p.key]}"/>`);
+    }
+    const tot = T[pid]?.total || 0;
+    sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="15" font-weight="800" fill="#0B2D6B" text-anchor="middle">${mmss(tot)}</text>`);
+    sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 19}" font-size="15" font-weight="800" fill="${mem(pid).pos === 'GK' ? '#C8372D' : '#1F5FBF'}" text-anchor="middle">${esc(mem(pid).no ?? '')}</text>`
+      + `<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 37}" font-size="12.5" fill="#5F6B80" text-anchor="middle">${esc(last(pid))}</text>`);
+  });
+  sv.push('</svg>');
+  const legend = M.periods.filter((p) => !p.extra || p.status !== 'none' || cfg.times?.extra).map((p) => `<span class="lg"><i style="background:${COL[p.key]}"></i>${p.label}</span>`).join('');
+  const th = shownP.map((p) => `<th>${p.label}</th><th>回数</th>`).join('');
+  const rows = byNo.map((pid) => {
+    const r = T[pid] || { per: {}, total: 0, count: 0 };
+    const cells = shownP.map((p) => {
+      if (p.status === 'none') return '<td class="na">—</td><td class="na">—</td>';
+      const c = r.per[p.key]; return `<td>${mmss(c?.time || 0)}</td><td>${c?.count || 0}</td>`;
+    }).join('');
+    return `<tr class="${r.total ? '' : 'zero'}"><td>${badge(pid)} ${esc(last(pid))}</td>${cells}<td><b>${mmss(r.total)}</b></td><td>${r.count}</td><td>${played ? Math.round(r.total / played * 100) : 0}%</td></tr>`;
+  }).join('');
+  const s1 = `<section class="rvsec" id="rv1"><div class="rvtt"><b>1. 出場時間</b><span>棒＝ピリオドを積み上げ、上の数字＝合計。出場率は、ここまでのプレーイングタイム（${denomTxt}）に対して</span></div>
+    <div class="rvbox"><div class="rvlg">${legend}</div>${sv.join('')}
+    <table class="rvtb"><tr><th>選手</th>${th}<th>合計</th><th>回数</th><th>出場率</th></tr>${rows}</table></div></section>`;
+
+  // ---------- 2. 出場タイムライン ----------
+  const axis = M.periods.filter((p) => !p.extra || p.status !== 'none' || st.askExtra || cfg.times?.extra);
+  const total = axis.reduce((s, p) => s + p.len, 0);
+  const off = {}; let acc = 0; for (const p of axis) { off[p.key] = acc; acc += p.len; }
+  const pct = (v) => (v / total * 100).toFixed(3);
+  const ticks = axis.map((p) => `<span style="left:${pct(off[p.key])}%">${p.label} ${mmss(p.len)}</span><span style="left:${pct(off[p.key] + p.len / 2)}%">${mmss(p.len / 2)}</span>`).join('') + '<span style="left:100%">0:00</span>';
+  const seps = axis.slice(1).map((p) => `<i class="tlsep" style="left:${pct(off[p.key])}%"></i>`).join('');
+  const future = axis.filter((p) => p.status === 'none').map((p) => `<i class="tlfut" style="left:${pct(off[p.key])}%;width:${pct(p.len)}%"></i>`).join('')
+    + (M.live ? `<i class="tlfut" style="left:${pct(off[M.current] + (M.periods.find((p) => p.key === M.current).elapsed))}%;width:${pct(periodLen(cfg, M.current) - M.periods.find((p) => p.key === M.current).elapsed)}%"></i>` : '');
+  const tlRows = order.map((pid) => {
+    const bands = M.stints.filter((s) => s.pid === pid && off[s.period] != null).map((s) => {
+      const d = s.to - s.from, l = pct(off[s.period] + s.from), w = pct(d);
+      const small = d / total < 0.045;
+      return `<span class="tlb ${mem(pid).pos === 'GK' ? 'gk' : ''}" style="left:${l}%;width:${w}%">${small ? '' : mmss(d)}</span>${small ? `<span class="tls" style="left:${(+l + +w / 2).toFixed(3)}%">${mmss(d)}</span>` : ''}`;
+    }).join('');
+    return `<div class="tlr"><span>${badge(pid)} ${esc(last(pid))}</span><div class="tlt">${seps}${future}${bands}</div><b>${mmss(T[pid]?.total || 0)}</b></div>`;
+  }).join('');
+  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>2. 出場タイムライン</b><span>いつピッチにいたか。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計</span></div>
+    <div class="rvbox"><div class="tlr tlhead"><span></span><div class="tlax">${ticks}</div><span>合計</span></div>${tlRows}</div></section>`;
+
+  // ---------- 3. セットの出場時間 ----------
+  const sets = setTable(M);
+  const setRows = sets.length ? sets.map((s, i) => `<tr><td>${i + 1}位</td><td class="setn">${s.pids.map((pid) => `${badge(pid)}<small>${esc(last(pid))}</small>`).join('')}</td><td><b>${mmss(s.time)}</b></td><td>${s.count}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="na" style="text-align:center">GKが1人・FPが4人そろった時間がまだありません</td></tr>';
+  const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>3. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。GKがいない区間（パワープレー）、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは除く。得点・失点はイベント入力（④）のあとで表示</span></div>
+    <div class="rvbox"><table class="rvtb rvset"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}</table></div></section>`;
+
+  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}<div class="rvbody">${s1}${s2}${s3}</div></div>`, bind: bindReview(m) };
+}
+
+function bindReview(m) {
+  return (root) => {
+    const bar = document.querySelector('.bar'); if (bar) document.documentElement.style.setProperty('--barh', bar.offsetHeight + 'px');
+    const sel = root.querySelector('#rvMatch'); if (sel) sel.onchange = () => { location.hash = `#/m/${sel.value}/review`; };
+    const c = root.querySelector('#rvCompact'); if (c) c.onclick = () => { try { localStorage.setItem(compactKey, isCompact() ? '0' : '1'); } catch {} render(); };
+    root.addEventListener('click', (e) => {
+      const j = e.target.closest('[data-jump]'); if (!j) return;
+      e.preventDefault(); const el = document.getElementById(j.dataset.jump);
+      if (el) scrollTo({ top: el.getBoundingClientRect().top + scrollY - (root.querySelector('.rvhead')?.offsetHeight || 0) - (document.querySelector('.bar')?.offsetHeight || 0) - 8, behavior: 'smooth' });
+    });
+  };
+}

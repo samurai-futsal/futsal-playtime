@@ -5,6 +5,7 @@ import {
   DEFAULT_TIMES, DEFAULT_TEAM_SETTINGS, lastError,
 } from './store.js';
 import { vPlay, unmountPlay } from './matchplay.js';
+import { vReview, stopReviewTick } from './review.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
@@ -61,6 +62,7 @@ const VIEWS = {
 
 export function render() {
   const r = route();
+  stopReviewTick(); // マッチレビューを開いている間だけ、出場中の時間を1秒ごとに進める
   const main = $('#main');
   if (!S.ready.global || !S.ready.teams) { main.innerHTML = '<p class="mu pad">読み込み中…</p>'; return; }
   let name = r.name;
@@ -467,6 +469,7 @@ function vMatch(r) {
   if (!m) return { active: 'acts', html: '<div class="card empty">この試合は見つかりません（削除された可能性があります）。<a href="#/acts">活動と試合へ</a></div>' };
   if (r.sub === 'setup') return vMatchSetup(m);
   if (r.sub === 'members') return vMatchMembers(m);
+  if (r.sub === 'review') return vReview(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
     return vPlay(m);
@@ -490,7 +493,8 @@ function vMatch(r) {
     <h2 class="h">試合中</h2>
     <div class="acts">
       ${btn('MATCH PLAY', '試合中はここで操作（交代・時計・出場時間）', `#/m/${m.id}/play`, { pri: nMem >= 5 })}
-      ${btn('マッチレビュー', '出場記録、試合データを確認 ※試合後も確認可能', '', { soon: true })}
+      ${btn('マッチレビュー', '出場記録、試合データを確認 ※試合後も確認可能', `#/m/${m.id}/review`)}
+      ${btn('リアルタイム入力', 'ベンチ外スタッフがPC・iPadでイベントを入力', '', { soon: true })}
       ${btn('マッチスタッツ（PDF）・マッチレポート（PDF）', 'その時点までの記録で書き出す', '', { soon: true })}
     </div>
     <h2 class="h">試合後</h2>
