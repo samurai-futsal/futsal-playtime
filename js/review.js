@@ -10,6 +10,7 @@ const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const mmssUp = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 let tick = null;
+let sortState = { col: '', dir: 'desc' }; // 出場時間の表の並べ替え
 const compactKey = 'fpt.reviewCompact';
 const isCompact = () => { try { return localStorage.getItem(compactKey) === '1'; } catch { return false; } };
 
@@ -66,7 +67,8 @@ export function vReview(m) {
   const denomTxt = M.periods.filter((p) => p.status !== 'none').map((p) => `${p.label}${mmss(p.elapsed)}`).join('＋');
 
   // ---------- 1. 出場時間 ----------
-  const maxT = Math.max(M.periods.reduce((s, p) => s + p.len, 0), 60000);
+  // 目盛りの最大＝ここまでに行ったピリオドの公式の長さの合計（前半中・ハーフタイムは20分、後半に入ると40分、延長に入ると延長の分も足す）
+  const maxT = Math.max(M.periods.filter((p) => p.status !== 'none').reduce((s, p) => s + p.len, 0), 60000);
   const gridStep = maxT > 30 * 60000 ? 10 : 5; // 分
   const W = 1040, Hc = 170, L = 52;
   const n = byNo.length, cw = (W - L) / Math.max(n, 1), bw = Math.min(46, cw * 0.62);
@@ -89,8 +91,17 @@ export function vReview(m) {
   });
   sv.push('</svg>');
   const legend = M.periods.filter((p) => !p.extra || p.status !== 'none' || cfg.times?.extra).map((p) => `<span class="lg"><i style="background:${COL[p.key]}"></i>${p.label}</span>`).join('');
-  const th = shownP.map((p) => `<th>${p.label}</th><th>回数</th>`).join('');
-  const rows = byNo.map((pid) => {
+  // 表の並べ替え：見出しを押すと 多い順 → 少ない順 → 背番号順（初めは背番号順）
+  const sortVal = (pid, col) => {
+    const r = T[pid] || { per: {}, total: 0, count: 0 };
+    if (col === 'total') return r.total; if (col === 'count' || col === 'rate') return col === 'count' ? r.count : r.total;
+    const [k, f] = col.split(':'); const ps = M.periods.find((p) => p.key === k);
+    if (!ps || ps.status === 'none') return -1; const c = r.per[k]; return f === 'n' ? (c?.count || 0) : (c?.time || 0);
+  };
+  const sorted = sortState.col ? byNo.slice().sort((a, b) => (sortVal(b, sortState.col) - sortVal(a, sortState.col)) * (sortState.dir === 'asc' ? -1 : 1) || byNo.indexOf(a) - byNo.indexOf(b)) : byNo;
+  const sh = (col, label) => `<th class="srt ${sortState.col === col ? 'on' : ''}" data-sort="${col}">${label}<i>${sortState.col === col ? (sortState.dir === 'asc' ? '▲' : '▼') : '⇅'}</i></th>`;
+  const th = shownP.map((p) => sh(`${p.key}:t`, p.label) + sh(`${p.key}:n`, '回数')).join('');
+  const rows = sorted.map((pid) => {
     const r = T[pid] || { per: {}, total: 0, count: 0 };
     const cells = shownP.map((p) => {
       if (p.status === 'none') return '<td class="na">—</td><td class="na">—</td>';
@@ -100,7 +111,8 @@ export function vReview(m) {
   }).join('');
   const s1 = `<section class="rvsec" id="rv1"><div class="rvtt"><b>1. 出場時間</b><span>棒＝ピリオドを積み上げ、上の数字＝合計。出場率は、ここまでのプレーイングタイム（${denomTxt}）に対して</span></div>
     <div class="rvbox"><div class="rvlg">${legend}</div>${sv.join('')}
-    <table class="rvtb"><tr><th>選手</th>${th}<th>合計</th><th>回数</th><th>出場率</th></tr>${rows}</table></div></section>`;
+    <table class="rvtb"><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${th}${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}</tr>${rows}</table>
+    <p class="rvhint">見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）。「選手」を押すと背番号順に戻ります</p></div></section>`;
 
   // ---------- 2. 出場タイムライン ----------
   const axis = M.periods.filter((p) => !p.extra || p.status !== 'none' || st.askExtra || cfg.times?.extra);
@@ -136,6 +148,14 @@ function bindReview(m) {
   return (root) => {
     const bar = document.querySelector('.bar'); if (bar) document.documentElement.style.setProperty('--barh', bar.offsetHeight + 'px');
     const sel = root.querySelector('#rvMatch'); if (sel) sel.onchange = () => { location.hash = `#/m/${sel.value}/review`; };
+    root.querySelectorAll('[data-sort]').forEach((th) => th.onclick = () => {
+      const col = th.dataset.sort;
+      if (!col) sortState = { col: '', dir: 'desc' };
+      else if (sortState.col !== col) sortState = { col, dir: 'desc' };
+      else if (sortState.dir === 'desc') sortState = { col, dir: 'asc' };
+      else sortState = { col: '', dir: 'desc' };
+      render();
+    });
     const c = root.querySelector('#rvCompact'); if (c) c.onclick = () => { try { localStorage.setItem(compactKey, isCompact() ? '0' : '1'); } catch {} render(); };
     root.addEventListener('click', (e) => {
       const j = e.target.closest('[data-jump]'); if (!j) return;
