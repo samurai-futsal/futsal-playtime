@@ -411,3 +411,4 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .fxtb.lg tr.lgsave td{background:#F3F6FA;color:#5A6678;font-size:12px;text-align:center;padding:4px}
 .fxtb.lg tr.lgorig td{background:#FBF7EC}
 .fxtb.lg td:last-child{text-align:right;white-space:nowrap}
+.fxstate.lnk{border:0;background:none;padding:6px 4px;font-family:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px}

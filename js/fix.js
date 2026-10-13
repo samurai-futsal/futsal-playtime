@@ -76,7 +76,7 @@ export function vFix(m) {
   const head = `<div class="fxhead">
     <div class="fxper">${keys.map((x) => `<button class="btn ${x === k ? 'pri' : ''}" data-per="${x}">${periodLabel(x)}</button>`).join('')}
       ${live ? `<span class="mu">${periodLabel(live.key)}は試合中のため、終わってから直せます</span>` : ''}</div>
-    <div class="fxsave"><span class="fxstate ${dirty(d) ? 'on' : ''}">${dirty(d) ? `保存していない修正 ${count(d)}件` : '保存済み'}</span>
+    <div class="fxsave">${dirty(d) ? `<button class="fxstate on lnk" data-tab="log" title="履歴で中身を見る">保存していない修正 ${count(d)}件 ›</button>` : '<span class="fxstate">保存済み</span>'}
       <button class="btn" id="fxUndo" ${canUndo ? '' : 'disabled'}>↶ 1つ戻す</button>
       <button class="btn pri" id="fxSave" ${dirty(d) && !errs.length ? '' : 'disabled'}>保存</button></div></div>
     ${stale.length ? `<div class="fxwarn">MATCH PLAYの記録があとから変わったため（リセットなど）、${stale.join('・')}の保存した修正は使われていません。もう一度直してください。</div>` : ''}
@@ -215,6 +215,7 @@ function tabLog(m, d) {
       : { saved: A.indexOf(x), t: x.saveT, dev: x.devName, type: x.type, text: x.text, undone: x.undone, pending: d.pendingUndo.includes(x.id) });
   }
   if (prevSave) rows.push({ save: prevSave });
+  if (d.toOrigin && !d.pendingUndo.length) rows.push({ toOrigin: true }); // 以前の版で保存した修正を、MATCH PLAYの記録に戻した（未保存）
   d.changes.forEach((ch, j) => rows.push({ draft: j, type: ch.type, text: ch.text }));
   // いまの状態の行
   let cur = rows.findLastIndex((r) => r.draft != null || (r.saved >= 0 && !r.pending) || r.note || r.legacy);
@@ -222,6 +223,7 @@ function tabLog(m, d) {
   const body = rows.map((r, i) => ({ r, i })).reverse().filter(({ r }) => !f || r.origin || r.save || r.type === f).map(({ r, i }) => {
     const now = i === cur ? '<span class="tag on">いまの状態</span>' : '';
     if (r.origin) return `<tr class="lgorig"><td colspan="4"><b>MATCH PLAYの記録（修正する前）</b> ${now}</td><td>${i === cur ? '' : '<button class="btn sm" data-goto="origin">ここに戻す</button>'}</td></tr>`;
+    if (r.toOrigin) return `<tr><td>—</td><td>${esc(devName())}</td><td>戻す</td><td><span class="tag warn">未保存</span> <span class="lgtx">MATCH PLAYの記録（修正する前）に戻す</span></td><td></td></tr>`;
     if (r.save) return `<tr class="lgsave"><td colspan="5">― ${fmt(r.save.t)} に保存（${esc(r.save.dev || '')}）―</td></tr>`;
     const btn = i === cur || r.legacy || r.note || r.undone ? '' : `<button class="btn sm" data-goto="${r.draft != null ? `draft:${r.draft}` : `saved:${r.saved}`}">ここに戻す</button>`;
     const st = r.draft != null ? '<span class="tag warn">未保存</span> ' : r.undone ? `<span class="tag">${fmt(r.undone.t)}に戻しました</span> ` : r.pending ? '<span class="tag warn">戻しています（保存で確定）</span> ' : r.legacy ? '<span class="tag">以前の版の記録</span> ' : '';
