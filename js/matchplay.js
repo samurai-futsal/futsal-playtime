@@ -373,21 +373,36 @@ function updateTick(m0) {
 
 // ---------- modals ----------
 function adjustModal(m, st, cfg, send) {
+  // 時刻合わせ：「:」は常に表示。数字のボタンで右から入れる（1→4→5→0 で 14:50）。±ボタンで数秒だけ直せる。iPadのキーボードは使わない
   const len = periodLen(cfg, st.current);
-  let rem = Math.ceil((len - nowElapsed(st)) / 1000);
-  const md = openModal(`<h2>時刻合わせ</h2><div class="mbody"><p class="mu">スコアボードと同じ残り時間に直して「決定」を押してください。</p>
-    <div class="adj"><button class="btn" data-d="-1">－1秒</button><input id="adjIn" inputmode="numeric" value="${mmss(rem * 1000)}"><button class="btn" data-d="1">＋1秒</button></div></div>
-    <div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-s>決定</button></div>`);
-  const inp = $('#adjIn');
-  const parse = () => { const mt = inp.value.trim().match(/^(\d{1,2})(?::?(\d{2}))?$/); if (!mt) return null; return mt[2] != null ? +mt[1] * 60 + +mt[2] : (inp.value.length > 2 ? Math.floor(+inp.value / 100) * 60 + (+inp.value % 100) : +mt[1] * 60); };
+  const nowRem = () => Math.max(0, Math.ceil((len - nowElapsed(st)) / 1000));
+  const toDigits = (sec) => String(Math.floor(sec / 60) * 100 + (sec % 60));
+  let buf = toDigits(nowRem()); let fresh = true; // 最初の数字を押すと新しく入れ直す
+  const md = openModal(`<div class="adjm"><h2>時刻合わせ</h2><p class="mu">スコアボードと同じ残り時間にして「決定」を押してください。</p>
+    <div class="adjdisp"><span class="dg" id="adjM"></span><span class="col">:</span><span class="dg" id="adjS"></span></div>
+    <div class="adjnow">今のアプリの残り時間 <span id="adjNow">${mmss(nowRem() * 1000)}</span></div>
+    <div class="adjpm"><button class="btn" data-d="-10">－10秒</button><button class="btn" data-d="-1">－1秒</button><button class="btn" data-d="1">＋1秒</button><button class="btn" data-d="10">＋10秒</button></div>
+    <div class="adjpad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button class="btn" data-k="${n}">${n}</button>`).join('')}<button class="btn s" data-clr>はじめから</button><button class="btn" data-k="0">0</button><button class="btn s" data-bs>⌫ 1つ消す</button></div>
+    <div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-s>決定</button></div></div>`);
+  const val = () => { const n = parseInt(buf || '0', 10); return { mm: Math.floor(n / 100), ss: n % 100 }; };
+  const show = () => { const { mm, ss } = val(); $('#adjM').textContent = String(mm); $('#adjS').textContent = String(ss).padStart(2, '0'); };
+  show();
+  const nowTimer = setInterval(() => { const e = $('#adjNow'); if (!e) { clearInterval(nowTimer); return; } e.textContent = mmss(nowRem() * 1000); }, 250);
   md.addEventListener('click', (e) => {
-    const d = e.target.closest('[data-d]'); if (!d) return;
-    const v = parse(); if (v == null) return; rem = Math.max(0, Math.min(len / 1000, v + +d.dataset.d)); inp.value = mmss(rem * 1000);
+    const k = e.target.closest('[data-k]'), d = e.target.closest('[data-d]');
+    if (k) { if (fresh) { buf = ''; fresh = false; } buf = (buf + k.dataset.k).replace(/^0+(?=\d)/, '').slice(-4); show(); return; }
+    if (e.target.closest('[data-clr]')) { buf = ''; fresh = false; show(); return; }
+    if (e.target.closest('[data-bs]')) { buf = buf.slice(0, -1); fresh = false; show(); return; }
+    if (d) { const { mm, ss } = val(); const sec = Math.max(0, Math.min(len / 1000, mm * 60 + Math.min(ss, 59) + +d.dataset.d)); buf = toDigits(sec); fresh = false; show(); }
   });
-  md.querySelector('[data-c]').onclick = closeModal;
+  const close = () => { clearInterval(nowTimer); closeModal(); };
+  md.querySelector('[data-c]').onclick = close;
   md.querySelector('[data-s]').onclick = () => {
-    const v = parse(); if (v == null || v > len / 1000) return toast(`0:00〜${mmss(len)} の範囲で入れてください`);
-    closeModal(); send({ type: 'adjust', elapsed: len - v * 1000 }); toast(`残り ${mmss(v * 1000)} に合わせました`);
+    const { mm, ss } = val();
+    if (ss > 59) return toast('秒は 00〜59 で入れてください');
+    const v = mm * 60 + ss;
+    if (v > len / 1000) return toast(`0:00〜${mmss(len)} の範囲で入れてください`);
+    close(); send({ type: 'adjust', elapsed: len - v * 1000 }); toast(`残り ${mmss(v * 1000)} に合わせました`);
   };
 }
 function timeoutModal(st, send) {

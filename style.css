@@ -302,3 +302,17 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .plabel.st .stchip.ejok{background:#1F9E5B;color:#fff;animation:fl .5s ease-in-out 6 alternate}
 .plabel.st .stchip.pick{background:#F2C200;color:#1A1A1A}
 .plabel.st .btn.sm{min-height:34px;flex:0 0 auto}
+
+/* 0.3.9: 時刻合わせ（「:」は常に表示・数字のボタン・±ボタン） */
+.modal:has(.adjm){max-width:560px}
+.adjm .mu{margin:0 0 12px}
+.adjdisp{display:flex;align-items:center;justify-content:center;gap:4px;background:#0D2654;border-radius:14px;padding:8px 0 10px;margin-bottom:6px}
+.adjdisp .dg{font-size:80px;font-weight:900;color:#F2C200;font-variant-numeric:tabular-nums;line-height:1;min-width:1.2em;text-align:center}
+.adjdisp .dg#adjM{text-align:right}.adjdisp .dg#adjS{text-align:left}
+.adjdisp .col{font-size:76px;font-weight:900;color:#F2C200;line-height:1;margin:0 4px}
+.adjnow{text-align:center;color:#5F6B80;font-size:13px;margin-bottom:12px;font-variant-numeric:tabular-nums}
+.adjpm{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.adjpm .btn{min-height:50px;font-size:17px;background:#F4F6FA}
+.adjpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.adjpad .btn{min-height:56px;font-size:26px}
+.adjpad .btn.s{font-size:16px;background:#F4F6FA}
