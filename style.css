@@ -403,3 +403,4 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .rvtb th.srt{cursor:pointer;user-select:none}.rvtb th.srt i{font-style:normal;font-size:11px;margin-left:4px;opacity:.6}
 .rvtb th.srt.on{background:#1F5FBF}.rvtb th.srt.on i{opacity:1}
 .rvhint{font-size:12px;color:#8A94A6;margin:6px 0 0}
+.fxorig{margin:0 0 8px;width:100%;min-height:40px;border-color:#E3A21C;color:#6A4A00;background:#FFF8E6}

@@ -223,9 +223,12 @@ function bindFix(root, m, d, k, cfg, st, sig) {
 }
 
 // 時刻の入力つきの小さな画面
-function timeField(fp, id, at, lo, hi, title) {
-  return `<div class="fxtime"><div class="fxtl">${title}<small>入れられる範囲：残り ${rem(fp, hi)} 〜 ${rem(fp, lo)}</small></div>${keypadHTML({ steps: [-5, -1, 1, 5], id })}</div>`;
+// orig：直す前の時刻（あれば「元の時刻に戻す」ボタンを出す。打ち間違えたときにすぐ戻せる）
+function timeField(fp, id, at, lo, hi, title, orig = null) {
+  const back = orig != null ? `<button type="button" class="btn sm fxorig" data-orig="${Math.round((lenOf(fp) - orig) / 1000)}">↺ 元の時刻（残り ${rem(fp, orig)}）に戻す</button>` : '';
+  return `<div class="fxtime"><div class="fxtl">${title}<small>入れられる範囲：残り ${rem(fp, hi)} 〜 ${rem(fp, lo)}</small></div>${back}${keypadHTML({ steps: [-5, -1, 1, 5], id })}</div>`;
 }
+const bindOrig = (md, kp) => { const b = md.querySelector('[data-orig]'); if (b) b.onclick = () => kp.set(+b.dataset.orig); };
 function remToAt(fp, sec) { return Math.max(0, Math.min(fp.elapsed, lenOf(fp) - sec * 1000)); }
 
 function subModal(m, d, k, fp, cfg, id, commit) {
@@ -235,7 +238,7 @@ function subModal(m, d, k, fp, cfg, id, commit) {
   let lo = 0, hi = fp.elapsed; if (ev) ({ lo, hi } = bounds(fp, ev));
   const out0 = ev ? outOf(fp, ev) : null;
   const md = openModal(`<h2>${ev ? `交代を直す（${periodLabel(k)} 残り${rem(fp, ev.at)}）` : `交代を追加（${periodLabel(k)}）`}</h2>
-    <div class="fxmod">${timeField(fp, 'kpSub', ev ? ev.at : fp.elapsed / 2, lo, hi, '交代の時刻（残り時間）')}
+    <div class="fxmod">${timeField(fp, 'kpSub', ev ? ev.at : fp.elapsed / 2, lo, hi, '交代の時刻（残り時間）', ev ? ev.at : null)}
       <div class="fxside">
         <label>OUT（その場所に座っていた選手）</label><select id="fxOut">${ev ? opt(out0) : '<option value="">時刻を入れると選べます</option>'}</select>
         <label>IN（入った選手）</label><select id="fxIn">${opt(ev ? ev.in : '')}</select>
@@ -274,6 +277,7 @@ function subModal(m, d, k, fp, cfg, id, commit) {
     box.innerHTML = `<b>出場時間の変化（${periodLabel(k)}）</b>${ch.length ? `<table>${ch.map((pid) => `<tr><td>${nm(cfg, pid)}</td><td>${mmss(a[pid] || 0)} → <b>${mmss(b[pid] || 0)}</b></td></tr>`).join('')}</table>` : '<p class="mu">変化なし</p>'}${errs.length ? `<p class="err">${errs.map(esc).join('<br>')}</p>` : ''}`;
   };
   const kp = bindKeypad(md, { init: Math.round((lenOf(fp) - (ev ? ev.at : fp.elapsed / 2)) / 1000), min: Math.round((lenOf(fp) - hi) / 1000), max: Math.round((lenOf(fp) - lo) / 1000), onChange: () => setTimeout(preview) });
+  bindOrig(md, kp);
   outSel.onchange = preview; inSel.onchange = preview; preview();
   md.querySelector('[data-c]').onclick = closeModal;
   const del = md.querySelector('[data-del]');
@@ -306,7 +310,7 @@ function ejectModal(fp, cfg, id, commit) {
   const fill = ev ? fp.ev.find((x) => x.kind === 'fill' && x.seat === ev.seat && x.at >= ev.at) : null;
   const ms = memberList(cfg);
   const md = openModal(`<h2>${ev ? '退場を直す' : '退場を追加'}</h2>
-    <div class="fxmod">${timeField(fp, 'kpEj', ev ? ev.at : fp.elapsed / 2, 0, fp.elapsed, '退場の時刻（残り時間）')}
+    <div class="fxmod">${timeField(fp, 'kpEj', ev ? ev.at : fp.elapsed / 2, 0, fp.elapsed, '退場の時刻（残り時間）', ev ? ev.at : null)}
       <div class="fxside"><label>退場した選手</label><select id="ejWho"></select>
         <label><input type="checkbox" id="ejHasFill" ${fill || !ev ? 'checked' : ''}> 補充した</label>
         <label>補充の時刻（残り時間）</label><input id="ejFillT" inputmode="numeric" value="${fill ? rem(fp, fill.at) : ''}" placeholder="例 12:30">
@@ -315,6 +319,7 @@ function ejectModal(fp, cfg, id, commit) {
     <div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-ok>反映</button></div>`, { wide: true });
   const who = md.querySelector('#ejWho');
   const kp = bindKeypad(md, { init: Math.round((lenOf(fp) - (ev ? ev.at : fp.elapsed / 2)) / 1000), min: Math.round((lenOf(fp) - fp.elapsed) / 1000), max: Math.round(lenOf(fp) / 1000), onChange: () => setTimeout(refreshWho) });
+  bindOrig(md, kp);
   function refreshWho() {
     const v = kp.value(); if (!v.ok) return; const at = remToAt(fp, v.sec);
     const cur = who.value || (ev ? outOf(fp, ev) : '');
@@ -359,11 +364,12 @@ function ppModal(fp, id, commit) {
   const md = openModal(`<h2>${x ? '5×4の時間帯を直す' : '5×4の時間帯を追加'}</h2>
     <div class="row"><button class="btn ${v.team === 'own' ? 'pri' : ''}" data-tm="own">自チーム</button><button class="btn ${v.team === 'opp' ? 'pri' : ''}" data-tm="opp">相手チーム</button></div>
     <div class="row" style="margin-top:8px"><button class="btn pri" data-st="from">開始 <b id="ppF">${rem(fp, v.from)}</b></button><button class="btn" data-st="to">終了 <b id="ppT">${rem(fp, v.to)}</b></button></div>
-    <div class="ppk">${keypadHTML({ steps: [-5, -1, 1, 5] })}</div>
+    ${x ? '<button type="button" class="btn sm fxorig" data-pporig>↺ 元の時刻に戻す</button>' : ''}<div class="ppk">${keypadHTML({ steps: [-5, -1, 1, 5] })}</div>
     <div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-ok>反映</button></div>`);
   const kp = bindKeypad(md, { init: Math.round((lenOf(fp) - v.from) / 1000), min: Math.round((lenOf(fp) - fp.elapsed) / 1000), max: Math.round(lenOf(fp) / 1000), onChange: (r) => { if (r.ok) { v[step] = remToAt(fp, r.sec); md.querySelector(step === 'from' ? '#ppF' : '#ppT').textContent = rem(fp, v[step]); } } });
   md.addEventListener('click', (e) => {
     const t = e.target.closest('[data-tm]'); if (t) { v.team = t.dataset.tm; md.querySelectorAll('[data-tm]').forEach((b) => b.classList.toggle('pri', b === t)); }
+    if (e.target.closest('[data-pporig]')) kp.set(Math.round((lenOf(fp) - x[step]) / 1000));
     const s = e.target.closest('[data-st]'); if (s) { step = s.dataset.st; md.querySelectorAll('[data-st]').forEach((b) => b.classList.toggle('pri', b === s)); kp.set(Math.round((lenOf(fp) - v[step]) / 1000)); }
   });
   md.querySelector('[data-c]').onclick = closeModal;
