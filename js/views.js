@@ -10,6 +10,8 @@ import { vFix } from './fix.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
+// アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js'];
 export function startApp(c) {
   ctx = c;
   try { const t = localStorage.getItem('fpt.team'); if (t) selectTeam(t); } catch {}
@@ -666,6 +668,7 @@ function vSettings() {
       <div class="row"><button class="btn pri" id="btnBk">バックアップを書き出す</button><button class="btn" disabled>ファイルから戻す（次の版で入ります）</button></div></div>
     <div class="card"><h3>アプリ</h3>
       <p>バージョン ${esc(ctx.appVersion)}　<button class="btn sm" id="btnUpd">更新を確認</button> <span id="updMsg" class="mu"></span></p>
+      <p id="updForce" hidden><button class="btn pri" id="btnForce">最新にする</button> <span class="mu">アプリのファイルを入れ直して開き直します（試合の記録はそのまま残ります）</span></p>
       <p class="mu">更新は、画面上部に「新しいバージョンがあります」と出たときに「更新する」を押したときだけ行います（遠征中に勝手に切り替わりません）。</p>
       <p class="mu">iPadでは、Safariの共有ボタン →「ホーム画面に追加」で追加し、いつもホーム画面のアイコンから開いてください。</p></div>
     <h2 class="h">全チーム共通：選択肢の編集</h2>
@@ -683,9 +686,34 @@ function vSettings() {
       $('#btnOut').onclick = async () => { if (await confirmBox({ title: 'ログアウトしますか？', body: '<p>もう一度ログインするにはネットが必要です。試合の前にはログアウトしないでください。</p>', ok: 'ログアウト' })) ctx.signOut(); };
       $('#btnBk').onclick = exportBackup;
       $('#btnUpd').onclick = async () => {
-        $('#updMsg').textContent = '確認中…';
-        try { await ctx.swReg?.update(); $('#updMsg').textContent = ctx.swReg?.waiting ? '新しいバージョンがあります（上の「更新する」を押してください）' : '最新です'; }
-        catch { $('#updMsg').textContent = 'ネットにつながっているときに確認できます'; }
+        const msg = (t) => { $('#updMsg').textContent = t; };
+        msg('確認中…'); $('#updForce').hidden = true;
+        try {
+          await ctx.swReg?.update();
+          if (ctx.swReg?.waiting) return msg('新しいバージョンがあります（上の「更新する」を押してください）');
+          // いま公開されている版を直接見る（GitHub Pagesの古いコピーに左右されない）
+          const latest = (await (await fetch(`./sw.js?fresh=${Date.now()}`, { cache: 'no-store' })).text()).match(/VERSION = '([^']+)'/)?.[1];
+          if (latest && latest !== ctx.appVersion) { $('#updForce').hidden = false; return msg(`新しいバージョン ${latest} があります。下の「最新にする」を押してください`); }
+          // この端末に入っているファイルが、公開中のものと同じか（一部だけ古いままになっていないか）
+          const bad = [];
+          for (const f of SHELL_FILES) {
+            const [mine, live] = await Promise.all([fetch(`./${f}`).then((r) => r.text()), fetch(`./${f}?fresh=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : null))]);
+            if (live != null && mine !== live) bad.push(f);
+          }
+          if (bad.length) { $('#updForce').hidden = false; return msg(`一部のファイル（${bad.length}個）が古いままです。下の「最新にする」を押してください`); }
+          msg(`最新です（${ctx.appVersion}・すべてのファイルを確認しました）`);
+        } catch { msg('ネットにつながっているときに確認できます'); }
+      };
+      $('#btnForce').onclick = async () => {
+        if (!navigator.onLine) return toast('ネットにつながっているときに使えます');
+        if (!(await confirmBox({ title: 'アプリを最新にしますか？', body: '<p>アプリのファイルを入れ直して開き直します。試合の記録・下書きはそのまま残ります。</p>', ok: '最新にする' }))) return;
+        $('#updMsg').textContent = '入れ直しています…';
+        try {
+          for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+          for (const k of await caches.keys()) await caches.delete(k);
+          await Promise.all(SHELL_FILES.map((f) => fetch(`./${f}?fresh=${Date.now()}`, { cache: 'reload' }).catch(() => {})));
+          await Promise.all(SHELL_FILES.map((f) => fetch(`./${f}`, { cache: 'reload' }).catch(() => {})));
+        } finally { location.reload(); }
       };
       const ts2 = $('#btnTeamSet');
       ts2 && (ts2.onclick = () => {

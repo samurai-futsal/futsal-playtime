@@ -1,7 +1,7 @@
 // Service worker: keeps the app usable offline.
 // Updates are applied only when the coach presses 「更新する」 (spec 5章).
 // When releasing, bump VERSION here AND APP_VERSION in app.js.
-const VERSION = '0.4.6';
+const VERSION = '0.4.7';
 const CACHE = 'fpt-' + VERSION;
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const SHELL = [
@@ -41,6 +41,7 @@ self.addEventListener('fetch', (e) => {
   const sameOrigin = url.origin === self.location.origin;
   const firebaseLib = url.href.startsWith(FB);
   if (!sameOrigin && !firebaseLib) return; // Firestore / Auth traffic goes straight to the network
+  if (sameOrigin && url.searchParams.has('fresh')) return; // 更新の確認：いま公開されているファイルを直接見る
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     if (req.mode === 'navigate') {
