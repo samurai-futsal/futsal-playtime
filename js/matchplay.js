@@ -96,7 +96,7 @@ export function vPlay(m) {
     const col = mm.pos === 'GK' ? '' : c >= ct.red * 1000 ? 'red' : c >= ct.orange * 1000 ? 'orange' : '';
     return `<button class="pc ${v.waiting ? 'waiting' : ''} ${v.tentative ? 'tent' : ''} ${ejectMode ? 'ejpick' : ''}" data-p="${v.pid}" data-kind="${v.waiting ? 'waiting' : v.tentative ? 'tent' : v.draft ? 'draft' : 'on'}">
       ${nameRow(v.pid, p?.last)}
-      ${v.waiting ? `<div class="wt">交代待ち（OUT ${mmss(len - v.outAt)}）</div>` : `<div class="ct ${col}" data-ct="${v.pid}">${mmssFloor(c)}</div>`}
+      ${v.waiting ? `<div class="wt">交代待ち（OUT ${mmss(len - v.outAt)}）</div>` : v.tentative ? '<div class="wt tn">仮に入る（押すと取り消し）</div>' : `<div class="ct ${col}" data-ct="${v.pid}">${mmssFloor(c)}</div>`}
       ${stats(v.pid)}</button>`;
   };
   const benchCard = (mb) => {

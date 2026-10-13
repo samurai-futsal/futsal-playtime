@@ -316,3 +316,8 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .adjpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .adjpad .btn{min-height:56px;font-size:26px}
 .adjpad .btn.s{font-size:16px;background:#F4F6FA}
+
+/* 0.3.10: 仮に入った選手のカード（2人以上のOUTでINの人数がそろうまで） */
+.pc.tent{border:4px dashed #2F6FE0;background:#EEF4FF}
+.pc .wt.tn{background:#2F6FE0;color:#fff;white-space:nowrap;font-size:min(6.3cqi,7.5cqh);padding:3px 6px}
+.bc .tag.w{white-space:nowrap;font-size:min(6.6cqi,7cqh);padding:2px 4px;overflow:hidden;max-width:100%}
