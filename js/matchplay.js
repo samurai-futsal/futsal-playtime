@@ -8,11 +8,13 @@ import { $, $$, esc, openModal, closeModal, confirmBox, confirmTwice, toast } fr
 import { render } from './views.js';
 
 let tick = null, wakeLock = null, heartbeat = null, mountedId = null, ejectMode = false, autoStopFor = null, lastPpAuto = 0;
+// 補充：空席を押して選ぶ枠 {seat, afterGoal}。2分経過を知らせた空席（同じ空席で2回知らせない）
+let fillSeat = null; const fillReadyShown = new Set();
 const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const mmssFloor = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 export function unmountPlay() {
-  clearInterval(tick); tick = null; clearInterval(heartbeat); heartbeat = null; mountedId = null; ejectMode = false;
+  clearInterval(tick); tick = null; clearInterval(heartbeat); heartbeat = null; mountedId = null; ejectMode = false; fillSeat = null;
   try { wakeLock?.release(); } catch {} wakeLock = null;
   document.removeEventListener('visibilitychange', onVis);
   document.body.classList.remove('playmode');
@@ -52,6 +54,7 @@ export function vPlay(m) {
   const running = per.runningSince != null;
   const members = Object.entries(m.members || {}).map(([pid, v]) => ({ pid, ...v, p: playerById(pid) }))
     .sort((a, b) => (a.pos === 'GK') - (b.pos === 'GK') || (parseInt(a.no, 10) || 999) - (parseInt(b.no, 10) || 999));
+  if (fillSeat && (!live || !st.empty[fillSeat.seat])) fillSeat = null;
   const draft = live ? [null, null, null, null, null] : getDraft(m, st.current);
   const view = live ? seatView(st, el) : [0, 1, 2, 3, 4].map((i) => ({ seat: i, pid: draft[i] || null, draft: true }));
   const onPitch = new Set(view.filter((v) => v.pid).map((v) => v.pid));
@@ -80,8 +83,11 @@ export function vPlay(m) {
     if (!v.pid) {
       if (v.empty) {
         const left = EJECT_WAIT - (el - v.empty.from);
-        return `<div class="pc empty" data-seat="${v.seat}"><div class="emp">空席</div><div class="mu">退場：${esc(playerName(playerById(v.empty.pid)))}</div>
-          <div class="ejw" data-ej="${v.seat}">${left > 0 ? `補充まで ${mmss(left)}` : '<b>補充できます</b>（ベンチの選手を押す）'}</div></div>`;
+        const picking = fillSeat && fillSeat.seat === v.seat;
+        const state = picking ? 'pick' : left > 0 ? 'wait' : 'ok';
+        const inner = picking ? '<div class="ejbig">選手を選んでください</div>'
+          : left > 0 ? `<div class="ejw" data-ej="${v.seat}">補充まで ${mmss(left)}</div>` : '<div class="ejbig">補充できます</div><div class="tapme">ここを押す</div>';
+        return `<button class="pc empty ${state}" data-empty="${v.seat}"><div class="emp">空席</div><div class="mu">退場：${esc(playerName(playerById(v.empty.pid)))}</div>${inner}</button>`;
       }
       return `<div class="pc emptyd" data-seat="${v.seat}"><div class="emp">${live ? '' : '先発を選ぶ'}</div><div class="mu">${live ? '' : 'ベンチの選手を押す'}</div></div>`;
     }
@@ -112,7 +118,6 @@ export function vPlay(m) {
   const stateMsg = st.matchOver ? '試合終了' : st.askExtra ? '後半終了' : !live ? (per.status === 'none' ? '開始前' : '') : running ? '計測中' : '停止中';
   const banner = [];
   if (other) banner.push(`<div class="pbanner warn">別の端末（${esc(other)}）で記録中です。同じ試合を2台で操作しないでください。<button class="btn sm" id="btnTake">この端末で記録する</button></div>`);
-  if (ejectMode) banner.push('<div class="pbanner red">退場する選手をピッチから押してください <button class="btn sm" id="btnEjCancel">やめる</button></div>');
 
   return {
     full: true,
@@ -148,6 +153,14 @@ export function vPlay(m) {
     ${st.matchOver ? `<div class="pbanner done">試合が終わりました。お疲れさまでした。<a class="btn sm" href="#/m/${m.id}">試合ページへ</a></div>` : ''}
     ${st.askExtra ? `<div class="pbanner">後半が終わりました。延長戦を行いますか？ <button class="btn sm pri" id="btnExtraYes">延長戦を行う</button><button class="btn sm" id="btnExtraNo">行わない（試合終了）</button></div>` : ''}
     <div class="plabel st"><span>ピッチ</span><div class="stmid">
+      ${ejectMode ? '<span class="stchip ej">退場する選手をピッチから押してください</span><button class="btn sm" id="btnEjCancel">やめる</button>' : ''}
+      ${!ejectMode ? st.empty.map((e, i) => {
+        if (!e) return '';
+        if (fillSeat && fillSeat.seat === i) return '<span class="stchip pick">ベンチから補充する選手を押してください</span><button class="btn sm" id="btnFillCancel">やめる</button>';
+        const left = EJECT_WAIT - (el - e.from); const nm = esc(playerName(playerById(e.pid)));
+        return left > 0 ? `<span class="stchip ej" data-ejc="${i}">退場：${nm}　補充まで ${mmss(left)}（失点で補充するときは、空席を押す）</span>`
+          : '<span class="stchip ejok">補充できます：空席を押して、入る選手を選ぶ</span>';
+      }).join('') : ''}
       ${st.ppActive ? `<span class="stchip pp ${t - lastPpAuto < 4000 ? 'flash' : ''}">5×4（パワープレー）${st.ppActive.team === 'own' ? '自チーム' : '相手チーム'}</span>` : ''}
       ${st.setplay ? `<span class="stchip sp" id="spChip">セットプレー中（自動終了まで ${mmss(setplayLeft(st, el))}）</span>` : ''}
     </div><span>${view.filter((v) => v.pid).length} / 5</span></div>
@@ -201,6 +214,17 @@ function bindPlay(root, m, st, cfg, draft) {
       if (await confirmBox({ title: `${playerName(playerById(pid))} の連続出場タイマーを0:00からにしますか？`, body: '<p>セットプレー前の時間の続きではなく、次に入ったときに0:00から数えます。</p>', ok: '0:00からにする' })) send({ type: 'contReset', pid });
       return;
     }
+    const ec = e.target.closest('[data-empty]');
+    if (ec) { // 補充：空席を押す → （2分前は確認）→ ベンチの選手を押す
+      if (ejectMode) return;
+      const seat = Number(ec.dataset.empty); const emp = st.empty[seat]; if (!emp) return;
+      if (fillSeat && fillSeat.seat === seat) { fillSeat = null; rerender(); return; }
+      if (nowElapsed(st) - emp.from < EJECT_WAIT) {
+        if (!(await confirmBox({ title: '2分経過前です。失点による補充ですか？', body: '<p>補充のタイミングは審判が決めます。失点による補充なら「補充する」を押し、続けてベンチから入る選手を押してください。</p>', ok: '補充する' }))) return;
+        fillSeat = { seat, afterGoal: true };
+      } else fillSeat = { seat, afterGoal: false };
+      rerender(); return;
+    }
     if (pc) {
       const pid = pc.dataset.p, kind = pc.dataset.kind;
       if (kind === 'draft') { setDraft(m, st.current, draft.map((x) => (x === pid ? null : x))); rerender(); return; } // 枠は空欄のまま
@@ -233,15 +257,11 @@ function bindPlay(root, m, st, cfg, draft) {
         }
       }
       if (st.batch.outs.length > st.batch.ins.length) { send({ type: 'in', pid }); return; }
-      const es = st.empty.findIndex((x) => x);
-      if (es >= 0) {
-        const el = nowElapsed(st);
-        if (el - st.empty[es].from < EJECT_WAIT) {
-          if (!(await confirmBox({ title: '2分経過前です。失点による補充ですか？', body: '<p>補充のタイミングは審判が決めます。失点による補充なら「補充する」を押してください。</p>', ok: '補充する' }))) return;
-          send({ type: 'in', pid, afterGoal: true }); return;
-        }
-        send({ type: 'in', pid }); return;
+      if (fillSeat && st.empty[fillSeat.seat]) {
+        const f = fillSeat; fillSeat = null;
+        send({ type: 'in', pid, seat: f.seat, ...(f.afterGoal ? { afterGoal: true } : {}) }); return;
       }
+      if (st.empty.some((x) => x)) { toast('交代はピッチの選手を、補充は空席を先に押してください'); return; }
       toast('先に交代する選手のOUTを押してください');
     }
   });
@@ -260,8 +280,9 @@ function bindPlay(root, m, st, cfg, draft) {
     toast('取り消しました：' + describeOp(op, (pid) => `${m.members[pid]?.no ?? ''}番`));
   });
   on('btnSp', () => send({ type: st.setplay ? 'setplayEnd' : 'setplay' }));
-  on('btnEj', () => { ejectMode = true; rerender(); });
+  on('btnEj', () => { ejectMode = true; fillSeat = null; rerender(); });
   on('btnEjCancel', () => { ejectMode = false; rerender(); });
+  on('btnFillCancel', () => { fillSeat = null; rerender(); });
   on('btnTake', () => put(teamPath('matches', m.id), { live: { dev: deviceId(), ms: Date.now(), name: devName() } }));
   on('btnExtraYes', () => send({ type: 'extra', yes: true }));
   on('btnExtraNo', () => send({ type: 'extra', yes: false }));
@@ -331,11 +352,21 @@ function updateTick(m0) {
     const b = document.querySelector(`[data-mt="${CSS.escape(pid)}"]`); if (b) b.textContent = mmssFloor(playerMatchTime(st, pid, el));
     const r = document.querySelector(`[data-rest="${CSS.escape(pid)}"]`); if (r) { const x = restTime(st, pid, el); r.textContent = x == null ? '—' : mmssFloor(x); }
   });
+  let needRerender = false;
   st.empty.forEach((e, i) => {
-    const w = document.querySelector(`[data-ej="${i}"]`); if (!w || !e) return;
+    if (!e) return;
     const left = EJECT_WAIT - (el - e.from);
-    w.innerHTML = left > 0 ? `補充まで ${mmss(left)}` : '<b>補充できます</b>（ベンチの選手を押す）';
+    if (left <= 0) {
+      // 2分経過：知らせて表示を切り替える（見出しの行を緑に、空席のカードを光らせる、画面下に知らせ）
+      const key = `${m.id}|${st.current}|${i}|${e.from}`;
+      if (!fillReadyShown.has(key)) { fillReadyShown.add(key); toast(`${playerName(playerById(e.pid))}の空席に補充できます。空席を押して、入る選手を選んでください`); }
+      if (document.querySelector(`[data-ej="${i}"]`)) needRerender = true;
+      return;
+    }
+    const w = document.querySelector(`[data-ej="${i}"]`); if (w) w.textContent = `補充まで ${mmss(left)}`;
+    const c = document.querySelector(`[data-ejc="${i}"]`); if (c) c.textContent = `退場：${playerName(playerById(e.pid))}　補充まで ${mmss(left)}（失点で補充するときは、空席を押す）`;
   });
+  if (needRerender) rerender();
   const sp = $('#spChip');
   if (sp) { const l = setplayLeft(st, el); if (l <= 0) rerender(); else sp.textContent = `セットプレー中（自動終了まで ${mmss(l)}）`; }
 }

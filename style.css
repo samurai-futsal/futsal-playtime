@@ -288,3 +288,17 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .plabel.st .stchip{font-size:17px;padding:6px 16px;border-radius:9px;margin:0;white-space:nowrap}
 .plabel.st .stchip.pp{background:#F2C200;color:#1A1A1A}
 .plabel.st .stchip.sp{background:#2F6FE0;color:#fff}
+
+/* 0.3.8: 退場後の補充は「空席を押す →（2分前は確認）→ ベンチの選手を押す」に統一 */
+.pc.empty{font:inherit;cursor:pointer;text-align:center}
+.pc.empty .ejbig{font-size:min(10cqi,11cqh);font-weight:900;margin-top:4cqh}
+.pc.empty .tapme{margin-top:3cqh;font-size:min(7.5cqi,8cqh);font-weight:800;border-radius:8px;padding:1cqh 3cqi;background:#1F9E5B;color:#fff}
+.pc.empty.ok{background:#E9F8EF;border:5px solid #1F9E5B;color:#14532D;animation:fillpulse 1.2s ease-in-out infinite}
+.pc.empty.ok .mu,.pc.empty.ok .emp{color:#14532D}.pc.empty.ok .ejbig{color:#1F9E5B}
+.pc.empty.pick{background:#FFF8DC;border:5px dashed #F2C200;color:#5A4300}
+.pc.empty.pick .mu,.pc.empty.pick .emp{color:#5A4300}.pc.empty.pick .ejbig{font-size:min(8cqi,9cqh)}
+@keyframes fillpulse{0%,100%{box-shadow:0 0 0 0 #1F9E5B99}50%{box-shadow:0 0 0 10px #1F9E5B00}}
+.plabel.st .stchip.ej{background:#8E2A20;color:#fff}
+.plabel.st .stchip.ejok{background:#1F9E5B;color:#fff;animation:fl .5s ease-in-out 6 alternate}
+.plabel.st .stchip.pick{background:#F2C200;color:#1A1A1A}
+.plabel.st .btn.sm{min-height:34px;flex:0 0 auto}

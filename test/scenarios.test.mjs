@@ -181,6 +181,12 @@ T('4人目までIN→1つ戻す→取り消し→もう一度IN', () => {
   eq(S.stints.filter((x) => x.pid === 'J').length, 0, 'J never played');
 });
 
+T('退場2人：補充は押した空席に入る', () => {
+  const b = mk(); ko(b); b.add(10, { type: 'eject', pid: 'A' }); b.add(11, { type: 'eject', pid: 'C' });
+  b.add(200, { type: 'in', pid: 'E', seat: 3 });
+  const S = b.S(); eq(S.seats[3], 'E', 'E in C seat'); eq(S.seats[1], null, 'A seat still empty');
+});
+
 console.log(`scenarios: ${ok} passed, ${fails.length} failed`);
 fails.forEach((f) => console.log('  FAIL ' + f));
 if (fails.length) process.exit(1);

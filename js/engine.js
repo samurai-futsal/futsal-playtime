@@ -319,7 +319,7 @@ export function replay(ops, cfg) {
           if (S.batch.ins.length === S.batch.outs.length) commitBatch(at);
           break;
         }
-        const es = S.empty.findIndex((e) => e);
+        const es = op.seat != null && S.empty[op.seat] ? op.seat : S.empty.findIndex((e) => e);
         if (es >= 0) { // 退場による空席の補充
           const e = S.empty[es];
           const early = at - e.from < EJECT_WAIT;
