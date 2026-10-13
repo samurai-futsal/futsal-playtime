@@ -1,7 +1,7 @@
 // Service worker: keeps the app usable offline.
 // Updates are applied only when the coach presses 「更新する」 (spec 5章).
 // When releasing, bump VERSION here AND APP_VERSION in app.js.
-const VERSION = '0.4.5';
+const VERSION = '0.4.6';
 const CACHE = 'fpt-' + VERSION;
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const SHELL = [
@@ -13,8 +13,14 @@ const SHELL = [
 
 self.addEventListener('install', (e) => {
   // No skipWaiting here: a new version waits until the user presses 「更新する」.
-  // cache:'reload' bypasses the browser's HTTP cache so a new version never stores stale files.
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))));
+  // cache:'reload' bypasses the browser's HTTP cache, and the ?v=VERSION query bypasses GitHub Pages'
+  // CDN copy (kept up to 10 min), so a new version never stores stale files from the previous one.
+  e.waitUntil(caches.open(CACHE).then((c) => Promise.all(SHELL.map(async (u) => {
+    const src = u.startsWith(FB) ? u : `${u}${u.includes('?') ? '&' : '?'}v=${VERSION}`;
+    const res = await fetch(new Request(src, { cache: 'reload' }));
+    if (!res.ok) throw new Error(`install: ${u} ${res.status}`);
+    await c.put(u, res);
+  }))));
 });
 
 self.addEventListener('activate', (e) => {
