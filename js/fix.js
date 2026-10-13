@@ -38,6 +38,8 @@ function baseline(m, st, sig) {
 // 履歴の直し（1件ずつ）。古い順
 const savedSteps = (m) => watchFixLog(m.id).list.filter((x) => x.kind === 'step').sort((a, b) => a.seq - b.seq);
 const activeSteps = (m) => savedSteps(m).filter((x) => !x.undone);
+// 以前の版（0.4.4まで）で保存した直しが、まだ記録に効いているか（MATCH PLAYの記録に戻すまでは効いている）
+const legacyInEffect = (m) => { const l = watchFixLog(m.id).list; return !!m.fix && l.some((x) => !x.kind) && !l.some((x) => x.kind === 'note'); };
 let ctx = {}; // MATCH PLAYの記録（修正する前）
 
 // 記録を書く（試合の記録に入れる。マッチレビューと分析にすぐ反映）。origin=true はMATCH PLAYの記録に戻す
@@ -75,7 +77,7 @@ export function vFix(m) {
   const head = `<div class="fxhead">
     <div class="fxper">${keys.map((x) => `<button class="btn ${x === k ? 'pri' : ''}" data-per="${x}">${periodLabel(x)}</button>`).join('')}
       ${live ? `<span class="mu">${periodLabel(live.key)}は試合中のため、終わってから直せます</span>` : ''}</div>
-    <div class="fxsave"><button class="btn" id="fxUndo" ${canUndo ? '' : 'disabled'}>↶ 1つ戻す</button></div></div>
+    <div class="fxsave"><button class="btn" id="fxUndo" ${canUndo ? '' : 'disabled'}>↶ 1つ戻す</button><button class="btn dangerline" data-goto="origin" ${activeSteps(m).length || legacyInEffect(m) ? '' : 'disabled'}>MATCH PLAYの記録に戻す</button></div></div>
     ${stale.length ? `<div class="fxwarn">MATCH PLAYの記録があとから変わったため（リセットなど）、${stale.join('・')}の修正は使われていません。もう一度直してください。</div>` : ''}
     ${errs.length ? `<div class="fxerr"><b>記録に矛盾があります</b><ul>${errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
     <div class="fxtabs">${TABS.map(([t, l]) => `<button class="fxtab ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${l}</button>`).join('')}${LATER.map(([, l]) => `<span class="fxtab off">${l}<small>④で</small></span>`).join('')}</div>`;
@@ -202,24 +204,22 @@ function tabLog(m, d) {
   const fmt = (t) => { const x = new Date(t); return `${x.getMonth() + 1}/${x.getDate()} ${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`; };
   const A = activeSteps(m);
   const rows = [{ origin: true }]; // 古い順
-  for (const r of c.list.filter((x) => !x.kind).sort((a, b) => a.t - b.t)) for (const it of r.items || []) rows.push({ legacy: true, t: r.t, dev: r.devName, type: it.type, text: it.text });
-  for (const x of c.list.filter((y) => y.kind === 'step' || y.kind === 'note').sort((a, b) => a.seq - b.seq)) {
-    rows.push(x.kind === 'note' ? { note: true, t: x.saveT, dev: x.devName, type: x.type, text: x.text }
-      : { saved: A.indexOf(x), t: x.saveT, dev: x.devName, type: x.type, text: x.text, undone: x.undone });
-  }
-  let cur = rows.findLastIndex((r) => r.saved >= 0 || r.note || r.legacy);
-  if (cur < 0 || rows[cur].note || !m.fix) cur = 0;
+  // 以前の版で保存した直しは、MATCH PLAYの記録に戻すまでは記録に効いているので出す
+  if (legacyInEffect(m)) for (const r of c.list.filter((x) => !x.kind).sort((a, b) => a.t - b.t)) for (const it of r.items || []) rows.push({ legacy: true, t: r.t, dev: r.devName, type: it.type, text: it.text });
+  // 戻した直しは出さない（いま記録に効いている直しだけ）
+  for (const x of A) rows.push({ saved: A.indexOf(x), t: x.saveT, dev: x.devName, type: x.type, text: x.text });
+  const cur = rows.length - 1;
   const body = rows.map((r, i) => ({ r, i })).reverse().filter(({ r }) => !f || r.origin || r.type === f).map(({ r, i }) => {
     const now = i === cur ? '<span class="tag on">いまの状態</span>' : '';
     if (r.origin) return `<tr class="lgorig"><td colspan="4"><b>MATCH PLAYの記録（修正する前）</b> ${now}</td><td>${i === cur ? '' : '<button class="btn sm" data-goto="origin">ここに戻す</button>'}</td></tr>`;
-    const btn = i === cur || r.legacy || r.note || r.undone ? '' : `<button class="btn sm" data-goto="saved:${r.saved}">ここに戻す</button>`;
-    const st = r.undone ? `<span class="tag">${fmt(r.undone.t)}に戻しました</span> ` : r.legacy ? '<span class="tag">以前の版の記録</span> ' : '';
-    return `<tr${r.undone ? ' class="lgoff"' : ''}><td>${fmt(r.t)}</td><td>${esc(r.dev || '')}</td><td>${esc(r.type)}</td><td>${st}<span class="lgtx">${esc(r.text)}</span> ${now}</td><td>${btn}</td></tr>`;
+    const btn = i === cur || r.legacy ? '' : `<button class="btn sm" data-goto="saved:${r.saved}">ここに戻す</button>`;
+    const st = r.legacy ? '<span class="tag">以前の版の記録</span> ' : '';
+    return `<tr><td>${fmt(r.t)}</td><td>${esc(r.dev || '')}</td><td>${esc(r.type)}</td><td>${st}<span class="lgtx">${esc(r.text)}</span> ${now}</td><td>${btn}</td></tr>`;
   }).join('');
-  return `<div class="card"><div class="row between"><h2 class="h" style="margin:0">修正の履歴（新しい順）</h2>
+  return `<div class="card"><div class="row between"><h2 class="h" style="margin:0">いま記録に入っている修正（新しい順）</h2>
     <select id="fxLogType" style="width:auto;min-width:200px"><option value="">すべての種類</option>${types.map((t) => `<option ${t === f ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <table class="fxtb lg"><tr><th>日時</th><th>端末</th><th>種類</th><th>内容</th><th></th></tr>${body}</table>
-    <p class="mu">「ここに戻す」を押すと、その直しをしたすぐあとの状態に戻ります。それより新しい直しは取り消され、打ち消し線で「戻しました」と残ります。いちばん下の「MATCH PLAYの記録」で、修正する前に戻せます。押した時点で記録に反映されます。</p></div>`;
+    <p class="mu">MATCH PLAYの記録に、ここに並んでいる直しを加えたものが、いまの試合の記録です。「ここに戻す」を押すと、その直しをしたすぐあとの状態に戻り、それより新しい直しは取り消されて一覧から消えます。いちばん下の「MATCH PLAYの記録」か、上の「MATCH PLAYの記録に戻す」で、修正する前に戻せます。どれも押した時点で記録に反映されます。</p></div>`;
 }
 
 // ---------- 戻す（押した時点で記録に反映） ----------
@@ -236,13 +236,15 @@ function undoOne(m) {
 async function goTo(m, d, where) {
   const A = activeSteps(m); const [kind, n] = where.split(':'); const i = +n;
   const later = kind === 'origin' ? A.length : A.length - 1 - i;
-  const what = kind === 'origin' ? 'MATCH PLAYの記録（修正する前）' : 'この直しをしたすぐあと';
-  if (!(await confirmBox({ title: 'ここに戻しますか？', body: `<p>${what}の状態に戻します。${later ? `これより新しい直し（${later}件）が取り消されます。` : ''}すぐに試合の記録に反映されます。</p>`, ok: 'ここに戻す' }))) return;
+  const ask = kind === 'origin'
+    ? { title: 'MATCH PLAYの記録に戻しますか？', body: `<p>${later ? `修正（${later}件）をすべて取り消して、` : '修正をすべて取り消して、'}MATCH PLAYで記録したとおりの状態に戻します。すぐに試合の記録に反映されます。</p>`, ok: 'MATCH PLAYの記録に戻す', danger: true }
+    : { title: 'ここに戻しますか？', body: `<p>この直しをしたすぐあとの状態に戻します。${later ? `これより新しい直し（${later}件）が取り消されます。` : ''}すぐに試合の記録に反映されます。</p>`, ok: 'ここに戻す' };
+  if (!(await confirmBox(ask))) return;
   const mark = nowMark();
   if (kind === 'origin') {
     const first = savedSteps(m)[0]?.before.info || d.info;
     writeState(m, { periods: ctx.origin.periods, info: first }, true);
-    if (!A.length) addFixLog(m.id, { kind: 'note', seq: mark.t * 100, saveT: mark.t, devName: mark.devName, type: '戻す', text: 'MATCH PLAYの記録（修正する前）に戻した' });
+    addFixLog(m.id, { kind: 'note', seq: mark.t * 100, saveT: mark.t, devName: mark.devName, type: '戻す', text: 'MATCH PLAYの記録（修正する前）に戻した' });
     A.forEach((x) => updFixLog(m.id, x.id, { undone: mark }));
   } else {
     writeState(m, A[i + 1].before);
