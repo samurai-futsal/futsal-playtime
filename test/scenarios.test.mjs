@@ -157,6 +157,30 @@ T('GKはピッチに1人まで：FPのOUTにGKは入れない／GK同士の交�
   S = b.S(); eq(S.seats[0], 'G2', 'GK swap ok'); eq(S.seats.includes('G'), false, 'G out');
 });
 
+T('OUTの取り消し：その場所に仮に入った選手もベンチに戻る（A・BをOUT→CをIN→Aを取り消し）', () => {
+  const b = mk(); ko(b); b.add(10, { type: 'out', pid: 'A' }); b.add(11, { type: 'out', pid: 'B' });
+  b.add(12, { type: 'in', pid: 'E' }); b.add(13, { type: 'in', pid: 'A' });
+  let S = b.S(); eq(S.seats.includes('E'), false, 'E back on bench'); eq(S.batch.outs.map((o) => o.pid).join(), 'B', 'B still waiting');
+  eq(S.seats.includes('A'), true, 'A on pitch');
+  b.add(14, { type: 'in', pid: 'F' }); S = b.S(); eq(S.seats.includes('F') && !S.seats.includes('B'), true, 'B->F');
+  eq(playerCounts(S, 'A', '1H').period, 1, 'A keeps one appearance');
+});
+T('4人OUT・1人間違い・3人IN後に取り消し → 1人ベンチに戻り、もう一度押して決まる', () => {
+  const b = mk(); ko(b); ['A', 'B', 'C', 'D'].forEach((p, i) => b.add(10 + i, { type: 'out', pid: p }));
+  ['E', 'F', 'H'].forEach((p, i) => b.add(20 + i, { type: 'in', pid: p }));
+  b.add(30, { type: 'in', pid: 'C' });
+  let S = b.S(); eq(S.batch.outs.map((o) => o.pid).join(), 'A,B,D', 'A,B,D waiting'); eq(S.batch.ins.join(), 'E,F', 'H back on bench');
+  b.add(31, { type: 'in', pid: 'H' }); S = b.S();
+  eq(S.seats.filter(Boolean).sort().join(), ['C', 'E', 'F', 'G', 'H'].sort().join(), 'pitch');
+});
+T('4人目までIN→1つ戻す→取り消し→もう一度IN', () => {
+  const b = mk(); ko(b); ['A', 'B', 'C', 'D'].forEach((p, i) => b.add(10 + i, { type: 'out', pid: p }));
+  ['E', 'F', 'H', 'J'].forEach((p, i) => b.add(20 + i, { type: 'in', pid: p }));
+  b.add(30, { type: 'undo' }); b.add(31, { type: 'in', pid: 'C' }); b.add(32, { type: 'in', pid: 'H' });
+  const S = b.S(); eq(S.seats.filter(Boolean).sort().join(), ['C', 'E', 'F', 'G', 'H'].sort().join(), 'pitch');
+  eq(S.stints.filter((x) => x.pid === 'J').length, 0, 'J never played');
+});
+
 console.log(`scenarios: ${ok} passed, ${fails.length} failed`);
 fails.forEach((f) => console.log('  FAIL ' + f));
 if (fails.length) process.exit(1);

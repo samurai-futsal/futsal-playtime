@@ -154,6 +154,11 @@ export function replay(ops, cfg) {
     }
   }
 
+  // 交代待ちの選手(outPid)の場所に仮に入っている選手を、INの一覧から外す（ベンチに戻す）
+  function dropTentativeFor(outPid) {
+    const pr = pairBatch(S.batch, cfg).find(([o]) => o.pid === outPid);
+    if (pr) S.batch.ins = S.batch.ins.filter((x) => x !== pr[1]);
+  }
   // GKはピッチに1人まで：交代で出るGKを除き、すでに入る予定のGKを足して1人以上いれば入れない
   function gkWouldDouble(pid) {
     if (!isGK(cfg, pid)) return false;
@@ -300,7 +305,8 @@ export function replay(ops, cfg) {
         const pid = op.pid;
         if (S.ejected.has(pid)) break;
         const oi = S.batch.outs.findIndex((o) => o.pid === pid);
-        if (oi >= 0) { // OUTの取り消し
+        if (oi >= 0) { // OUTの取り消し：その場所に仮に入っていた選手もベンチに戻す（画面に見えない組み合わせで交代を決めない）
+          dropTentativeFor(pid);
           S.batch.outs.splice(oi, 1);
           while (S.batch.ins.length > S.batch.outs.length) S.batch.ins.pop();
           if (S.batch.outs.length && S.batch.ins.length === S.batch.outs.length) commitBatch(at);
@@ -330,6 +336,7 @@ export function replay(ops, cfg) {
         if (p.status !== 'live') break;
         const pid = op.pid; const seat = S.seats.indexOf(pid);
         if (seat < 0) break;
+        dropTentativeFor(pid);
         S.batch.outs = S.batch.outs.filter((o) => o.pid !== pid);
         while (S.batch.ins.length > S.batch.outs.length) S.batch.ins.pop();
         closeStint(pid, at); delete S.cont[pid]; S.lastOut[pid] = cum(at);
