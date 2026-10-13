@@ -158,7 +158,8 @@ export function fixData(fp, key) {
 }
 
 // 矛盾のチェック（保存できない問題）
-export function checkFix(fp, cfg, label = '') {
+// banned：前のピリオドで退場した選手（このピリオドには出られない）
+export function checkFix(fp, cfg, label = '', banned = new Set()) {
   const errs = [];
   const fmt = (ms) => { const r = Math.max(0, Math.round((fp.elapsed - ms) / 1000)); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`; };
   const name = (pid) => `${cfg.members?.[pid]?.no ?? '?'}番`;
@@ -176,10 +177,49 @@ export function checkFix(fp, cfg, label = '') {
       if (!seen.has(k)) { seen.add(k); errs.push(`${label}${name(a.pid)} が残り${fmt(Math.max(a.from, b.from))}に2つの場所に入っています`); }
     }
   }
+  // ピッチに出られるGKは1人まで
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+    const a = all[i], b = all[j];
+    if (a.pid !== b.pid && isGK(cfg, a.pid) && isGK(cfg, b.pid) && a.from < b.to && b.from < a.to) {
+      const k = 'gk' + Math.max(a.from, b.from);
+      if (!seen.has(k)) { seen.add(k); errs.push(`${label}GKが2人出ています（${name(a.pid)}と${name(b.pid)}、残り${fmt(Math.max(a.from, b.from))}〜${fmt(Math.min(a.to, b.to))}）`); }
+    }
+  }
+  // 退場した選手は、そのあと出られない
+  for (const e of fp.ev.filter((x) => x.kind === 'eject')) {
+    const who = W[e.seat].segs.find((g) => g.endEv === e.id)?.pid;
+    if (who && all.some((g) => g.pid === who && g.from > e.at)) errs.push(`${label}${name(who)} が残り${fmt(e.at)}に退場したあとに出場しています`);
+  }
+  for (const pid of new Set(all.filter((g) => banned.has(g.pid)).map((g) => g.pid))) errs.push(`${label}${name(pid)} は前のピリオドで退場しているため出場できません`);
   for (const x of fp.pp || []) if (!(x.to > x.from)) errs.push(`${label}5×4の時間帯の終わりが始まりより前です`);
   return errs;
 }
 export const newEvId = nid;
+
+// 候補の選手が、ある場所の区間（startEv から始まる区間。null ならスタメン）に出られるか。
+// f2 はその選手を入れたあとの記録。出られれば null、出られなければ理由の文を返す。
+export function whyNot(f2, cfg, pid, seat, startEv, banned = new Set()) {
+  const W = seatWalk(f2);
+  const seg = startEv ? W[seat].segs.find((g) => g.startEv === startEv) : W[seat].segs[0];
+  if (!seg || !pid) return null;
+  const fmt = (ms) => { const r = Math.max(0, Math.round(((f2.len || f2.elapsed) - ms) / 1000)); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`; };
+  const name = (x) => `${cfg.members?.[x]?.no ?? '?'}番`;
+  if (banned.has(pid)) return '前のピリオドで退場しています';
+  const ej = f2.ev.filter((e) => e.kind === 'eject' && e.at <= seg.from && W[e.seat].segs.find((g) => g.endEv === e.id)?.pid === pid).sort((a, b) => a.at - b.at)[0];
+  if (ej && seg.to > seg.from) return `残り${fmt(ej.at)}に退場しています`;
+  if (!(seg.to > seg.from)) return null;
+  const segs = W[seat].segs, si = segs.indexOf(seg);
+  if (segs[si + 1]?.pid === pid) return 'この場所の次の交代で入る選手です';
+  if (si > 0 && segs[si - 1].pid === pid) return 'この場所の前の交代で出た選手です';
+  const others = W.flatMap((w) => w.segs.filter((g) => g.pid && g.to > g.from && !(w.seat === seat && g.from === seg.from)).map((g) => ({ ...g, seat: w.seat })));
+  const same = others.find((g) => g.pid === pid && g.from < seg.to && seg.from < g.to);
+  if (same) return `残り${fmt(same.from)}〜${fmt(same.to)}に場所${same.seat + 1}で出場しています`;
+  if (isGK(cfg, pid)) {
+    const gk = others.find((g) => g.pid !== pid && isGK(cfg, g.pid) && g.from < seg.to && seg.from < g.to);
+    if (gk) return `GK（${name(gk.pid)}）が出ています（残り${fmt(Math.max(gk.from, seg.from))}〜${fmt(Math.min(gk.to, seg.to))}）`;
+  }
+  return null;
+}
 
 // MATCH PLAYの記録の「形」：ピリオドごとの有効な操作の数と最後の操作。修正はこれが同じときだけ使う
 export function periodSig(ops) {

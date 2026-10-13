@@ -3,7 +3,7 @@
 // the review and analysis use the saved correction instead of the MATCH PLAY record for that period.
 import { S as D, playerById, opts, put, teamPath, watchOps, watchFixLog, addFixLog, teamSettings } from './store.js';
 import { replay, periodLen, PERIODS, periodLabel } from './engine.js';
-import { replayToFix, seatWalk, fixData, checkFix, periodSig, newEvId, matchModel } from './model.js';
+import { replayToFix, seatWalk, fixData, checkFix, periodSig, newEvId, matchModel, whyNot } from './model.js';
 import { $, esc, openModal, closeModal, confirmBox, toast, optionTags } from './ui.js';
 import { keypadHTML, bindKeypad } from './keypad.js';
 import { render, setLeaveGuard } from './views.js';
@@ -60,7 +60,7 @@ export function vFix(m) {
   }
   if (!keys.includes(ui.period)) ui.period = keys[0];
   const k = ui.period; const fp = d.periods[k];
-  const errs = keys.flatMap((x) => checkFix(d.periods[x], cfg, `${periodLabel(x)}：`));
+  const errs = keys.flatMap((x) => checkFix(d.periods[x], cfg, `${periodLabel(x)}：`, bannedBefore(d, x)));
   const stale = PERIODS.filter((p) => m.fix?.periods?.[p.key] && st.periods[p.key].status === 'done' && m.fix.periods[p.key].basis !== sig[p.key]).map((p) => p.label);
 
   const head = `<div class="fxhead">
@@ -99,6 +99,21 @@ function bounds(fp, ev) { // the time range this event can move in (between the 
 function periodTimes(fp, key) {
   const t = {}; for (const s of fixData(fp, key).stints) { t[s.pid] = (t[s.pid] || 0) + (s.to - s.from); } return t;
 }
+// 前のピリオドで退場した選手（このピリオドには出られない）
+function bannedBefore(d, k) {
+  const s = new Set();
+  for (const p of PERIODS) { if (p.key === k) break; const fp = d.periods[p.key]; if (fp) for (const e of fixData(fp, p.key).ejections) if (e.pid) s.add(e.pid); }
+  return s;
+}
+// 選手の選択肢：出られる選手を上に、出られない選手は下に灰色（選べない）で理由つき
+function pickOpts(cfg, ids, sel, why) {
+  const ok = [], ng = [];
+  for (const x of ids) { const r = why(x); (r ? ng : ok).push([x, r]); }
+  return ok.map(([x]) => `<option value="${x}" ${x === sel ? 'selected' : ''}>${esc(plain(cfg, x))}</option>`).join('')
+    + (ng.length ? `<optgroup label="出られない選手">${ng.map(([x, r]) => `<option value="${x}" disabled ${x === sel ? 'selected' : ''}>${esc(plain(cfg, x))} ― ${esc(r)}</option>`).join('')}</optgroup>` : '');
+}
+// 新しく増えた矛盾だけ（もとからある矛盾で、ほかの直しを止めないため）
+function newErrs(fp, f2, cfg, banned) { const was = new Set(checkFix(fp, cfg, '', banned)); return checkFix(f2, cfg, '', banned).filter((e) => !was.has(e)); }
 const memberList = (cfg) => Object.keys(cfg.members || {}).sort((a, b) => (parseInt(cfg.members[a].no, 10) || 999) - (parseInt(cfg.members[b].no, 10) || 999));
 
 // ---------- 交代 ----------
@@ -124,9 +139,10 @@ function tabSub(m, d, k, fp, cfg) {
 
 // ---------- スタメン ----------
 function tabLineup(m, d, k, fp, cfg) {
-  const ms = memberList(cfg);
+  const ms = memberList(cfg); const banned = bannedBefore(d, k);
+  const why = (i) => (x) => { const f2 = clone(fp); f2.lineup[i] = x; return whyNot(f2, cfg, x, i, null, banned); };
   return `<div class="card"><h2 class="h" style="margin-top:0">${periodLabel(k)}のスタメン（各場所の最初の選手）</h2>
-    <div class="fxlu">${fp.lineup.map((pid, i) => `<label>場所${i + 1}</label><select data-lu="${i}">${ms.map((x) => `<option value="${x}" ${x === pid ? 'selected' : ''}>${esc(plain(cfg, x))}${cfg.members[x].pos === 'GK' ? '（GK）' : ''}</option>`).join('')}</select>`).join('')}</div>
+    <div class="fxlu">${fp.lineup.map((pid, i) => `<label>場所${i + 1}</label><select data-lu="${i}">${pickOpts(cfg, ms, pid, why(i))}</select>`).join('')}</div>
     <p class="mu">変えると、その場所の最初の交代まで、選んだ選手が出場していたことになります。</p></div>`;
 }
 
@@ -200,9 +216,9 @@ function bindFix(root, m, d, k, cfg, st, sig) {
     if (b.dataset.edit) return subModal(m, d, k, fp, cfg, b.dataset.edit, commit);
     if (b.dataset.miss) return missPress(fp, cfg, b.dataset.miss, commit);
     if (b.id === 'fxAddSub') return subModal(m, d, k, fp, cfg, null, commit);
-    if (b.dataset.ejedit) return ejectModal(fp, cfg, b.dataset.ejedit, commit);
+    if (b.dataset.ejedit) return ejectModal(d, k, fp, cfg, b.dataset.ejedit, commit);
     if (b.dataset.ejdel) return ejectDelete(fp, cfg, b.dataset.ejdel, commit);
-    if (b.id === 'fxAddEj') return ejectModal(fp, cfg, null, commit);
+    if (b.id === 'fxAddEj') return ejectModal(d, k, fp, cfg, null, commit);
     if (b.dataset.ppedit) return ppModal(fp, b.dataset.ppedit, commit);
     if (b.dataset.ppdel) { const x = fp.pp.find((y) => y.id === b.dataset.ppdel); return commit('パワープレー', `5×4（${x.team === 'own' ? '自' : '相手'}）残り${rem(fp, x.from)}〜${rem(fp, x.to)} を削除`, () => { fp.pp = fp.pp.filter((y) => y.id !== x.id); }); }
     if (b.id === 'fxAddPP') return ppModal(fp, null, commit);
@@ -233,61 +249,81 @@ function remToAt(fp, sec) { return Math.max(0, Math.min(fp.elapsed, lenOf(fp) - 
 
 function subModal(m, d, k, fp, cfg, id, commit) {
   const ev = id ? fp.ev.find((x) => x.id === id) : null;
-  const ms = memberList(cfg);
-  const opt = (sel) => ms.map((x) => `<option value="${x}" ${x === sel ? 'selected' : ''}>${esc(plain(cfg, x))}</option>`).join('');
+  const ms = memberList(cfg); const banned = bannedBefore(d, k); const newId = newEvId();
   let lo = 0, hi = fp.elapsed; if (ev) ({ lo, hi } = bounds(fp, ev));
   const out0 = ev ? outOf(fp, ev) : null;
   const md = openModal(`<h2>${ev ? `交代を直す（${periodLabel(k)} 残り${rem(fp, ev.at)}）` : `交代を追加（${periodLabel(k)}）`}</h2>
     <div class="fxmod">${timeField(fp, 'kpSub', ev ? ev.at : fp.elapsed / 2, lo, hi, '交代の時刻（残り時間）', ev ? ev.at : null)}
       <div class="fxside">
-        <label>OUT（その場所に座っていた選手）</label><select id="fxOut">${ev ? opt(out0) : '<option value="">時刻を入れると選べます</option>'}</select>
-        <label>IN（入った選手）</label><select id="fxIn">${opt(ev ? ev.in : '')}</select>
+        <label>OUT（その場所に座っていた選手）</label><select id="fxOut"></select>
+        <label>IN（入った選手）</label><select id="fxIn"></select>
+        <p class="mu fxnote">灰色の選手は、その時間に出られないため選べません（理由つき）。</p>
         <div id="fxPrev" class="fxprev"></div></div></div>
     <div class="mfoot">${ev ? '<button class="btn dangerline" data-del>この交代を削除</button><span class="sp"></span>' : ''}<button class="btn" data-c>やめる</button><button class="btn pri" data-ok>反映</button></div>`, { wide: true });
-  const outSel = md.querySelector('#fxOut'), inSel = md.querySelector('#fxIn');
-  // build the edited copy of the period from the current inputs
-  const draftOf = () => {
+  const outSel = md.querySelector('#fxOut'), inSel = md.querySelector('#fxIn'), okBtn = md.querySelector('[data-ok]');
+  let curIn = ev ? ev.in : '', curOut = out0 || '';
+  // 入力から、直したあとのピリオドの記録をつくる（inStart / outStart：IN・OUTの選手の区間が始まる記録）
+  const build = (inPid, outPid) => {
     const v = kp.value(); if (!v.ok) return { err: v.msg };
     const at = remToAt(fp, v.sec);
     const f2 = clone(fp);
     if (ev) {
-      const e2 = f2.ev.find((x) => x.id === ev.id); e2.at = at; e2.in = inSel.value;
-      if (outSel.value && outSel.value !== out0) { // OUTした選手を変える＝その区切りの前に座っていた選手を入れ替える
-        const prev = f2.ev.filter((x) => x.seat === ev.seat && x.at <= ev.at && x.id !== ev.id && x.kind !== 'eject').sort((a, b) => a.at - b.at).pop();
-        if (prev) prev.in = outSel.value; else f2.lineup[ev.seat] = outSel.value;
-      }
-    } else {
-      const seat = onPitchAt(f2, at).find((x) => x.pid === outSel.value)?.seat;
-      if (seat == null) return { err: 'OUTする選手を選んでください' };
-      f2.ev.push({ id: newEvId(), kind: 'sub', seat, at, in: inSel.value });
+      const e2 = f2.ev.find((x) => x.id === ev.id); e2.at = at; e2.in = inPid;
+      const prev = f2.ev.filter((x) => x.seat === ev.seat && x.at <= ev.at && x.id !== ev.id && x.kind !== 'eject').sort((a, b) => a.at - b.at).pop();
+      if (outPid && outPid !== out0) { if (prev) prev.in = outPid; else f2.lineup[ev.seat] = outPid; } // OUTを変える＝その前に座っていた選手を入れ替える
+      return { f2, at, seat: ev.seat, inStart: ev.id, outStart: prev ? prev.id : null };
     }
-    if (inSel.value === (ev ? (outSel.value || out0) : outSel.value)) return { err: 'OUTとINが同じ選手です' };
-    return { f2, at };
+    const seat = onPitchAt(f2, at).find((x) => x.pid === outPid)?.seat;
+    if (seat == null) return { err: 'OUTする選手を選んでください' };
+    f2.ev.push({ id: newId, kind: 'sub', seat, at, in: inPid });
+    return { f2, at, seat, inStart: newId };
+  };
+  const whyIn = (x) => {
+    if (x === curOut) return 'OUTの選手です';
+    const r = build(x, curOut); return r.err ? null : whyNot(r.f2, cfg, x, r.seat, r.inStart, banned);
+  };
+  const whyOut = (x) => {
+    if (x === curIn) return 'INの選手です';
+    const r = build(curIn, x); return r.err ? null : whyNot(r.f2, cfg, x, r.seat, r.outStart, banned);
+  };
+  const refresh = () => {
+    const v = kp.value();
+    if (!ev) { // 追加：その時刻にピッチにいる選手からOUTを選ぶ
+      if (v.ok) { const at = remToAt(fp, v.sec); const on = onPitchAt(fp, at).filter((x) => x.pid); if (!on.some((x) => x.pid === curOut)) curOut = on[0]?.pid || ''; outSel.innerHTML = on.map((x) => `<option value="${x.pid}" ${x.pid === curOut ? 'selected' : ''}>${esc(plain(cfg, x.pid))}（場所${x.seat + 1}）</option>`).join(''); }
+    } else outSel.innerHTML = pickOpts(cfg, ms, curOut, whyOut);
+    if (v.ok) { inSel.innerHTML = pickOpts(cfg, ms, curIn, whyIn); if (!curIn) curIn = inSel.value; }
+    preview();
+  };
+  const check = () => {
+    if (!curIn) return { err: 'INの選手を選んでください' };
+    const r = build(curIn, curOut); if (r.err) return r;
+    if (curIn === curOut) return { err: 'OUTとINが同じ選手です' };
+    const wi = whyNot(r.f2, cfg, curIn, r.seat, r.inStart, banned); if (wi) return { ...r, err: `${plain(cfg, curIn)} は出られません：${wi}` };
+    if (ev && curOut !== out0) { const wo = whyNot(r.f2, cfg, curOut, r.seat, r.outStart, banned); if (wo) return { ...r, err: `${plain(cfg, curOut)} は出られません：${wo}` }; }
+    const ne = newErrs(fp, r.f2, cfg, banned); if (ne.length) return { ...r, err: ne[0] };
+    return r;
   };
   const preview = () => {
-    if (!ev) { // 追加：その時刻にピッチにいる選手からOUTを選ぶ
-      const v = kp.value();
-      if (v.ok) { const at = remToAt(fp, v.sec); const on = onPitchAt(fp, at).filter((x) => x.pid); const cur = outSel.value; outSel.innerHTML = on.map((x) => `<option value="${x.pid}" ${x.pid === cur ? 'selected' : ''}>${esc(plain(cfg, x.pid))}（場所${x.seat + 1}）</option>`).join(''); }
-    }
-    const r = draftOf(); const box = md.querySelector('#fxPrev');
-    if (r.err) { box.innerHTML = `<p class="err">${esc(r.err)}</p>`; return; }
+    const r = check(); const box = md.querySelector('#fxPrev');
+    okBtn.disabled = !!r.err;
+    if (!r.f2) { box.innerHTML = `<p class="err">${esc(r.err)}</p>`; return; }
     const a = periodTimes(fp, k), b = periodTimes(r.f2, k);
     const ch = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((pid) => (a[pid] || 0) !== (b[pid] || 0));
-    const errs = checkFix(r.f2, cfg);
-    box.innerHTML = `<b>出場時間の変化（${periodLabel(k)}）</b>${ch.length ? `<table>${ch.map((pid) => `<tr><td>${nm(cfg, pid)}</td><td>${mmss(a[pid] || 0)} → <b>${mmss(b[pid] || 0)}</b></td></tr>`).join('')}</table>` : '<p class="mu">変化なし</p>'}${errs.length ? `<p class="err">${errs.map(esc).join('<br>')}</p>` : ''}`;
+    box.innerHTML = `${r.err ? `<p class="err">${esc(r.err)}</p>` : ''}<b>出場時間の変化（${periodLabel(k)}）</b>${ch.length ? `<table>${ch.map((pid) => `<tr><td>${nm(cfg, pid)}</td><td>${mmss(a[pid] || 0)} → <b>${mmss(b[pid] || 0)}</b></td></tr>`).join('')}</table>` : '<p class="mu">変化なし</p>'}`;
   };
-  const kp = bindKeypad(md, { init: Math.round((lenOf(fp) - (ev ? ev.at : fp.elapsed / 2)) / 1000), min: Math.round((lenOf(fp) - hi) / 1000), max: Math.round((lenOf(fp) - lo) / 1000), onChange: () => setTimeout(preview) });
+  const kp = bindKeypad(md, { init: Math.round((lenOf(fp) - (ev ? ev.at : fp.elapsed / 2)) / 1000), min: Math.round((lenOf(fp) - hi) / 1000), max: Math.round((lenOf(fp) - lo) / 1000), onChange: () => setTimeout(refresh) });
   bindOrig(md, kp);
-  outSel.onchange = preview; inSel.onchange = preview; preview();
+  outSel.onchange = () => { curOut = outSel.value; refresh(); };
+  inSel.onchange = () => { curIn = inSel.value; refresh(); };
+  refresh();
   md.querySelector('[data-c]').onclick = closeModal;
   const del = md.querySelector('[data-del]');
   if (del) del.onclick = () => { closeModal(); commit('交代', `残り${rem(fp, ev.at)} ${plain(cfg, out0)} → ${plain(cfg, ev.in)} を削除`, () => { fp.ev = fp.ev.filter((x) => x.id !== ev.id); }); };
-  md.querySelector('[data-ok]').onclick = () => {
-    const r = draftOf(); if (r.err) return toast(r.err);
+  okBtn.onclick = () => {
+    const r = check(); if (r.err) return toast(r.err);
     closeModal();
-    const newOut = ev ? (outSel.value || out0) : outSel.value;
-    const text = ev ? `残り${rem(fp, ev.at)} ${plain(cfg, out0)} → ${plain(cfg, ev.in)} を 残り${rem(fp, r.at)} ${plain(cfg, newOut)} → ${plain(cfg, inSel.value)} に`
-      : `交代を追加：残り${rem(fp, r.at)} ${plain(cfg, newOut)} → ${plain(cfg, inSel.value)}`;
+    const text = ev ? `残り${rem(fp, ev.at)} ${plain(cfg, out0)} → ${plain(cfg, ev.in)} を 残り${rem(fp, r.at)} ${plain(cfg, curOut)} → ${plain(cfg, curIn)} に`
+      : `交代を追加：残り${rem(fp, r.at)} ${plain(cfg, curOut)} → ${plain(cfg, curIn)}`;
     commit('交代', text, () => { fp.ev = r.f2.ev; fp.lineup = r.f2.lineup; });
   };
 }
@@ -305,47 +341,68 @@ async function missPress(fp, cfg, id, commit) {
     () => { fp.ev = fp.ev.filter((x) => x.id !== ev.id && x.id !== rev?.id); });
 }
 
-function ejectModal(fp, cfg, id, commit) {
+function ejectModal(d, k, fp, cfg, id, commit) {
   const ev = id ? fp.ev.find((x) => x.id === id) : null;
   const fill = ev ? fp.ev.find((x) => x.kind === 'fill' && x.seat === ev.seat && x.at >= ev.at) : null;
-  const ms = memberList(cfg);
+  const ms = memberList(cfg); const banned = bannedBefore(d, k);
+  const evId = ev?.id || newEvId(), fillId = fill?.id || newEvId();
   const md = openModal(`<h2>${ev ? '退場を直す' : '退場を追加'}</h2>
     <div class="fxmod">${timeField(fp, 'kpEj', ev ? ev.at : fp.elapsed / 2, 0, fp.elapsed, '退場の時刻（残り時間）', ev ? ev.at : null)}
       <div class="fxside"><label>退場した選手</label><select id="ejWho"></select>
         <label><input type="checkbox" id="ejHasFill" ${fill || !ev ? 'checked' : ''}> 補充した</label>
         <label>補充の時刻（残り時間）</label><input id="ejFillT" inputmode="numeric" value="${fill ? rem(fp, fill.at) : ''}" placeholder="例 12:30">
-        <label>補充した選手</label><select id="ejFillWho">${ms.map((x) => `<option value="${x}" ${x === fill?.in ? 'selected' : ''}>${esc(plain(cfg, x))}</option>`).join('')}</select>
-        <p class="mu">補充の時刻は「12:30」または「1230」の形で入れてください。</p></div></div>
+        <label>補充した選手</label><select id="ejFillWho"></select>
+        <p class="mu">補充の時刻は「12:30」または「1230」の形で入れてください。灰色の選手は、その時間に出られないため選べません。</p>
+        <p class="err" id="ejErr"></p></div></div>
     <div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-ok>反映</button></div>`, { wide: true });
-  const who = md.querySelector('#ejWho');
-  const kp = bindKeypad(md, { init: Math.round((lenOf(fp) - (ev ? ev.at : fp.elapsed / 2)) / 1000), min: Math.round((lenOf(fp) - fp.elapsed) / 1000), max: Math.round(lenOf(fp) / 1000), onChange: () => setTimeout(refreshWho) });
+  const who = md.querySelector('#ejWho'), fillWho = md.querySelector('#ejFillWho'), okBtn = md.querySelector('[data-ok]');
+  const hasFill = md.querySelector('#ejHasFill'), fillT = md.querySelector('#ejFillT');
+  let curFill = fill?.in || '';
+  const kp = bindKeypad(md, { init: Math.round((lenOf(fp) - (ev ? ev.at : fp.elapsed / 2)) / 1000), min: Math.round((lenOf(fp) - fp.elapsed) / 1000), max: Math.round(lenOf(fp) / 1000), onChange: () => setTimeout(refresh) });
   bindOrig(md, kp);
-  function refreshWho() {
-    const v = kp.value(); if (!v.ok) return; const at = remToAt(fp, v.sec);
-    const cur = who.value || (ev ? outOf(fp, ev) : '');
-    const on = onPitchAt(fp, at).filter((x) => x.pid);
-    who.innerHTML = on.map((x) => `<option value="${x.pid}" ${x.pid === cur ? 'selected' : ''}>${esc(plain(cfg, x.pid))}（場所${x.seat + 1}）</option>`).join('');
-  }
-  if (ev) { const o = outOf(fp, ev); who.innerHTML = `<option value="${o}">${esc(plain(cfg, o))}</option>`; } else refreshWho();
-  md.querySelector('[data-c]').onclick = closeModal;
-  md.querySelector('[data-ok]').onclick = () => {
-    const v = kp.value(); if (!v.ok) return toast(v.msg);
+  // 入力から、直したあとのピリオドの記録をつくる
+  const build = (fillPid) => {
+    const v = kp.value(); if (!v.ok) return { err: v.msg };
     const at = remToAt(fp, v.sec);
     const f2 = clone(fp);
     const seat = ev ? ev.seat : onPitchAt(f2, at).find((x) => x.pid === who.value)?.seat;
-    if (seat == null) return toast('退場した選手を選んでください');
+    if (seat == null) return { err: '退場した選手を選んでください' };
     f2.ev = f2.ev.filter((x) => x.id !== ev?.id && x.id !== fill?.id);
-    f2.ev.push({ id: ev?.id || newEvId(), kind: 'eject', seat, at, reason: ev?.reason || null });
-    if (md.querySelector('#ejHasFill').checked) {
-      const mt = md.querySelector('#ejFillT').value.trim().match(/^(\d{1,2}):?(\d{2})$/);
-      if (!mt || +mt[2] > 59) return toast('補充の時刻を「12:30」の形で入れてください');
+    f2.ev.push({ id: evId, kind: 'eject', seat, at, reason: ev?.reason || null });
+    if (hasFill.checked) {
+      const mt = fillT.value.trim().match(/^(\d{1,2}):?(\d{2})$/);
+      if (!mt || +mt[2] > 59) return { err: '補充の時刻を「12:30」の形で入れてください', at, seat };
       const fat = remToAt(fp, +mt[1] * 60 + +mt[2]);
-      if (fat < at) return toast('補充の時刻が退場より前になっています');
-      f2.ev.push({ id: fill?.id || newEvId(), kind: 'fill', seat, at: fat, in: md.querySelector('#ejFillWho').value });
+      if (fat < at) return { err: '補充の時刻が退場より前になっています', at, seat };
+      f2.ev.push({ id: fillId, kind: 'fill', seat, at: fat, in: fillPid });
     }
-    const errs = checkFix(f2, cfg); if (errs.length) return toast(errs[0]);
+    return { f2, at, seat };
+  };
+  const whyFill = (x) => { const r = build(x); return r.f2 && hasFill.checked ? whyNot(r.f2, cfg, x, r.seat, fillId, banned) : null; };
+  const check = () => {
+    const r = build(curFill); if (r.err) return r;
+    if (hasFill.checked) { const w = whyNot(r.f2, cfg, curFill, r.seat, fillId, banned); if (w) return { ...r, err: `${plain(cfg, curFill)} は補充に入れません：${w}` }; }
+    const ne = newErrs(fp, r.f2, cfg, banned); if (ne.length) return { ...r, err: ne[0] };
+    return r;
+  };
+  function refresh() {
+    const v = kp.value();
+    if (!ev && v.ok) {
+      const at = remToAt(fp, v.sec); const cur = who.value;
+      const on = onPitchAt(fp, at).filter((x) => x.pid);
+      who.innerHTML = on.map((x) => `<option value="${x.pid}" ${x.pid === cur ? 'selected' : ''}>${esc(plain(cfg, x.pid))}（場所${x.seat + 1}）</option>`).join('');
+    }
+    fillWho.innerHTML = pickOpts(cfg, ms, curFill, whyFill); if (!curFill) curFill = fillWho.value;
+    const r = check(); md.querySelector('#ejErr').textContent = r.err || ''; okBtn.disabled = !!r.err;
+  }
+  if (ev) { const o = outOf(fp, ev); who.innerHTML = `<option value="${o}">${esc(plain(cfg, o))}</option>`; }
+  who.onchange = refresh; hasFill.onchange = refresh; fillT.oninput = refresh; fillWho.onchange = () => { curFill = fillWho.value; refresh(); };
+  refresh();
+  md.querySelector('[data-c]').onclick = closeModal;
+  okBtn.onclick = () => {
+    const r = check(); if (r.err) return toast(r.err);
     closeModal();
-    commit('退場', `${ev ? '退場を直す' : '退場を追加'}：残り${rem(fp, at)} ${plain(cfg, who.value || outOf(fp, ev))}`, () => { fp.ev = f2.ev; });
+    commit('退場', `${ev ? '退場を直す' : '退場を追加'}：残り${rem(fp, r.at)} ${plain(cfg, who.value || outOf(fp, ev))}`, () => { fp.ev = r.f2.ev; });
   };
 }
 async function ejectDelete(fp, cfg, id, commit) {
