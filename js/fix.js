@@ -1,7 +1,8 @@
 // 記録の修正 (spec 8章). Works on a draft kept on this device; 「保存」 writes it to the match
-// (match.fix) and adds a line to the history (fixlog). The MATCH PLAY op log is never changed:
+// (match.fix) and adds one history line per change to fixlog, each with the state just before it
+// (so 「1つ戻す」 and 「ここに戻す」 work after saving, on any device). The MATCH PLAY op log is never changed:
 // the review and analysis use the saved correction instead of the MATCH PLAY record for that period.
-import { S as D, playerById, opts, put, teamPath, watchOps, watchFixLog, addFixLog, teamSettings } from './store.js';
+import { S as D, playerById, opts, put, teamPath, watchOps, watchFixLog, addFixLog, updFixLog, teamSettings } from './store.js';
 import { replay, periodLen, PERIODS, periodLabel } from './engine.js';
 import { replayToFix, seatWalk, fixData, checkFix, periodSig, newEvId, matchModel, whyNot } from './model.js';
 import { $, esc, openModal, closeModal, confirmBox, toast, optionTags } from './ui.js';
@@ -34,9 +35,15 @@ function baseline(m, st, sig) {
     periods[p.key].len = periodLen(st.cfg, p.key);
   }
   const info = Object.fromEntries(INFO_KEYS.map((k) => [k, m[k] ?? '']));
-  return { matchId: m.id, periods, info, changes: [], undo: [] };
+  return { matchId: m.id, periods, info, changes: [], undo: [], pendingUndo: [] };
 }
-function dirty(d) { return d && d.changes.length > 0; }
+// 保存していない修正の数（新しい直し＋保存した直しを戻した数）
+function count(d) { return d ? d.changes.length + Math.max((d.pendingUndo || []).length, d.toOrigin ? 1 : 0) : 0; }
+function dirty(d) { return count(d) > 0; }
+// 保存した直し（履歴の1行ずつ）。古い順
+const savedSteps = (m) => watchFixLog(m.id).list.filter((x) => x.kind === 'step').sort((a, b) => a.seq - b.seq);
+const activeSteps = (m) => savedSteps(m).filter((x) => !x.undone);
+let ctx = {}; // いまの画面の土台（保存した状態・MATCH PLAYの記録）
 
 // ---------- view ----------
 export function vFix(m) {
@@ -48,6 +55,8 @@ export function vFix(m) {
   let d = loadDraft(m);
   const base = baseline(m, st, sig);
   if (!d) d = base;
+  d.pendingUndo ||= [];
+  ctx = { base, origin: baseline({ ...m, fix: null }, st, sig) };
   // a period whose MATCH PLAY record changed after the draft was made cannot be kept
   for (const k of Object.keys(d.periods)) if (!base.periods[k] || d.periods[k].basis !== base.periods[k].basis) { delete d.periods[k]; }
   for (const k of Object.keys(base.periods)) if (!d.periods[k]) d.periods[k] = base.periods[k];
@@ -61,14 +70,14 @@ export function vFix(m) {
   if (!keys.includes(ui.period)) ui.period = keys[0];
   const k = ui.period; const fp = d.periods[k];
   const errs = keys.flatMap((x) => checkFix(d.periods[x], cfg, `${periodLabel(x)}：`, bannedBefore(d, x)));
+  const canUndo = d.changes.length || activeSteps(m).some((x) => !d.pendingUndo.includes(x.id));
   const stale = PERIODS.filter((p) => m.fix?.periods?.[p.key] && st.periods[p.key].status === 'done' && m.fix.periods[p.key].basis !== sig[p.key]).map((p) => p.label);
 
   const head = `<div class="fxhead">
     <div class="fxper">${keys.map((x) => `<button class="btn ${x === k ? 'pri' : ''}" data-per="${x}">${periodLabel(x)}</button>`).join('')}
       ${live ? `<span class="mu">${periodLabel(live.key)}は試合中のため、終わってから直せます</span>` : ''}</div>
-    <div class="fxsave"><span class="fxstate ${dirty(d) ? 'on' : ''}">${dirty(d) ? `保存していない修正 ${d.changes.length}件` : '保存済み'}</span>
-      <button class="btn" id="fxUndo" ${d.undo.length ? '' : 'disabled'}>↶ 1つ戻す</button>
-      <button class="btn" id="fxDiscard" ${dirty(d) ? '' : 'disabled'}>破棄</button>
+    <div class="fxsave"><span class="fxstate ${dirty(d) ? 'on' : ''}">${dirty(d) ? `保存していない修正 ${count(d)}件` : '保存済み'}</span>
+      <button class="btn" id="fxUndo" ${canUndo ? '' : 'disabled'}>↶ 1つ戻す</button>
       <button class="btn pri" id="fxSave" ${dirty(d) && !errs.length ? '' : 'disabled'}>保存</button></div></div>
     ${stale.length ? `<div class="fxwarn">MATCH PLAYの記録があとから変わったため（リセットなど）、${stale.join('・')}の保存した修正は使われていません。もう一度直してください。</div>` : ''}
     ${errs.length ? `<div class="fxerr"><b>矛盾があるため保存できません</b><ul>${errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
@@ -187,16 +196,69 @@ function tabInfo(m, d) {
 }
 
 // ---------- 履歴 ----------
-function tabLog(m) {
+// 古い順に「MATCH PLAYの記録 → 保存した直し（保存ごとに区切り）→ 保存していない直し」と並べ、新しい順に表示する。
+// 各行の「ここに戻す」は、その直しのすぐあとの状態に戻す。いちばん新しい行が「いまの状態」
+function tabLog(m, d) {
   const c = watchFixLog(m.id);
   const types = ['交代', 'スタメン', '退場', 'パワープレー', '試合情報'];
   const f = ui.logType || '';
-  const items = c.list.slice().sort((a, b) => b.t - a.t).flatMap((r) => (r.items || []).slice().reverse().filter((it) => !f || it.type === f).map((it) => ({ ...it, r })));
   const fmt = (t) => { const x = new Date(t); return `${x.getMonth() + 1}/${x.getDate()} ${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`; };
+  const A = activeSteps(m);
+  const rows = []; // 古い順
+  rows.push({ origin: true });
+  for (const r of c.list.filter((x) => !x.kind).sort((a, b) => a.t - b.t)) for (const it of r.items || []) rows.push({ legacy: true, t: r.t, dev: r.devName, type: it.type, text: it.text });
+  let prevSave = null;
+  for (const x of c.list.filter((y) => y.kind === 'step' || y.kind === 'note').sort((a, b) => a.seq - b.seq)) {
+    if (prevSave != null && x.saveT !== prevSave.t) rows.push({ save: prevSave });
+    prevSave = { t: x.saveT, dev: x.devName };
+    rows.push(x.kind === 'note' ? { note: true, t: x.saveT, dev: x.devName, type: x.type, text: x.text }
+      : { saved: A.indexOf(x), t: x.saveT, dev: x.devName, type: x.type, text: x.text, undone: x.undone, pending: d.pendingUndo.includes(x.id) });
+  }
+  if (prevSave) rows.push({ save: prevSave });
+  d.changes.forEach((ch, j) => rows.push({ draft: j, type: ch.type, text: ch.text }));
+  // いまの状態の行
+  let cur = rows.findLastIndex((r) => r.draft != null || (r.saved >= 0 && !r.pending) || r.note || r.legacy);
+  if (cur < 0 || rows[cur].note || (d.toOrigin && !d.changes.length)) cur = 0;
+  const body = rows.map((r, i) => ({ r, i })).reverse().filter(({ r }) => !f || r.origin || r.save || r.type === f).map(({ r, i }) => {
+    const now = i === cur ? '<span class="tag on">いまの状態</span>' : '';
+    if (r.origin) return `<tr class="lgorig"><td colspan="4"><b>MATCH PLAYの記録（修正する前）</b> ${now}</td><td>${i === cur ? '' : '<button class="btn sm" data-goto="origin">ここに戻す</button>'}</td></tr>`;
+    if (r.save) return `<tr class="lgsave"><td colspan="5">― ${fmt(r.save.t)} に保存（${esc(r.save.dev || '')}）―</td></tr>`;
+    const btn = i === cur || r.legacy || r.note || r.undone ? '' : `<button class="btn sm" data-goto="${r.draft != null ? `draft:${r.draft}` : `saved:${r.saved}`}">ここに戻す</button>`;
+    const st = r.draft != null ? '<span class="tag warn">未保存</span> ' : r.undone ? `<span class="tag">${fmt(r.undone.t)}に戻しました</span> ` : r.pending ? '<span class="tag warn">戻しています（保存で確定）</span> ' : r.legacy ? '<span class="tag">以前の版の記録</span> ' : '';
+    const off = r.undone || r.pending ? ' class="lgoff"' : '';
+    return `<tr${off}><td>${r.draft != null ? '—' : fmt(r.t)}</td><td>${esc(r.draft != null ? devName() : r.dev || '')}</td><td>${esc(r.type)}</td><td>${st}<span class="lgtx">${esc(r.text)}</span> ${now}</td><td>${btn}</td></tr>`;
+  }).join('');
   return `<div class="card"><div class="row between"><h2 class="h" style="margin:0">修正の履歴（新しい順）</h2>
     <select id="fxLogType" style="width:auto;min-width:200px"><option value="">すべての種類</option>${types.map((t) => `<option ${t === f ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-    <table class="fxtb"><tr><th>日時</th><th>端末</th><th>種類</th><th>内容（変更前 → 変更後）</th></tr>
-    ${items.length ? items.map((it) => `<tr><td>${fmt(it.r.t)}</td><td>${esc(it.r.devName || '')}</td><td>${esc(it.type)}</td><td>${esc(it.text)}</td></tr>`).join('') : '<tr><td colspan="4" class="mu" style="text-align:center">まだ修正していません</td></tr>'}</table></div>`;
+    <table class="fxtb lg"><tr><th>日時</th><th>端末</th><th>種類</th><th>内容</th><th></th></tr>${body}</table>
+    <p class="mu">「ここに戻す」を押すと、その直しをしたすぐあとの状態に戻ります（それより新しい直しは取り消し）。いちばん下の「MATCH PLAYの記録」で、修正する前に戻せます。どれも「保存」を押すまでは確定しません。</p></div>`;
+}
+
+// ---------- 戻す ----------
+const restore = (d, snap) => { d.periods = clone(snap.periods); d.info = clone(snap.info); };
+function afterSave(m, d) { storeDraft(m, d); if (!dirty(d)) { dropDraft(m); setLeaveGuard(null); } render(); }
+// 1つ戻す：保存していない直しがあればそれを、なければ保存した直しを新しいほうから1つ
+function undoOne(m, d) {
+  if (d.changes.length) { const u = d.undo.pop(); Object.assign(d, u); return afterSave(m, d); }
+  const s = activeSteps(m).filter((x) => !d.pendingUndo.includes(x.id)).pop(); if (!s) return;
+  restore(d, s.before); d.pendingUndo.push(s.id);
+  toast('保存した直しを1つ戻しました。「保存」を押すと確定します');
+  afterSave(m, d);
+}
+// 履歴の「ここに戻す」：その行の直しのすぐあとの状態にする（それより新しい直しを取り消す）
+async function goTo(m, d, cfg, where) {
+  const A = activeSteps(m); const [kind, n] = where.split(':'); const i = +n;
+  const what = kind === 'origin' ? 'MATCH PLAYの記録（修正する前）' : 'この直しをしたあと';
+  const later = kind === 'draft' ? d.changes.length - 1 - i : kind === 'saved' ? A.length - 1 - i + d.changes.length : A.length + d.changes.length;
+  if (!(await confirmBox({ title: 'ここに戻しますか？', body: `<p>${what}の状態に戻します。これより新しい直し（${later}件）が取り消されます。</p><p>「保存」を押すまでは確定しません。</p>`, ok: 'ここに戻す' }))) return;
+  if (kind === 'draft') { const u = d.undo[i + 1]; restore(d, u); d.changes = u.changes; d.undo = d.undo.slice(0, i + 1); }
+  else if (kind === 'saved') { restore(d, i + 1 < A.length ? A[i + 1].before : ctx.base); d.changes = []; d.undo = []; d.pendingUndo = A.slice(i + 1).map((x) => x.id); d.toOrigin = false; }
+  else {
+    const first = savedSteps(m)[0]?.before.info || d.undo[0]?.info || d.info;
+    restore(d, { periods: ctx.origin.periods, info: first }); d.changes = []; d.undo = []; d.pendingUndo = A.map((x) => x.id); d.toOrigin = !!m.fix;
+  }
+  toast('戻しました。「保存」を押すと確定します');
+  afterSave(m, d);
 }
 
 // ---------- actions ----------
@@ -204,7 +266,6 @@ function bindFix(root, m, d, k, cfg, st, sig) {
   const fp = d.periods[k];
   const commit = (type, text, mutate) => {
     d.undo.push(clone({ periods: d.periods, info: d.info, changes: d.changes }));
-    if (d.undo.length > 50) d.undo.shift();
     mutate();
     d.changes.push({ type, text: `${['試合情報'].includes(type) ? '' : periodLabel(k) + ' '}${text}` });
     storeDraft(m, d); render();
@@ -222,11 +283,8 @@ function bindFix(root, m, d, k, cfg, st, sig) {
     if (b.dataset.ppedit) return ppModal(fp, b.dataset.ppedit, commit);
     if (b.dataset.ppdel) { const x = fp.pp.find((y) => y.id === b.dataset.ppdel); return commit('パワープレー', `5×4（${x.team === 'own' ? '自' : '相手'}）残り${rem(fp, x.from)}〜${rem(fp, x.to)} を削除`, () => { fp.pp = fp.pp.filter((y) => y.id !== x.id); }); }
     if (b.id === 'fxAddPP') return ppModal(fp, null, commit);
-    if (b.id === 'fxUndo') { const u = d.undo.pop(); if (u) { Object.assign(d, u); storeDraft(m, d); render(); } return; }
-    if (b.id === 'fxDiscard') {
-      if (await confirmBox({ title: '保存していない修正を破棄しますか？', body: `<p>前回の保存からの修正（${d.changes.length}件）がすべて取り消されます。</p>`, ok: '破棄する', danger: true })) { dropDraft(m); setLeaveGuard(null); toast('修正を破棄しました'); render(); }
-      return;
-    }
+    if (b.id === 'fxUndo') return undoOne(m, d);
+    if (b.dataset.goto) return goTo(m, d, cfg, b.dataset.goto);
     if (b.id === 'fxSave') return save(m, d, cfg);
   });
   root.addEventListener('change', (e) => {
@@ -445,9 +503,13 @@ function save(m, d, cfg) {
   const info = {}; for (const f of INFO_KEYS) if ((m[f] ?? '') !== d.info[f]) info[f] = d.info[f];
   if (info.opponent === '' || info.date === '') return toast('日付と対戦相手は空にできません');
   put(teamPath('matches', m.id), { fix: { periods, savedAt: Date.now(), dev: devName() }, ...info });
-  addFixLog(m.id, { devName: devName(), items: d.changes });
+  const now = Date.now(), dn = devName();
+  for (const id of d.pendingUndo) updFixLog(m.id, id, { undone: { t: now, devName: dn } });
+  if (d.toOrigin && !d.pendingUndo.length) addFixLog(m.id, { kind: 'note', seq: now * 100, saveT: now, devName: dn, type: '戻す', text: 'MATCH PLAYの記録（修正する前）に戻した' });
+  d.changes.forEach((c, j) => { const u = d.undo[j]; addFixLog(m.id, { kind: 'step', seq: now * 100 + 1 + j, saveT: now, devName: dn, type: c.type, text: c.text, before: { periods: u.periods, info: u.info } }); });
+  const n = count(d);
   dropDraft(m); setLeaveGuard(null);
-  toast(`修正を保存しました（${d.changes.length}件）。マッチレビューに反映されます`);
+  toast(`修正を保存しました（${n}件）。マッチレビューに反映されます`);
   render();
 }
 
@@ -456,7 +518,7 @@ function leaveGuard(m) {
   return (next) => {
     if (next.startsWith(`#/m/${m.id}/fix`)) return true;
     const d = loadDraft(m); if (!dirty(d)) return true;
-    confirmBox({ title: '保存していない修正があります', body: `<p>修正（${d.changes.length}件）はまだ保存されていません。下書きはこの端末に残るので、あとで「記録の修正」を開くと続きから直せます。</p>`, ok: '保存せずに移動', cancel: '修正を続ける' })
+    confirmBox({ title: '保存していない修正があります', body: `<p>修正（${count(d)}件）はまだ保存されていません。下書きはこの端末に残るので、あとで「記録の修正」を開くと続きから直せます。</p>`, ok: '保存せずに移動', cancel: '修正を続ける' })
       .then((ok) => { if (ok) { setLeaveGuard(null); location.hash = next; } });
     return false;
   };

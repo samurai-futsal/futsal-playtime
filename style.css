@@ -404,3 +404,10 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .rvtb th.srt.on{background:#1F5FBF}.rvtb th.srt.on i{opacity:1}
 .rvhint{font-size:12px;color:#8A94A6;margin:6px 0 0}
 .fxorig{margin:0 0 8px;width:100%;min-height:40px;border-color:#E3A21C;color:#6A4A00;background:#FFF8E6}
+/* 記録の修正：履歴 */
+.fxtb .tag{display:inline-block;font-size:11px;font-weight:700;border-radius:6px;padding:1px 6px;background:#E9EDF3;color:#44546A;white-space:nowrap}
+.fxtb .tag.warn{background:#FFE9A8;color:#6A4A00}.fxtb .tag.on{background:#1F4FB8;color:#fff}
+.fxtb.lg tr.lgoff .lgtx{text-decoration:line-through;color:#8A94A3}
+.fxtb.lg tr.lgsave td{background:#F3F6FA;color:#5A6678;font-size:12px;text-align:center;padding:4px}
+.fxtb.lg tr.lgorig td{background:#FBF7EC}
+.fxtb.lg td:last-child{text-align:right;white-space:nowrap}

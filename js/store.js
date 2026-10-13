@@ -183,6 +183,13 @@ export function watchFixLog(matchId) {
   }, onErr);
   return c;
 }
+// 履歴の1行を書き換える（保存した直しを戻したときの印など）
+export function updFixLog(matchId, id, data) {
+  const { setDoc, doc } = F.fsM;
+  const c = watchFixLog(matchId); c.list = c.list.map((x) => (x.id === id ? { ...x, ...data } : x));
+  setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'fixlog', id), data, { merge: true }).catch(onErr);
+  emit();
+}
 export function addFixLog(matchId, rec) {
   const id = newId();
   const { setDoc, doc } = F.fsM;
