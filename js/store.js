@@ -198,3 +198,32 @@ export function addFixLog(matchId, rec) {
   setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'fixlog', id), data).catch(onErr);
   emit();
 }
+
+// ---------- イベント（teams/{t}/matches/{m}/events/{id}、spec 6章・13章） ----------
+// 1件ずつの文書。直すときは上書き、消すときは deleted:true（ほかの端末にも消したことが届く）。
+const evCache = {};
+export function watchEvents(matchId) {
+  if (evCache[matchId]) return evCache[matchId];
+  const c = (evCache[matchId] = { list: [], ready: false });
+  const { onSnapshot, collection } = F.fsM;
+  onSnapshot(collection(F.db, 'teams', S.teamId, 'matches', matchId, 'events'), { includeMetadataChanges: true }, (snap) => {
+    track('ev_' + matchId, snap);
+    c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() })); c.ready = true; emit();
+  }, onErr);
+  return c;
+}
+export function saveEvent(matchId, ev) {
+  const id = ev.id || newId();
+  const data = { ...ev, id, src: ev.src || 'app', dev: deviceId(), t: Date.now() };
+  for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
+  const c = watchEvents(matchId);
+  c.list = [...c.list.filter((x) => x.id !== id), data]; // すぐ画面に出す
+  const { setDoc, doc } = F.fsM;
+  setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'events', id), data).catch(onErr);
+  emit();
+  return data;
+}
+export function deleteEvent(matchId, id) {
+  const c = watchEvents(matchId); const ev = c.list.find((x) => x.id === id); if (!ev) return;
+  saveEvent(matchId, { ...ev, deleted: true });
+}

@@ -7,11 +7,12 @@ import {
 import { vPlay, unmountPlay } from './matchplay.js';
 import { vReview, stopReviewTick } from './review.js';
 import { vFix } from './fix.js';
+import { vEvents } from './evinput.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js'];
 export function startApp(c) {
   ctx = c;
   try { const t = localStorage.getItem('fpt.team'); if (t) selectTeam(t); } catch {}
@@ -481,6 +482,7 @@ function vMatch(r) {
   if (r.sub === 'members') return vMatchMembers(m);
   if (r.sub === 'review') return vReview(m);
   if (r.sub === 'fix') return vFix(m);
+  if (r.sub === 'events') return vEvents(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
     return vPlay(m);
@@ -505,12 +507,12 @@ function vMatch(r) {
     <div class="acts">
       ${btn('MATCH PLAY', '試合中はここで操作（交代・時計・出場時間）', `#/m/${m.id}/play`, { pri: nMem >= 5 })}
       ${btn('マッチレビュー', '出場記録、試合データを確認 ※試合後も確認可能', `#/m/${m.id}/review`)}
-      ${btn('リアルタイム入力', 'ベンチ外スタッフがPC・iPadでイベントを入力', '', { soon: true })}
+      ${btn('リアルタイム入力', 'ベンチ外スタッフがPC・iPadでイベントを入力（試合後のイベント入力と同じ画面）', `#/m/${m.id}/events`)}
       ${btn('マッチスタッツ（PDF）・マッチレポート（PDF）', 'その時点までの記録で書き出す', '', { soon: true })}
     </div>
     <h2 class="h">試合後</h2>
     <div class="acts">
-      ${btn('イベント入力', '映像を見ながら入力', '', { soon: true })}
+      ${btn('イベント入力', '映像を見ながら入力', `#/m/${m.id}/events`)}
       ${btn('記録の修正', '交代・スタメン・退場・パワープレー・試合情報を直す（イベントは④で）', `#/m/${m.id}/fix`)}
       ${btn('分析', 'この試合の分析', '', { soon: true })}
       ${btn('書き出し', 'マッチスタッツ・マッチレポート・データシート・Sportscode', '', { soon: true })}
