@@ -171,3 +171,23 @@ export function deviceId() {
     return id;
   } catch { return 'unknown'; }
 }
+
+// ---------- 記録の修正の履歴（teams/{t}/matches/{m}/fixlog/{id}、spec 8章「履歴」） ----------
+const logCache = {};
+export function watchFixLog(matchId) {
+  if (logCache[matchId]) return logCache[matchId];
+  const c = (logCache[matchId] = { list: [], ready: false });
+  const { onSnapshot, collection } = F.fsM;
+  onSnapshot(collection(F.db, 'teams', S.teamId, 'matches', matchId, 'fixlog'), {}, (snap) => {
+    c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() })); c.ready = true; emit();
+  }, onErr);
+  return c;
+}
+export function addFixLog(matchId, rec) {
+  const id = newId();
+  const { setDoc, doc } = F.fsM;
+  const data = { ...rec, t: Date.now(), dev: deviceId() };
+  const c = watchFixLog(matchId); c.list = [...c.list, { id, ...data }];
+  setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'fixlog', id), data).catch(onErr);
+  emit();
+}

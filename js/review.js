@@ -2,7 +2,7 @@
 // so they are always shown. Items 4〜6 need events (④) and are not shown until then.
 import { S, matchById, playerById, matchesOf, teamSettings, watchOps } from './store.js';
 import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
-import { matchModel, playerTable, setTable, playedTime } from './model.js';
+import { matchModel, playerTable, setTable, playedTime, periodSig } from './model.js';
 import { esc, fmtShort } from './ui.js';
 import { render } from './views.js';
 
@@ -20,7 +20,8 @@ export function vReview(m) {
   if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
   const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 };
   const st = replay(opsC.list, cfg);
-  const M = matchModel(st);
+  st.sig = periodSig(opsC.list);
+  const M = matchModel(st, Date.now(), m.fix);
   const running = M.live && st.periods[st.current].runningSince != null;
   // 出場中の時間を進める：時計が動いている間だけ1秒ごとに描き直す
   stopReviewTick();
@@ -52,7 +53,9 @@ export function vReview(m) {
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button></div>
-      <div class="rvjumps">${jumps}<span class="rvnote">4〜6（マッチ・ペース、スコア、スタッツ）はイベントを入力すると表示します</span></div></div>`;
+      <div class="rvjumps">${jumps}<span class="rvnote">4〜6（マッチ・ペース、スコア、スタッツ）はイベントを入力すると表示します</span>
+        ${M.fixed.length ? `<span class="rvfix">記録の修正を反映：${M.fixed.map((k) => periodLabel(k)).join('・')}</span>` : ''}
+        ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
 
   if (!started) {
     return { active: 'acts', html: `<div class="rvw">${head}<div class="card empty">まだ記録がありません。MATCH PLAYで先発を選んでスタートすると、ここに出場時間が表示されます。</div></div>`, bind: bindReview(m) };

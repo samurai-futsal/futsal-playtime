@@ -6,6 +6,7 @@ import {
 } from './store.js';
 import { vPlay, unmountPlay } from './matchplay.js';
 import { vReview, stopReviewTick } from './review.js';
+import { vFix } from './fix.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
@@ -20,8 +21,15 @@ export function startApp(c) {
 
 // ---------- navigation (「‹ 戻る」 = 1つ前の画面) ----------
 const stack = [];
+// 画面を離れる前の確認（記録の修正で保存していないときなど）。false を返すと移動しない
+let leaveGuard = null;
+export function setLeaveGuard(fn) {
+  leaveGuard = fn;
+  window.onbeforeunload = fn ? (e) => { e.preventDefault(); e.returnValue = ''; } : null;
+}
 function onHash() {
   const h = location.hash || '#/home';
+  if (leaveGuard && leaveGuard(h) === false) { const prev = stack[stack.length - 1]; if (prev) history.replaceState(null, '', prev); return; }
   if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop();
   else if (stack[stack.length - 1] !== h) stack.push(h);
   closeModal();
@@ -470,6 +478,7 @@ function vMatch(r) {
   if (r.sub === 'setup') return vMatchSetup(m);
   if (r.sub === 'members') return vMatchMembers(m);
   if (r.sub === 'review') return vReview(m);
+  if (r.sub === 'fix') return vFix(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
     return vPlay(m);
@@ -500,7 +509,7 @@ function vMatch(r) {
     <h2 class="h">試合後</h2>
     <div class="acts">
       ${btn('イベント入力', '映像を見ながら入力', '', { soon: true })}
-      ${btn('記録の修正', '交代・時計・イベントを直す', '', { soon: true })}
+      ${btn('記録の修正', '交代・スタメン・退場・パワープレー・試合情報を直す（イベントは④で）', `#/m/${m.id}/fix`)}
       ${btn('分析', 'この試合の分析', '', { soon: true })}
       ${btn('書き出し', 'マッチスタッツ・マッチレポート・データシート・Sportscode', '', { soon: true })}
     </div>`,

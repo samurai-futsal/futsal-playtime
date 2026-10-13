@@ -1,7 +1,7 @@
 // Random-operation test for the MATCH PLAY engine (spec 10章「自動テスト」).
 // Run: node test/engine.test.mjs
 import { replay, nowElapsed, playerPeriodTime, seatView, periodLen, PERIODS } from '../js/engine.js';
-import { matchModel, checkTotal, setTable, playedTime } from '../js/model.js';
+import { matchModel, checkTotal, setTable, playedTime, replayToFix, checkFix, playerTable } from '../js/model.js';
 
 let seed = Number(process.argv[2] || 12345);
 const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
@@ -51,6 +51,25 @@ function check(S, t, ctx) {
   }
 }
 
+// 記録の修正（spec 8章）：MATCH PLAYの記録を修正用の形に直して戻しても、出場時間・回数・空席がまったく同じ
+function checkFixRoundTrip(S, t, sd, step) {
+  const fail = (m) => { throw new Error(`fix round trip: ${m} | seed ${sd} step ${step}`); };
+  const fix = { periods: {} };
+  for (const p of PERIODS) if (S.periods[p.key].status === 'done') {
+    fix.periods[p.key] = replayToFix(S, p.key);
+    const errs = checkFix(fix.periods[p.key], cfg); if (errs.length) fail(errs.join(' / '));
+  }
+  const A = matchModel(S, t), B = matchModel(S, t, fix);
+  const ta = playerTable(A), tb = playerTable(B);
+  for (const pid of ALL) for (const p of PERIODS) {
+    const x = ta[pid]?.per[p.key] || { time: 0, count: 0 }, y = tb[pid]?.per[p.key] || { time: 0, count: 0 };
+    if (x.time !== y.time) fail(`${pid} ${p.key} time ${x.time} vs ${y.time}`);
+  }
+  const ea = A.empties.reduce((s, e) => s + e.to - e.from, 0), eb = B.empties.reduce((s, e) => s + e.to - e.from, 0);
+  if (ea !== eb) fail(`empty ${ea} vs ${eb}`);
+  const ct = checkTotal(B); if (Math.abs(ct.players - ct.expected) > 2) fail(`fixed total ${ct.players} != ${ct.expected}`);
+}
+
 function runOne(sd, steps = 220) {
   seed = sd; const ops = []; let t = 1e12; let n = 0;
   const add = (o) => { const S0 = replay(ops, cfg); ops.push({ id: 'o' + n, t, n: n++, period: S0.current, ...o }); };
@@ -86,6 +105,7 @@ function runOne(sd, steps = 220) {
     }
     add(op);
     check(replay(ops, cfg), t, { seed: sd, step, op });
+    if (step % 20 === 19) checkFixRoundTrip(replay(ops, cfg), t, sd, step);
   }
   return ops.length;
 }

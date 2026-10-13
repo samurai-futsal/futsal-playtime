@@ -1,7 +1,7 @@
 // Match model for the review / analysis screens (spec 7章・8章).
 // Built from the MATCH PLAY replay. Every number on the review is computed from this, so the
 // review, analysis and reports always agree (spec 7章「どちらも同じ記録から同じ計算」).
-import { PERIODS, periodLen, nowElapsed } from './engine.js';
+import { PERIODS, periodLen, nowElapsed, effectiveOps } from './engine.js';
 
 const isGK = (cfg, pid) => cfg.members?.[pid]?.pos === 'GK';
 export const SET_MIN = 3000; // ms
@@ -13,7 +13,7 @@ function shownPeriods(st) {
   return PERIODS.filter((p) => !p.extra || cfg.times?.extra || st.extraDecided === true || st.periods[p.key].status !== 'none');
 }
 
-export function matchModel(st, now = Date.now()) {
+export function matchModel(st, now = Date.now(), fix = null) {
   const cfg = st.cfg;
   const live = st.periods[st.current]?.status === 'live';
   const at = live ? nowElapsed(st, now) : null;
@@ -28,7 +28,22 @@ export function matchModel(st, now = Date.now()) {
     .map((s) => ({ ...s, from: R(s.from), to: R(s.to ?? (live && s.period === st.current ? at : s.from)) }))
     .filter((s) => s.to > s.from && periods.some((p) => p.key === s.period));
   const empties = st.empties.map((e) => ({ ...e, from: R(e.from), to: R(e.to ?? (live && e.period === st.current ? at : e.from)) }));
-  return { cfg, periods, stints, empties, pp: st.pp, timeouts: st.timeouts, ejections: st.ejections, current: st.current, live, matchOver: st.matchOver, askExtra: st.askExtra };
+  const M = { cfg, periods, stints, empties, pp: st.pp, timeouts: st.timeouts, ejections: st.ejections, current: st.current, live, matchOver: st.matchOver, askExtra: st.askExtra, fixed: [] };
+  // 記録の修正（spec 8章）で保存したピリオドは、MATCH PLAYの記録の代わりに修正後の記録を使う
+  for (const p of periods) {
+    const fp = fix?.periods?.[p.key];
+    if (!fp || p.status !== 'done') continue;
+    // 修正したあとでMATCH PLAYの記録が変わった（リセット・やり直しなど）ピリオドは、修正を使わずに知らせる
+    if (st.sig && fp.basis != null && st.sig[p.key] !== fp.basis) { M.stale = (M.stale || []).concat(p.key); continue; }
+    const d = fixData(fp, p.key);
+    p.elapsed = R(fp.elapsed);
+    M.stints = M.stints.filter((x) => x.period !== p.key).concat(d.stints);
+    M.empties = M.empties.filter((x) => x.period !== p.key).concat(d.empties);
+    M.pp = M.pp.filter((x) => x.period !== p.key).concat(d.pp);
+    M.ejections = M.ejections.filter((x) => x.period !== p.key).concat(d.ejections);
+    M.fixed.push(p.key);
+  }
+  return M;
 }
 
 // playing time actually played so far (出場率の分母)
@@ -78,4 +93,97 @@ export function checkTotal(M) {
   const players = M.stints.reduce((s, x) => s + (x.to - x.from), 0);
   const empty = M.empties.reduce((s, x) => s + Math.max(0, (x.to ?? x.from) - x.from), 0);
   return { players, expected: 5 * playedTime(M) - empty };
+}
+
+// ---------- 記録の修正（spec 8章）：ピリオドごとの「場所（5つのキュー）」の記録 ----------
+// fp = { elapsed, lineup:[pid×5], ev:[{id, kind:'sub'|'eject'|'fill', seat, at, in?, pid?, reason?}], pp:[{id,team,from,to}] }
+// 交代は「その場所に入った選手」だけを持つ。OUTした選手は、その直前にその場所にいた選手（並びから決まる）。
+let idn = 0;
+const nid = () => 'e' + Date.now().toString(36) + (idn++).toString(36);
+
+export function replayToFix(st, key) {
+  const p = st.periods[key];
+  const fp = { elapsed: R(p.elapsed), lineup: [null, null, null, null, null], ev: [], pp: [] };
+  for (let seat = 0; seat < 5; seat++) {
+    const items = [
+      ...st.stints.filter((x) => x.period === key && x.seat === seat).map((x) => ({ k: 's', pid: x.pid, rf: x.from, rt: x.to ?? p.elapsed })),
+      ...st.empties.filter((x) => x.period === key && x.seat === seat).map((x) => ({ k: 'e', pid: x.pid, rf: x.from, rt: x.to ?? p.elapsed })),
+    ].sort((a, b) => a.rf - b.rf || a.rt - b.rt || (a.k === 'e' ? 1 : -1)) // 並べるのは秒に丸める前の時刻で
+      .map((x) => ({ ...x, from: R(x.rf), to: R(x.rt) }));
+    let prev = null;
+    for (const it of items) {
+      if (!prev) { if (it.k === 's') fp.lineup[seat] = it.pid; }
+      else if (it.k === 's' && prev.k === 's') fp.ev.push({ id: nid(), kind: 'sub', seat, at: it.from, in: it.pid });
+      else if (it.k === 'e') fp.ev.push({ id: nid(), kind: 'eject', seat, at: it.from, reason: st.ejections.find((x) => x.period === key && x.pid === it.pid)?.reason || null });
+      else if (it.k === 's' && prev.k === 'e') fp.ev.push({ id: nid(), kind: 'fill', seat, at: it.from, in: it.pid });
+      prev = it;
+    }
+  }
+  fp.pp = st.pp.filter((x) => x.period === key).map((x) => ({ id: nid(), team: x.team, from: R(x.from), to: R(x.to ?? p.elapsed) })).filter((x) => x.to > x.from);
+  fp.ev.sort((a, b) => a.at - b.at || a.seat - b.seat);
+  return fp;
+}
+
+// 場所ごとに並べ直したもの：[{seat, segs:[{pid|null(空席), from, to, startEv, endEv}]}]
+export function seatWalk(fp) {
+  const out = [];
+  for (let seat = 0; seat < 5; seat++) {
+    const evs = fp.ev.filter((e) => e.seat === seat).sort((a, b) => a.at - b.at); // 同じ時刻は記録の順のまま（並べ替えは安定）
+    const segs = []; let cur = { pid: fp.lineup[seat] || null, from: 0, startEv: null };
+    for (const e of evs) {
+      segs.push({ ...cur, to: e.at, endEv: e.id });
+      if (e.kind === 'eject') cur = { pid: null, from: e.at, startEv: e.id, ejected: segs[segs.length - 1].pid };
+      else cur = { pid: e.in, from: e.at, startEv: e.id };
+    }
+    segs.push({ ...cur, to: fp.elapsed, endEv: null });
+    out.push({ seat, segs });
+  }
+  return out;
+}
+
+export function fixData(fp, key) {
+  const stints = [], empties = [], ejections = [];
+  for (const { seat, segs } of seatWalk(fp)) {
+    for (const g of segs) {
+      if (g.to <= g.from && g.pid) continue;
+      if (g.pid) stints.push({ period: key, pid: g.pid, seat, from: g.from, to: g.to });
+      else if (g.startEv) empties.push({ period: key, seat, pid: g.ejected, from: g.from, to: g.to });
+    }
+  }
+  for (const e of fp.ev.filter((x) => x.kind === 'eject')) {
+    const w = seatWalk(fp)[e.seat].segs.find((g) => g.endEv === e.id);
+    ejections.push({ period: key, pid: w?.pid, at: e.at, reason: e.reason || null });
+  }
+  return { stints, empties, ejections, pp: (fp.pp || []).map((x) => ({ period: key, team: x.team, from: x.from, to: x.to })) };
+}
+
+// 矛盾のチェック（保存できない問題）
+export function checkFix(fp, cfg, label = '') {
+  const errs = [];
+  const fmt = (ms) => { const r = Math.max(0, Math.round((fp.elapsed - ms) / 1000)); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`; };
+  const name = (pid) => `${cfg.members?.[pid]?.no ?? '?'}番`;
+  fp.lineup.forEach((pid, i) => { if (!pid) errs.push(`${label}スタメンの${i + 1}つ目の場所が空いています`); });
+  for (const e of fp.ev) if (e.at < 0 || e.at > fp.elapsed) errs.push(`${label}${fmt(e.at)} の記録がピリオドの外にあります`);
+  const W = seatWalk(fp);
+  for (const { segs } of W) for (const g of segs) if (g.to < g.from) errs.push(`${label}時刻の順番が逆になっている交代があります（残り${fmt(g.from)}）`);
+  // 同じ選手が同じ時間に2か所にいないか
+  const all = W.flatMap((w) => w.segs.filter((g) => g.pid && g.to > g.from).map((g) => ({ ...g, seat: w.seat })));
+  const seen = new Set();
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+    const a = all[i], b = all[j];
+    if (a.pid === b.pid && a.from < b.to && b.from < a.to) {
+      const k = a.pid + Math.max(a.from, b.from);
+      if (!seen.has(k)) { seen.add(k); errs.push(`${label}${name(a.pid)} が残り${fmt(Math.max(a.from, b.from))}に2つの場所に入っています`); }
+    }
+  }
+  for (const x of fp.pp || []) if (!(x.to > x.from)) errs.push(`${label}5×4の時間帯の終わりが始まりより前です`);
+  return errs;
+}
+export const newEvId = nid;
+
+// MATCH PLAYの記録の「形」：ピリオドごとの有効な操作の数と最後の操作。修正はこれが同じときだけ使う
+export function periodSig(ops) {
+  const { list } = effectiveOps(ops); const sig = {};
+  for (const p of PERIODS) { const l = list.filter((o) => o.period === p.key); sig[p.key] = l.length ? `${l.length}:${l[l.length - 1].id}` : '0'; }
+  return sig;
 }
