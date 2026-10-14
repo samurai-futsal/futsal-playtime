@@ -763,6 +763,13 @@ async function exportBackup() {
         const s = await fsM.getDocs(fsM.collection(db, 'teams', t.id, sub));
         team[sub] = s.docs.map((d) => ({ id: d.id, ...d.data() }));
       }
+      // 試合ごとの記録：MATCH PLAYの操作（ops）、イベント（events）、記録の修正の履歴（fixlog）
+      for (const m of team.matches) {
+        for (const sub of ['ops', 'events', 'fixlog']) {
+          const s = await fsM.getDocs(fsM.collection(db, 'teams', t.id, 'matches', m.id, sub));
+          m[sub] = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+        }
+      }
       out.teams.push(team);
     }
     const blob = new Blob([JSON.stringify(out, (k, v) => (v && typeof v.toDate === 'function' ? v.toDate().toISOString() : v), 2)], { type: 'application/json' });
