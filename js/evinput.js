@@ -3,7 +3,7 @@
 // 入れないと記録できないのは時刻とイベントだけ。● は資料に出る項目（空けた分は「未入力」の印）。
 import { watchOps, watchEvents, saveEvent, deleteEvent, playerById, opts, teamSettings } from './store.js';
 import { replay, PERIODS, periodLabel } from './engine.js';
-import { matchModel } from './model.js';
+import { matchModel, periodSig } from './model.js';
 import { esc, openModal, closeModal, confirmBox, toast } from './ui.js';
 import { keypadHTML, bindKeypad } from './keypad.js';
 import { render } from './views.js';
@@ -26,6 +26,7 @@ export function vEvents(m) {
   if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
   const cfg = cfgOf(m);
   const st = replay(opsC.list, cfg);
+  st.sig = periodSig(opsC.list); // MATCH PLAYの記録が変わったあとの古い修正は使わない（マッチレビューと同じ）
   const M = matchModel(st, Date.now(), m.fix);
   const periods = M.periods;
   const pOrder = PERIODS.map((p) => p.key);
