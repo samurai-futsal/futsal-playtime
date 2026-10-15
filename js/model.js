@@ -286,3 +286,23 @@ export function periodSig(ops) {
   for (const p of PERIODS) { const l = list.filter((o) => o.period === p.key); sig[p.key] = l.length ? `${l.length}:${l[l.length - 1].id}` : '0'; }
   return sig;
 }
+
+// ---------- タイムラインの並び（セットが分かる並び） ----------
+// GK（先発のGK → 初めて入った順 → 出ていないGKは背番号順）、そのあとFPを
+// 先発（背番号順）→ 初めてピッチに入った順（同じ時刻なら背番号の小さい順）→ 出ていない選手（背番号順）。
+// 後半の先発で初めて出た選手は、後半の初めに入ったものとして数える。
+export function entryOrder(M) {
+  const cfg = M.cfg; const members = Object.keys(cfg.members || {});
+  const noOf = (pid) => parseInt(cfg.members?.[pid]?.no, 10) || 999;
+  const off = {}; let acc = 0; for (const p of M.periods) { off[p.key] = acc; acc += p.len; }
+  const first = {};
+  for (const s of M.stints) {
+    if (off[s.period] == null) continue;
+    const t = off[s.period] + s.from;
+    if (first[s.pid] == null || t < first[s.pid]) first[s.pid] = t;
+  }
+  const by = (a, b) => (first[a] ?? Infinity) - (first[b] ?? Infinity) || noOf(a) - noOf(b);
+  const gk = members.filter((p) => isGK(cfg, p)).sort(by);
+  const fp = members.filter((p) => !isGK(cfg, p)).sort(by);
+  return [...gk, ...fp];
+}

@@ -3,7 +3,7 @@
 import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvents, opts } from './store.js';
 import { setEventTable } from './events.js';
 import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
-import { matchModel, toRunning, playerTable, setTable, playedTime, periodSig } from './model.js';
+import { matchModel, toRunning, playerTable, setTable, playedTime, periodSig, entryOrder } from './model.js';
 import { esc, fmtShort } from './ui.js';
 import { render } from './views.js';
 
@@ -38,7 +38,7 @@ export function vReview(m) {
   if (running || (runMode && M.live)) tick = setInterval(() => { if (!location.hash.endsWith('/review')) return stopReviewTick(); render(); }, 1000);
 
   const mem = (pid) => m.members?.[pid] || {};
-  const order = Object.keys(m.members || {}).sort((a, b) => (mem(a).pos === 'GK' ? 0 : 1) - (mem(b).pos === 'GK' ? 0 : 1) || (parseInt(mem(a).no, 10) || 999) - (parseInt(mem(b).no, 10) || 999));
+  const order = entryOrder(M0); // タイムライン：GK → 先発のFP（背番号順）→ 初めて入った順
   const byNo = Object.keys(m.members || {}).sort((a, b) => (parseInt(mem(a).no, 10) || 999) - (parseInt(mem(b).no, 10) || 999));
   const last = (pid) => playerById(pid)?.last || '';
   const badge = (pid) => `<span class="no ${mem(pid).pos === 'GK' ? 'gk' : 'fp'}">${esc(mem(pid).no ?? '')}</span>`;
@@ -59,7 +59,7 @@ export function vReview(m) {
 
   const others = matchesOf(m.activityId).filter((x) => x.status === 'playing' || x.status === 'done' || x.id === m.id);
   const sw = `<select id="rvMatch" class="rvsel">${others.map((x) => `<option value="${x.id}" ${x.id === m.id ? 'selected' : ''}>vs ${esc(x.opponent)}（${fmtShort(x.date)}）</option>`).join('')}</select>`;
-  const jumps = [[1, '出場時間', 'rv1'], ['1-2', '1回ごと', 'rv1b'], [2, 'タイムライン', 'rv2'], [3, 'セット', 'rv3'], ...(evs.length ? [['4-2', 'セット別', 'rv4b']] : [])].map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
+  const jumps = [['出場時間', 'rv1'], ['1回ごと', 'rv1b'], ['タイムライン', 'rv2'], ['セット', 'rv3'], ...(evs.length ? [['セット別', 'rv4b']] : [])].map(([t, id], i) => [i + 1, t, id]).map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
@@ -124,7 +124,7 @@ export function vReview(m) {
     <table class="rvtb"><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${th}${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}</tr>${rows}</table>
     <p class="rvhint">見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）。「選手」を押すと背番号順に戻ります</p></div></section>`;
 
-  // ---------- 1-2. 1回ごとの出場時間 ----------
+  // ---------- 2. 1回ごとの出場時間 ----------
   // ピリオドごとに、選手の1回目・2回目…の出場時間。小さい数字＝入った〜出た（プレーイングタイムは残り時間、ランニングタイムはキックオフからの時間）
   const clk = (p, v) => (runMode ? mmss(v) : mmss(p.len - v));
   const onNow = new Set(M.live ? st.seats.filter(Boolean) : []);
@@ -144,10 +144,10 @@ export function vReview(m) {
     }).join('');
     return `<div class="rvst2"><b>${p.label}</b><span>（${mmss(p.elapsed)}）</span></div><table class="rvtb rvper"><tr><th>選手</th>${hd}<th>合計</th><th>回数</th></tr>${body}</table>`;
   }).join('');
-  const s1b = `<section class="rvsec" id="rv1b"><div class="rvtt"><b>1-2. 1回ごとの出場時間</b><span>ピッチに入ってから出るまでの1回ごとの時間（${TT}）。大きい数字＝その回の時間、小さい数字＝入った〜出た（${runMode ? 'キックオフからの時間' : '時計の残り時間'}）。オレンジ＝1分未満。合計・回数は「1. 出場時間」と同じ</span></div>
+  const s1b = `<section class="rvsec" id="rv1b"><div class="rvtt"><b>2. 1回ごとの出場時間</b><span>ピッチに入ってから出るまでの1回ごとの時間（${TT}）。大きい数字＝その回の時間、小さい数字＝入った〜出た（${runMode ? 'キックオフからの時間' : '時計の残り時間'}）。オレンジ＝1分未満。合計・回数は「1. 出場時間」と同じ</span></div>
     <div class="rvbox">${perTables}</div></section>`;
 
-  // ---------- 2. 出場タイムライン ----------
+  // ---------- 3. 出場タイムライン ----------
   const axis = M.periods.filter((p) => !p.extra || p.status !== 'none' || st.askExtra || cfg.times?.extra);
   const total = axis.reduce((s, p) => s + p.len, 0);
   const off = {}; let acc = 0; for (const p of axis) { off[p.key] = acc; acc += p.len; }
@@ -167,17 +167,17 @@ export function vReview(m) {
     }).join('');
     return `<div class="tlr"><span>${badge(pid)} ${esc(last(pid))}</span><div class="tlt">${seps}${future}${bands}</div><b>${mmss(T[pid]?.total || 0)}</b></div>`;
   }).join('');
-  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>2. 出場タイムライン</b><span>いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : ''}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計</span></div>
+  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝GK、先発のFP（背番号順）、そのあとは初めてピッチに入った順。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : ''}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計</span></div>
     <div class="rvbox"><div class="tlr tlhead"><span></span><div class="tlax">${ticks}</div><span>合計</span></div>${tlRows}</div></section>`;
 
-  // ---------- 3. セットの出場時間 ----------
+  // ---------- 4. セットの出場時間 ----------
   const sets = setTable(M);
   const setRows = sets.length ? sets.map((s, i) => `<tr><td>${i + 1}位</td><td class="setn">${s.pids.map((pid) => `${badge(pid)}<small>${esc(last(pid))}</small>`).join('')}</td><td><b>${mmss(s.time)}</b></td><td>${s.count}</td></tr>`).join('')
     : '<tr><td colspan="4" class="na" style="text-align:center">GKが1人・FPが4人そろった時間がまだありません</td></tr>';
-  const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>3. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。GKがいない区間（パワープレー）、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは除く。得点・失点はイベント入力（④）のあとで表示</span></div>
+  const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>4. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。GKがいない区間（パワープレー）、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは除く。得点・失点はイベント入力（④）のあとで表示</span></div>
     <div class="rvbox"><table class="rvtb rvset"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}</table></div></section>`;
 
-  // ---------- 4-2. セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントがあるときだけ） ----------
+  // ---------- 5. セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントがあるときだけ） ----------
   let s4b = '';
   if (evs.length) {
     const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
@@ -188,7 +188,7 @@ export function vReview(m) {
       + `<tr class="ex"><td></td><td class="setn">GKがいない区間・退場で空席の区間</td><td class="na">—</td>${et.special.map(cell).join('')}</tr>`
       + `<tr class="ex"><td></td><td class="setn">交代の瞬間の3秒未満の組み合わせ</td><td class="na">—</td>${et.other.map(cell).join('')}</tr>`
       + `<tr class="tot"><td></td><td class="setn">合計</td><td>${mmss(sets.reduce((a, x) => a + x.time, 0))}</td>${et.total.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b></td>`).join('')}</tr>`;
-    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>4-2. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>FP4人のセットがピッチにいる間に起きた回数（並びは「3. セット」と同じ）。青＝自チーム、赤＝相手。シュートはSZ内シュートと得点を含む（OGは除く）。FSP＝FINISH SET PLAY</span></div>
+    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>5. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>FP4人のセットがピッチにいる間に起きた回数（並びは「4. セットの出場時間」と同じ）。青＝自チーム、赤＝相手。シュートはSZ内シュートと得点を含む（OGは除く）。FSP＝FINISH SET PLAY</span></div>
     <div class="rvbox"><table class="rvtb rvset2"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>${runMode ? 'ランニング<br>タイム' : '出場時間'}</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l}</th>`).join('')}</tr>${body}</table></div></section>`;
   }
 
