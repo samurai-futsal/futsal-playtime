@@ -1,6 +1,6 @@
 // マッチレビュー (spec 7章「マッチレビュー」). 1〜4 は出場と交代の記録だけで作るので常に表示。
 // 5〜8 はイベントが必要（今あるのは 6 セットごとのシュート…。マッチ・ペース・スコア・スタッツは後の工程）。
-// 番号は表示する順の通し番号。ランニングタイムの切り替えは 1〜4 に効く。
+// 番号は1〜8で固定（出ていない項目は飛ぶ。上部に理由を書く）。ランニングタイムの切り替えは 1〜4 に効く。
 import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvents, opts } from './store.js';
 import { setEventTable } from './events.js';
 import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
@@ -61,12 +61,13 @@ export function vReview(m) {
 
   const others = matchesOf(m.activityId).filter((x) => x.status === 'playing' || x.status === 'done' || x.id === m.id);
   const sw = `<select id="rvMatch" class="rvsel">${others.map((x) => `<option value="${x.id}" ${x.id === m.id ? 'selected' : ''}>vs ${esc(x.opponent)}（${fmtShort(x.date)}）</option>`).join('')}</select>`;
-  const jumps = [['出場時間', 'rv1'], ['1回ごと', 'rv1b'], ['タイムライン', 'rv2'], ['セット', 'rv3'], ...(evs.length ? [['セット別', 'rv4b']] : [])].map(([t, id], i) => [i + 1, t, id]).map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
+  // 項目の番号は固定（1〜8）。出ていない項目は番号が飛ぶので、上部にその理由を書く
+  const jumps = [[1, '出場時間', 'rv1'], [2, '1回ごと', 'rv1b'], [3, 'タイムライン', 'rv2'], [4, 'セット', 'rv3'], ...(evs.length ? [[6, 'セット別', 'rv4b']] : [])].map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
         <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button></div>
-      <div class="rvjumps">${jumps}<span class="rvnote">${evs.length ? '' : 'セットごとのシュート・ゾーン進入などは、イベントを入力すると表示します'}</span>
+      <div class="rvjumps">${jumps}<span class="rvnote">番号が飛んでいる項目：${evs.length ? '' : '6 セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントを入力すると表示）、'}5 マッチ・ペース・7 スコアとチームスタッツ・8 スタッツまとめ（まだアプリにない項目。今後の版で表示）</span>
         ${M.fixed.length ? `<span class="rvfix">記録の修正を反映：${M.fixed.map((k) => periodLabel(k)).join('・')}</span>` : ''}
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
 
@@ -196,7 +197,7 @@ export function vReview(m) {
   const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>4. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。GKがいない区間（パワープレー）、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは除く。得点・失点はイベント入力（④）のあとで表示</span></div>
     <div class="rvbox"><table class="rvtb rvset"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}</table></div></section>`;
 
-  // ---------- 5. セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントがあるときだけ） ----------
+  // ---------- 6. セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントがあるときだけ） ----------
   let s4b = '';
   if (evs.length) {
     const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
@@ -208,7 +209,7 @@ export function vReview(m) {
       + `<tr class="ex"><td></td><td class="setn">GKがいない区間・退場で空席の区間</td><td class="na">—</td>${et.special.map(cell).join('')}</tr>`
       + `<tr class="ex"><td></td><td class="setn">交代の瞬間の3秒未満の組み合わせ</td><td class="na">—</td>${et.other.map(cell).join('')}</tr>`
       + `<tr class="tot"><td></td><td class="setn">合計</td><td>${mmss(sets0.reduce((a, x) => a + x.time, 0))}</td>${et.total.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b></td>`).join('')}</tr>`;
-    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>5. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>FP4人のセットがピッチにいる間に起きた回数（並びと出場時間は「4. セットの出場時間」のプレーイングタイム）。青＝自チーム、赤＝相手。シュートはSZ内シュートと得点を含む（OGは除く）。FSP＝FINISH SET PLAY</span></div>
+    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>6. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>FP4人のセットがピッチにいる間に起きた回数（並びと出場時間は「4. セットの出場時間」のプレーイングタイム）。青＝自チーム、赤＝相手。シュートはSZ内シュートと得点を含む（OGは除く）。FSP＝FINISH SET PLAY</span></div>
     <div class="rvbox"><table class="rvtb rvset2"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l}</th>`).join('')}</tr>${body}</table></div></section>`;
   }
 
