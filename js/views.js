@@ -8,11 +8,12 @@ import { vPlay, unmountPlay } from './matchplay.js';
 import { vReview, stopReviewTick } from './review.js';
 import { vFix } from './fix.js';
 import { vEvents } from './evinput.js';
+import { vPhys, stopPhysTick } from './viewer.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js'];
 export function startApp(c) {
   ctx = c;
   try { const t = localStorage.getItem('fpt.team'); if (t) selectTeam(t); } catch {}
@@ -74,6 +75,7 @@ const VIEWS = {
 export function render() {
   const r = route();
   stopReviewTick(); // マッチレビューを開いている間だけ、出場中の時間を1秒ごとに進める
+  stopPhysTick(); // フィジカルコーチ用の画面も同じ
   const main = $('#main');
   if (!S.ready.global || !S.ready.teams) { main.innerHTML = '<p class="mu pad">読み込み中…</p>'; return; }
   let name = r.name;
@@ -483,6 +485,7 @@ function vMatch(r) {
   if (r.sub === 'review') return vReview(m);
   if (r.sub === 'fix') return vFix(m);
   if (r.sub === 'events') return vEvents(m);
+  if (r.sub === 'physical') return vPhys(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
     return vPlay(m);
@@ -507,6 +510,7 @@ function vMatch(r) {
     <div class="acts">
       ${btn('MATCH PLAY', '試合中はここで操作（交代・時計・出場時間）', `#/m/${m.id}/play`, { pri: nMem >= 5 })}
       ${btn('マッチレビュー', '出場記録、試合データを確認 ※試合後も確認可能', `#/m/${m.id}/review`)}
+      ${btn('フィジカルコーチ用（閲覧専用）', 'ランニングタイムで今の出場・休み・今日の出場を見る（記録はしない。ネットが必要）', `#/m/${m.id}/physical`)}
       ${btn('リアルタイム入力', 'ベンチ外スタッフがPC・iPadでイベントを入力（試合後のイベント入力と同じ画面）', `#/m/${m.id}/events`)}
       ${btn('マッチスタッツ（PDF）・マッチレポート（PDF）', 'その時点までの記録で書き出す', '', { soon: true })}
     </div>
@@ -682,7 +686,9 @@ function vSettings() {
       <div><label for="tRed">カラータイマー：赤（分:秒）</label><input id="tRed" name="colorRed" value="${mmss(ts.colorRed)}"></div>
       <div><label for="tSp">セットプレーの自動終了（分:秒）</label><input id="tSp" name="setplayAuto" value="${mmss(ts.setplayAuto)}"></div>
       <div><label for="tRef">「参考値」にする出場時間（分:秒未満）</label><input id="tRef" name="refMin" value="${mmss(ts.refMin)}"></div>
-    </div><p class="mu">カラータイマーは試合を作るときの初期値です。試合ごとに事前設定で変えられます。</p>
+      <div><label for="tROr">フィジカルコーチ用：オレンジ（実際の時間・分:秒）</label><input id="tROr" name="runOrange" value="${mmss(ts.runOrange)}"></div>
+      <div><label for="tRRed">フィジカルコーチ用：赤（実際の時間・分:秒）</label><input id="tRRed" name="runRed" value="${mmss(ts.runRed)}"></div>
+    </div><p class="mu">カラータイマーは試合を作るときの初期値です。試合ごとに事前設定で変えられます。フィジカルコーチ用の色は、ピッチに入ってからの実際の時間（時計が止まっている間も進む）で付きます。</p>
     <div class="row end"><button class="btn pri" id="btnTeamSet">保存</button></div></div>` : ''}`,
     bind(root) {
       $('#btnOut').onclick = async () => { if (await confirmBox({ title: 'ログアウトしますか？', body: '<p>もう一度ログインするにはネットが必要です。試合の前にはログアウトしないでください。</p>', ok: 'ログアウト' })) ctx.signOut(); };
@@ -720,8 +726,8 @@ function vSettings() {
       const ts2 = $('#btnTeamSet');
       ts2 && (ts2.onclick = () => {
         const v = formVals($('#teamSet'));
-        const s = { colorOrange: parseMmss(v.colorOrange, ts.colorOrange), colorRed: parseMmss(v.colorRed, ts.colorRed), setplayAuto: parseMmss(v.setplayAuto, ts.setplayAuto), refMin: parseMmss(v.refMin, ts.refMin) };
-        if (s.colorRed <= s.colorOrange) return toast('赤になる時間は、オレンジより後にしてください');
+        const s = { colorOrange: parseMmss(v.colorOrange, ts.colorOrange), colorRed: parseMmss(v.colorRed, ts.colorRed), setplayAuto: parseMmss(v.setplayAuto, ts.setplayAuto), refMin: parseMmss(v.refMin, ts.refMin), runOrange: parseMmss(v.runOrange, ts.runOrange), runRed: parseMmss(v.runRed, ts.runRed) };
+        if (s.colorRed <= s.colorOrange || s.runRed <= s.runOrange) return toast('赤になる時間は、オレンジより後にしてください');
         put(['teams', S.teamId], { settings: s }); toast('保存しました');
       });
       const saveList = (key, list) => put(['config', 'global'], { [key]: list });
