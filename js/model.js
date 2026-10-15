@@ -46,6 +46,65 @@ export function matchModel(st, now = Date.now(), fix = null) {
   return M;
 }
 
+// ---------- ランニングタイム表示（spec 7章） ----------
+// 同じ記録を「実際に流れた時間」で数え直す。ピリオドの始まり＝キックオフ、終わり＝時計が0:00になった時刻（最後に止まった時刻）。
+// 交代の時刻＝OUTを押した時刻（プレーイングタイムと同じ決め方）。時計が止まっている間もピッチにいた選手の時間に入る。
+// 記録の修正を使うピリオドは、修正前と同じ区切りなら実際の時刻を、変わった区切りは時計の動きから時刻を求める。
+export function toRunning(M, st, now = Date.now()) {
+  const out = { ...M, running: true, periods: [], stints: [], empties: [], pp: [], ejections: [], timeouts: [] };
+  const conv = {};
+  for (const p of M.periods) {
+    const ps = st.periods[p.key];
+    if (p.status === 'none' || ps.kickT == null) { out.periods.push({ ...p }); continue; }
+    const len = periodLen(st.cfg, p.key);
+    const runs = ps.runs || [];
+    const lastR = runs[runs.length - 1];
+    let E;
+    if (p.status === 'done') E = ps.endT;
+    else if (ps.runningSince != null) E = Math.min(now, ps.runningSince + Math.max(0, len - ps.elapsed));
+    else E = lastR?.t1 ?? now;
+    const K = ps.kickT, run = Math.max(0, E - K);
+    // 時計の時間（プレーイングタイム）→ 実際の時刻。止まった瞬間と動き出した瞬間が同じ時計の時間なら、止まった時刻を使う
+    const wallOf = (el) => {
+      let hit = null;
+      for (const r of runs) { const e1 = r.el1 ?? (r.el0 + Math.max(0, E - r.t0)); if (r.el0 < el && el <= e1) hit = r.t0 + (el - r.el0); }
+      if (hit == null) for (const r of runs) if (r.el0 === el) { hit = r.t0; break; }
+      if (hit == null) hit = el <= 0 ? K : E;
+      return hit;
+    };
+    const fixed = M.fixed.includes(p.key);
+    const orig = st.stints.filter((x) => x.period === p.key);
+    const wF = (pid, el) => (fixed ? orig.find((x) => x.pid === pid && R(x.from) === el)?.wf : null) ?? wallOf(el);
+    const wT = (pid, el) => (fixed ? orig.find((x) => x.pid === pid && x.to != null && R(x.to) === el)?.wt : null) ?? wallOf(el);
+    const rel = (w) => R(Math.max(0, Math.min(run, w - K)));
+    conv[p.key] = { rel, wallOf, wF, wT, fixed, E };
+    out.periods.push({ ...p, elapsed: R(run), len: p.status === 'done' ? R(run) : Math.max(R(run), len), playing: p.elapsed });
+  }
+  const C = (k) => conv[k];
+  const span = (x, wf, wt) => { const c = C(x.period); if (!c) return null; return { ...x, from: c.rel(wf), to: c.rel(wt) }; };
+  // 修正していないピリオドは、MATCH PLAYの記録そのもの（時計が止まっている間だけの出場も含む）から数える
+  const src = (list, own) => [...own.filter((x) => C(x.period) && !C(x.period).fixed), ...list.filter((x) => C(x.period)?.fixed)];
+  const endOf = (x, c, w) => (w != null ? w : st.periods[x.period].status !== 'done' && !c.fixed ? c.E : c.wallOf(x.to));
+  for (const s of src(M.stints, st.stints)) {
+    const c = C(s.period);
+    const r = c.fixed ? span(s, c.wF(s.pid, s.from), c.wT(s.pid, s.to)) : span(s, s.wf, endOf(s, c, s.wt));
+    if (r && r.to > r.from) out.stints.push(r);
+  }
+  for (const e of src(M.empties, st.empties)) {
+    const c = C(e.period);
+    const r = c.fixed ? span(e, c.wallOf(e.from), c.wallOf(e.to)) : span(e, e.wf, endOf(e, c, e.wt));
+    if (r && r.to > r.from) out.empties.push(r);
+  }
+  for (const x of src(M.pp, st.pp)) {
+    const c = C(x.period);
+    const r = c.fixed ? span(x, c.wallOf(x.from), c.wallOf(x.to)) : span(x, x.wf ?? c.wallOf(x.from), endOf(x, c, x.wt));
+    if (r && r.to > r.from) out.pp.push(r);
+  }
+  for (const x of M.ejections) { const c = C(x.period); if (c) out.ejections.push({ ...x, at: c.rel(!c.fixed && x.t != null ? x.t : c.wallOf(x.at)) }); }
+  for (const x of M.timeouts || []) { const c = C(x.period); if (c) out.timeouts.push({ ...x, at: c.rel(x.t ?? c.wallOf(x.at)) }); }
+  return out;
+}
+
 // playing time actually played so far (出場率の分母)
 export function playedTime(M) {
   return M.periods.reduce((s, p) => s + (p.status === 'none' ? 0 : p.elapsed), 0);

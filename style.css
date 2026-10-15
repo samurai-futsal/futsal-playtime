@@ -487,3 +487,8 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .page:has(.evw){max-width:1240px}
 .evw .evkp .adjpad{grid-template-columns:repeat(6,48px)}
 .evw .evkp .kp{grid-template-areas:"disp pad" "pm pad" "note note"}
+/* マッチレビュー：時間の数え方の切り替え */
+.rvmode{display:inline-flex;border:1px solid #B9C3D3;border-radius:10px;overflow:hidden;background:#fff}
+.rvmode button{min-height:44px;padding:0 12px;border:0;background:transparent;font-size:14px;font-weight:600;color:#3A4558;cursor:pointer}
+.rvmode button+button{border-left:1px solid #B9C3D3}
+.rvmode button.on{background:#1F5FBF;color:#fff}

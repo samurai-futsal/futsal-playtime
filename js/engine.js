@@ -68,7 +68,8 @@ export function pairBatch(batch, cfg) {
 const isPP = (cfg, pid) => !!cfg.members?.[pid]?.pp;
 
 function newPeriod(key) {
-  return { key, status: 'none', elapsed: 0, runningSince: null, startedAt: null, endedAt: null };
+  // kickT / endT / runs: 実際の時刻（ランニングタイム用）。runs = 時計が動いていた区間 {el0, t0, el1, t1}
+  return { key, status: 'none', elapsed: 0, runningSince: null, startedAt: null, endedAt: null, kickT: null, endT: null, runs: [] };
 }
 
 export function replay(ops, cfg) {
@@ -109,10 +110,17 @@ export function replay(ops, cfg) {
     if (p.runningSince == null) return p.elapsed;
     return Math.min(p.elapsed + Math.max(0, t - p.runningSince), periodLen(cfg, S.current));
   };
-  const openStint = (pid, seat, at) => S.stints.push({ period: S.current, pid, seat, from: at, to: null });
-  const closeStint = (pid, at) => {
+  // wf / wt: 出場の始まりと終わりの実際の時刻（ランニングタイム用）。プレーイングタイムの計算には使わない
+  let T = 0; // 今読んでいる記録の時刻
+  const openStint = (pid, seat, at, t = T) => S.stints.push({ period: S.current, pid, seat, from: at, to: null, wf: t, wt: null });
+  const closeStint = (pid, at, t = T) => {
     const s = S.stints.find((x) => x.period === S.current && x.pid === pid && x.to == null);
-    if (s) s.to = Math.max(s.from, at);
+    if (s) { s.to = Math.max(s.from, at); s.wt = t; }
+  };
+  // 時計を止める（またはピリオドの長さに達した）実際の時刻を記録する
+  const closeRun = (p, at) => {
+    const r = p.runs[p.runs.length - 1];
+    if (r && r.el1 == null) { r.el1 = Math.max(r.el0, at); r.t1 = r.t0 + (r.el1 - r.el0); }
   };
   const onPitch = () => S.seats.filter(Boolean);
 
@@ -126,7 +134,7 @@ export function replay(ops, cfg) {
   function commitBatch(at, partial = false) {
     const pairs = pairBatch(S.batch, cfg);
     for (const [o, inPid] of pairs) {
-      closeStint(o.pid, o.outAt);
+      closeStint(o.pid, o.outAt, o.outT ?? T);
       S.lastOut[o.pid] = cum(o.outAt);
       if (S.setplay && S.setplay.onAtStart.has(o.pid)) {
         S.carry[o.pid] = Math.max(0, o.outAt - (S.cont[o.pid] ?? o.outAt));
@@ -134,7 +142,7 @@ export function replay(ops, cfg) {
       }
       delete S.cont[o.pid];
       S.seats[o.seat] = inPid; S.seatSince[o.seat] = o.outAt;
-      openStint(inPid, o.seat, o.outAt);
+      openStint(inPid, o.seat, o.outAt, o.outT ?? T);
       if (S.carry[inPid] != null) { S.cont[inPid] = o.outAt - S.carry[inPid]; delete S.carry[inPid]; }
       else S.cont[inPid] = o.outAt;
       delete S.lastOut[inPid];
@@ -149,7 +157,7 @@ export function replay(ops, cfg) {
     if (!gkOn && gkLeft) {
       const ppIn = pairs.some(([, i]) => isPP(cfg, i));
       if (ppIn) {
-        if (!S.ppActive) { S.ppActive = { team: 'own', period: S.current, from: at, to: null, auto: true }; S.pp.push(S.ppActive); S.notices.push({ kind: 'ppAuto' }); }
+        if (!S.ppActive) { S.ppActive = { team: 'own', period: S.current, from: at, to: null, auto: true, wf: T }; S.pp.push(S.ppActive); S.notices.push({ kind: 'ppAuto' }); }
       } else S.notices.push({ kind: 'noGK' });
     }
   }
@@ -174,10 +182,13 @@ export function replay(ops, cfg) {
       if (S.batch.ins.length) commitBatch(at, true);
       S.batch = { outs: [], ins: [] };
     }
-    S.stints.filter((s) => s.period === S.current && s.to == null).forEach((s) => { s.to = at; });
-    S.empty.forEach((e, i) => { if (e) { const r = S.empties.find((x) => x.period === S.current && x.seat === i && x.to == null); if (r) r.to = at; } });
+    closeRun(p, at);
+    const lastRun = p.runs[p.runs.length - 1];
+    p.endT = lastRun ? lastRun.t1 : T; // ピリオドの終わり＝時計が最後に止まった（0:00になった）時刻
+    S.stints.filter((s) => s.period === S.current && s.to == null).forEach((s) => { s.to = at; s.wt = p.endT; });
+    S.empty.forEach((e, i) => { if (e) { const r = S.empties.find((x) => x.period === S.current && x.seat === i && x.to == null); if (r) { r.to = at; r.wt = p.endT; } } });
     onPitch().forEach((pid) => { S.lastOut[pid] = cum(at); });
-    if (S.ppActive) { S.ppActive.to = at; S.ppActive = null; }
+    if (S.ppActive) { S.ppActive.to = at; S.ppActive.wt = p.endT; S.ppActive = null; }
     endSetplay();
     p.elapsed = at; p.runningSince = null; p.status = 'done';
     S.seats = [null, null, null, null, null]; S.empty = [null, null, null, null, null]; S.cont = {};
@@ -241,12 +252,14 @@ export function replay(ops, cfg) {
     }
     const p = P();
     const at = elapsedAt(op.t);
+    T = op.t;
     maybeExpireSetplay(at);
 
     switch (op.type) {
       case 'kickoff': {
         if (p.status !== 'none' || !Array.isArray(op.lineup) || op.lineup.length !== 5) break;
         p.status = 'live'; p.startedAt = op.t; p.elapsed = 0; p.runningSince = op.t;
+        p.kickT = op.t; p.runs = [{ el0: 0, t0: op.t, el1: null, t1: null }];
         if (S.base[S.current] == null) {
           const idx = PERIODS.findIndex((x) => x.key === S.current);
           S.base[S.current] = PERIODS.slice(0, idx).reduce((s, x) => s + (S.periods[x.key].status === 'done' ? S.periods[x.key].elapsed : 0), 0);
@@ -255,10 +268,10 @@ export function replay(ops, cfg) {
         break;
       }
       case 'start':
-        if (p.status === 'live' && p.runningSince == null && p.elapsed < periodLen(cfg, S.current)) p.runningSince = op.t;
+        if (p.status === 'live' && p.runningSince == null && p.elapsed < periodLen(cfg, S.current)) { p.runningSince = op.t; p.runs.push({ el0: p.elapsed, t0: op.t, el1: null, t1: null }); }
         break;
       case 'stop':
-        if (p.status === 'live' && p.runningSince != null) { p.elapsed = at; p.runningSince = null; }
+        if (p.status === 'live' && p.runningSince != null) { closeRun(p, at); p.elapsed = at; p.runningSince = null; }
         break;
       case 'adjust': {
         if (p.status !== 'live') break;
@@ -287,6 +300,7 @@ export function replay(ops, cfg) {
         Object.keys(S.cont).forEach((k) => { S.cont[k] = Math.min(S.cont[k], to); });
         S.batch.outs.forEach((o) => { o.outAt = Math.min(o.outAt, to); });
         if (S.setplay) { S.setplay.from = Math.min(S.setplay.from, to); S.setplay.endsAt += d; }
+        if (p.runningSince != null) { closeRun(p, at); p.runs.push({ el0: to, t0: op.t, el1: null, t1: null }); }
         p.elapsed = to; if (p.runningSince != null) p.runningSince = op.t;
         break;
       }
@@ -297,7 +311,7 @@ export function replay(ops, cfg) {
         if (ti >= 0) { S.batch.ins.splice(ti, 1); break; } // 仮に入った選手をもう一度押す → ベンチに戻す
         const seat = S.seats.indexOf(pid);
         if (seat < 0 || S.batch.outs.some((o) => o.pid === pid)) break;
-        S.batch.outs.push({ pid, seat, outAt: at });
+        S.batch.outs.push({ pid, seat, outAt: at, outT: T });
         break;
       }
       case 'in': {
@@ -323,7 +337,7 @@ export function replay(ops, cfg) {
         if (es >= 0) { // 退場による空席の補充
           const e = S.empty[es];
           const early = at - e.from < EJECT_WAIT;
-          const rec = S.empties.find((x) => x.period === S.current && x.seat === es && x.to == null); if (rec) rec.to = at;
+          const rec = S.empties.find((x) => x.period === S.current && x.seat === es && x.to == null); if (rec) { rec.to = at; rec.wt = T; }
           S.empty[es] = null; S.seats[es] = pid; S.seatSince[es] = at; openStint(pid, es, at);
           S.cont[pid] = S.carry[pid] != null ? at - S.carry[pid] : at; delete S.carry[pid]; delete S.lastOut[pid];
           S.fills.push({ period: S.current, seat: es, pid, at, early: early && !!op.afterGoal });
@@ -341,7 +355,7 @@ export function replay(ops, cfg) {
         while (S.batch.ins.length > S.batch.outs.length) S.batch.ins.pop();
         closeStint(pid, at); delete S.cont[pid]; S.lastOut[pid] = cum(at);
         S.seats[seat] = null; S.empty[seat] = { from: at, pid };
-        S.empties.push({ period: S.current, seat, pid, from: at, to: null });
+        S.empties.push({ period: S.current, seat, pid, from: at, to: null, wf: T, wt: null });
         S.ejected.add(pid); S.ejections.push({ period: S.current, pid, at, t: op.t });
         if (S.batch.outs.length && S.batch.ins.length === S.batch.outs.length) commitBatch(at);
         break;
@@ -357,15 +371,15 @@ export function replay(ops, cfg) {
       case 'contReset': delete S.carry[op.pid]; break;
       case 'pp': {
         if (p.status !== 'live' || S.ppActive) break;
-        S.ppActive = { team: op.team === 'opp' ? 'opp' : 'own', period: S.current, from: at, to: null, auto: false };
+        S.ppActive = { team: op.team === 'opp' ? 'opp' : 'own', period: S.current, from: at, to: null, auto: false, wf: T };
         S.pp.push(S.ppActive);
         break;
       }
-      case 'ppEnd': if (S.ppActive) { S.ppActive.to = at; S.ppActive = null; } break;
+      case 'ppEnd': if (S.ppActive) { S.ppActive.to = at; S.ppActive.wt = T; S.ppActive = null; } break;
       case 'timeout': {
         if (p.status !== 'live' || PERIODS.find((x) => x.key === S.current).extra) break;
         if (S.timeouts.some((x) => x.period === S.current && x.team === op.team)) break;
-        S.timeouts.push({ team: op.team, period: S.current, at });
+        S.timeouts.push({ team: op.team, period: S.current, at, t: T });
         break;
       }
       case 'periodEnd': {
