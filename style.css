@@ -506,3 +506,7 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .rvset2 td.w b{color:#1F5FBF}.rvset2 td.o b{color:#C8312B}.rvset2 .z{color:#C3C9D4;font-weight:400}
 .rvset2 td.setn{text-align:left;font-weight:500}.rvset2 td.setn small{font-size:12px;margin-right:6px}
 .rvset2 tr.ex td{background:#F6F7FA;font-size:14px}.rvset2 tr.tot td{background:#EEF3FB;font-weight:700}
+/* タイムライン：時計が止まっている間だけの出場（0:00） */
+.tlz{position:absolute;bottom:0;height:20px;width:4px;margin-left:-2px;background:#E0832B;border-radius:2px}
+.tlzl{position:absolute;bottom:21px;transform:translateX(-50%);font-size:10.5px;color:#C2661A;font-weight:800;white-space:nowrap}
+.rvw.compact .tlz{height:16px}.rvw.compact .tlzl{font-size:9px;bottom:17px}

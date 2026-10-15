@@ -181,9 +181,11 @@ export function vReview(m) {
       const small = d / total < 0.045;
       return `<span class="tlb ${mem(pid).pos === 'GK' ? 'gk' : ''}" style="left:${l}%;width:${w}%">${small ? '' : mmss(d)}</span>${small ? `<span class="tls" style="left:${(+l + +w / 2).toFixed(3)}%">${mmss(d)}</span>` : ''}`;
     }).join('');
-    return `<div class="tlr"><span>${badge(pid)} ${esc(last(pid))}</span><div class="tlt">${seps}${future}${bands}</div><b>${mmss(T[pid]?.total || 0)}</b></div>`;
+    const zeros = (M.zero || []).filter((s) => s.pid === pid && off[s.period] != null)
+      .map((s) => `<i class="tlz" style="left:${pct(off[s.period] + s.from)}%" title="時計が止まっている間だけの出場"></i><span class="tlzl" style="left:${pct(off[s.period] + s.from)}%">0:00</span>`).join('');
+    return `<div class="tlr"><span>${badge(pid)} ${esc(last(pid))}</span><div class="tlt">${seps}${future}${bands}${zeros}</div><b>${mmss(T[pid]?.total || 0)}</b></div>`;
   }).join('');
-  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝GK、先発のFP（背番号順）、そのあとは初めてピッチに入った順。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : ''}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計</span></div>
+  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝GK、先発のFP（背番号順）、そのあとは初めてピッチに入った順。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : ''}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計${(M.zero || []).length ? '。オレンジの線と「0:00」＝時計が止まっている間だけの出場（セットプレーの守備などで入れ替えたとき。実際の時間に合わせるなら「記録の修正」で時刻を直す）' : ''}</span></div>
     <div class="rvbox"><div class="tlr tlhead"><span></span><div class="tlax">${ticks}</div><span>合計</span></div>${tlRows}</div></section>`;
 
   // ---------- 4. セットの出場時間 ----------

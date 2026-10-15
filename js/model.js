@@ -27,8 +27,12 @@ export function matchModel(st, now = Date.now(), fix = null) {
   const stints = st.stints
     .map((s) => ({ ...s, from: R(s.from), to: R(s.to ?? (live && s.period === st.current ? at : s.from)) }))
     .filter((s) => s.to > s.from && periods.some((p) => p.key === s.period));
+  // 時計が止まっている間だけの出場（プレーイングタイムで0:00）。時間・回数には入れず、タイムラインに印で出す
+  const zero = st.stints
+    .filter((s) => s.to != null && R(s.to) === R(s.from) && periods.some((p) => p.key === s.period))
+    .map((s) => ({ ...s, from: R(s.from), to: R(s.to) }));
   const empties = st.empties.map((e) => ({ ...e, from: R(e.from), to: R(e.to ?? (live && e.period === st.current ? at : e.from)) }));
-  const M = { cfg, periods, stints, empties, pp: st.pp, timeouts: st.timeouts, ejections: st.ejections, current: st.current, live, matchOver: st.matchOver, askExtra: st.askExtra, fixed: [] };
+  const M = { cfg, periods, stints, zero, empties, pp: st.pp, timeouts: st.timeouts, ejections: st.ejections, current: st.current, live, matchOver: st.matchOver, askExtra: st.askExtra, fixed: [] };
   // 記録の修正（spec 8章）で保存したピリオドは、MATCH PLAYの記録の代わりに修正後の記録を使う
   for (const p of periods) {
     const fp = fix?.periods?.[p.key];
@@ -38,6 +42,7 @@ export function matchModel(st, now = Date.now(), fix = null) {
     const d = fixData(fp, p.key);
     p.elapsed = R(fp.elapsed);
     M.stints = M.stints.filter((x) => x.period !== p.key).concat(d.stints);
+    M.zero = M.zero.filter((x) => x.period !== p.key);
     M.empties = M.empties.filter((x) => x.period !== p.key).concat(d.empties);
     M.pp = M.pp.filter((x) => x.period !== p.key).concat(d.pp);
     M.ejections = M.ejections.filter((x) => x.period !== p.key).concat(d.ejections);
@@ -51,7 +56,7 @@ export function matchModel(st, now = Date.now(), fix = null) {
 // 交代の時刻＝OUTを押した時刻（プレーイングタイムと同じ決め方）。時計が止まっている間もピッチにいた選手の時間に入る。
 // 記録の修正を使うピリオドは、修正前と同じ区切りなら実際の時刻を、変わった区切りは時計の動きから時刻を求める。
 export function toRunning(M, st, now = Date.now()) {
-  const out = { ...M, running: true, periods: [], stints: [], empties: [], pp: [], ejections: [], timeouts: [] };
+  const out = { ...M, running: true, periods: [], stints: [], zero: [], empties: [], pp: [], ejections: [], timeouts: [] };
   const conv = {};
   for (const p of M.periods) {
     const ps = st.periods[p.key];
