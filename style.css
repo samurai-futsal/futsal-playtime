@@ -550,3 +550,25 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .phbh span{white-space:nowrap;line-height:1.3}
 .phgk{flex-wrap:nowrap;gap:12px;white-space:nowrap}.phgk em{font-size:11px}
 .phbr{grid-template-columns:110px 100px minmax(0,1fr) minmax(0,1fr)}
+/* 試合ページ：ボタンを「記録する／見る／書き出す」で分ける。説明は決めた位置で改行する */
+.grp{font-size:12px;font-weight:800;color:#5F6B80;margin:10px 2px 6px;letter-spacing:.05em}
+.acts.acts2{grid-template-columns:repeat(2,minmax(0,1fr))}.acts.acts3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:700px){.acts.acts2,.acts.acts3{grid-template-columns:1fr}}
+.act .ln{display:block}
+.act.rec{border-left:6px solid #1F5FBF}.act.see{border-left:6px solid #0E8A6E}.act.out{border-left:6px solid #8A5BD6}
+.act em{font-style:normal;font-size:11px;color:#B4541A}
+.actnote{font-size:12.5px;margin-top:8px}
+/* マッチレビューをPDFで書き出す（印刷）：上の帯やボタンは出さず、見出しを付けて1項目ずつページを分ける */
+.rvprint{display:none}
+@media print{
+  @page{size:A4;margin:10mm}
+  html,body{background:#fff!important}
+  .bar,#update,.rvhead,#toast,.toast{display:none!important}
+  .page{padding:0!important;max-width:none!important}
+  .rvprint{display:block;padding:2px 0 10px;border-bottom:3px solid var(--navy);margin-bottom:10px}
+  .rvpt{font-size:22px;font-weight:900;color:var(--navy)}.rvps{font-size:12.5px;color:#3A4660;margin-top:3px}
+  .rvw{zoom:.7}
+  .rvsec{break-inside:avoid-page}.rvsec~.rvsec{break-before:page}.rvbox{break-inside:auto}.rvtb tr{break-inside:avoid}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+.act b{white-space:nowrap}.act b small.ro{font-size:11px;font-weight:700;background:#FFC000;color:#18233A;border-radius:5px;padding:1px 6px;vertical-align:2px}

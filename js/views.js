@@ -494,33 +494,43 @@ function vMatch(r) {
   const st = matchStatus(m);
   const nMem = Object.keys(m.members || {}).length;
   const t = { ...DEFAULT_TIMES, ...(m.times || {}) };
-  const btn = (label, sub, href, { soon = false, done = null, pri = false } = {}) => `<a class="act ${soon ? 'soon' : ''} ${pri ? 'pri' : ''}" href="${soon ? '#/soon/' + encodeURIComponent(label) : href}">
-      <b>${label}${done === true ? ' <span class="ok">✓</span>' : done === false ? ' <span class="wait">未</span>' : ''}</b><span>${sub}</span>${soon ? '<em>次の版で入ります</em>' : ''}</a>`;
+  // ボタン：説明は短く、改行する位置を決めておく（変な位置で折り返さない）。kind：rec＝記録する／see＝見るだけ／out＝書き出す
+  const btn = (label, sub, href, { soon = false, soonText = '次の版で入ります', done = null, pri = false, kind = '' } = {}) => `<a class="act ${kind} ${soon ? 'soon' : ''} ${pri ? 'pri' : ''}" href="${soon ? '#/soon/' + encodeURIComponent(label) : href}">
+      <b>${label}${done === true ? ' <span class="ok">✓</span>' : done === false ? ' <span class="wait">未</span>' : ''}</b><span>${sub.split('\n').map((x) => `<span class="ln">${x}</span>`).join('')}</span>${soon ? `<em>${soonText}</em>` : ''}</a>`;
   return {
     active: 'acts',
     html: `<div class="crumb"><a href="#/acts">活動と試合</a> › <a href="#/a/${a?.id}">${esc(a?.name || '')}</a> › vs ${esc(m.opponent)}</div>
     <div class="row between"><div><h1 class="inl">vs ${esc(m.opponent)}</h1> ${chip(st)}
       <div class="mu">${fmtDate(m.date)}${m.kickoff ? ' ' + esc(m.kickoff) + ' キックオフ' : ''}${m.category ? '　' + esc(m.category) : ''}${m.venue ? '　' + esc(m.venue) : ''}　前後半 各${t.half}分・延長${t.extra ? `あり（各${t.extraHalf}分）` : 'なし'}</div></div></div>
     <h2 class="h">試合前</h2>
-    <div class="acts">
-      ${btn('事前設定', '日付・相手・区分・試合時間・カラータイマー', `#/m/${m.id}/setup`, { done: true })}
-      ${btn('試合メンバー', `${nMem}人（最大25人）・パワープレー可能な選手`, `#/m/${m.id}/members`, { done: nMem >= 5, pri: nMem < 5 })}
+    <div class="acts acts2">
+      ${btn('事前設定', '日付・相手・区分\n試合時間・カラータイマー', `#/m/${m.id}/setup`, { done: true })}
+      ${btn('試合メンバー', `${nMem}人（最大25人）\nパワープレー可能な選手`, `#/m/${m.id}/members`, { done: nMem >= 5, pri: nMem < 5 })}
     </div>
     <h2 class="h">試合中</h2>
-    <div class="acts">
-      ${btn('MATCH PLAY', '試合中はここで操作（交代・時計・出場時間）', `#/m/${m.id}/play`, { pri: nMem >= 5 })}
-      ${btn('マッチレビュー', '出場記録、試合データを確認 ※試合後も確認可能', `#/m/${m.id}/review`)}
-      ${btn('フィジカルコーチ用（閲覧専用）', 'ランニングタイムで今の出場・休み・今日の出場を見る（記録はしない。ネットが必要）', `#/m/${m.id}/physical`)}
-      ${btn('リアルタイム入力', 'ベンチ外スタッフがPC・iPadでイベントを入力（試合後のイベント入力と同じ画面）', `#/m/${m.id}/events`)}
-      ${btn('マッチスタッツ（PDF）・マッチレポート（PDF）', 'その時点までの記録で書き出す', '', { soon: true })}
+    <div class="grp">記録する</div>
+    <div class="acts acts2">
+      ${btn('MATCH PLAY', 'ベンチの記録係が使う\n交代・時計・出場時間（1試合に1台）', `#/m/${m.id}/play`, { pri: nMem >= 5, kind: 'rec' })}
+      ${btn('リアルタイム入力', 'ベンチ外スタッフが使う\nPC・iPadでイベントを入力', `#/m/${m.id}/events`, { kind: 'rec' })}
+    </div>
+    <div class="grp">見る（記録はしない）</div>
+    <div class="acts acts3">
+      ${btn('フィジカルコーチ用 <small class="ro">閲覧専用</small>', 'ランニングタイムで\n今の出場・休み・合計出場', `#/m/${m.id}/physical`, { kind: 'see' })}
+      ${btn('マッチレビュー', '出場時間・タイムライン・セット\nPDFでも書き出せる ※試合後も', `#/m/${m.id}/review`, { kind: 'see' })}
+      ${btn('マッチスタッツ', 'シュート・ゾーン進入などの比較\nいつものシートの形', '', { soon: true, soonText: '④の続きで入ります', kind: 'see' })}
     </div>
     <h2 class="h">試合後</h2>
-    <div class="acts">
-      ${btn('イベント入力', '映像を見ながら入力', `#/m/${m.id}/events`)}
-      ${btn('記録の修正', '交代・スタメン・退場・パワープレー・試合情報を直す（イベントは④で）', `#/m/${m.id}/fix`)}
-      ${btn('分析', 'この試合の分析', '', { soon: true })}
-      ${btn('書き出し', 'マッチスタッツ・マッチレポート・データシート・Sportscode', '', { soon: true })}
-    </div>`,
+    <div class="grp">入れる・直す</div>
+    <div class="acts acts2">
+      ${btn('イベント入力', '映像を見ながら入力\n試合中に入れたものの確認も', `#/m/${m.id}/events`, { kind: 'rec' })}
+      ${btn('記録の修正', '交代・スタメン・退場\nパワープレー・試合情報', `#/m/${m.id}/fix`, { kind: 'rec' })}
+    </div>
+    <div class="grp">見る・書き出す（ハーフタイムでも、いつでも）</div>
+    <div class="acts acts2">
+      ${btn('分析', 'この試合・大会全体', '', { soon: true, soonText: '⑤で入ります', kind: 'see' })}
+      ${btn('書き出し', 'PDF：マッチスタッツ・マッチレポート\n　　 マッチレビュー\nExcel：データシート　XML：Sportscode', '', { soon: true, soonText: '⑥で入ります', kind: 'out' })}
+    </div>
+    <p class="mu actnote">左の色：青＝記録する（記録が変わる）／緑＝見るだけ／紫＝書き出す</p>`,
   };
 }
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -646,7 +656,7 @@ function vSearch() {
 // ---------- 準備中の画面 ----------
 function vSoon(r) {
   const what = r.name === 'analysis' ? '分析' : decodeURIComponent(r.id || 'この機能');
-  return { active: r.name === 'analysis' ? 'analysis' : '', html: `<div class="card empty"><h1>${esc(what)}</h1><p>この画面は次の版から順に入ります。いまの版（①）は、チーム・選手・活動・招集メンバー・試合・試合メンバーの登録までです。</p><p><button class="btn" id="b2">‹ 戻る</button></p></div>`, bind() { $('#b2').onclick = goBack; } };
+  return { active: r.name === 'analysis' ? 'analysis' : '', html: `<div class="card empty"><h1>${esc(what)}</h1><p>この画面は、これからの作業の段階で入ります（分析は⑤、書き出しは⑥、マッチスタッツは④の続き）。</p><p><button class="btn" id="b2">‹ 戻る</button></p></div>`, bind() { $('#b2').onclick = goBack; } };
 }
 
 // ---------- 設定 ----------

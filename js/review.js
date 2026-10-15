@@ -1,11 +1,11 @@
 // マッチレビュー (spec 7章「マッチレビュー」). 1〜4 は出場と交代の記録だけで作るので常に表示。
 // 5〜8 はイベントが必要（今あるのは 6 セットごとのシュート…。マッチ・ペース・スコア・スタッツは後の工程）。
 // 番号は1〜8で固定（出ていない項目は飛ぶ。上部に理由を書く）。ランニングタイムの切り替えは 1〜4 に効く。
-import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvents, opts } from './store.js';
+import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvents, opts, activityById } from './store.js';
 import { setEventTable } from './events.js';
 import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
 import { matchModel, toRunning, playerTable, setTable, playedTime, periodSig, entryOrder } from './model.js';
-import { esc, fmtShort } from './ui.js';
+import { esc, fmtShort, fmtDate } from './ui.js';
 import { render } from './views.js';
 
 const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
@@ -66,10 +66,16 @@ export function vReview(m) {
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
-        <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button></div>
+        <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで書き出す</button></div>
       <div class="rvjumps">${jumps}<span class="rvnote">番号が飛んでいる項目：${evs.length ? '' : '6 セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントを入力すると表示）、'}5 マッチ・ペース・7 スコアとチームスタッツ・8 スタッツまとめ（まだアプリにない項目。今後の版で表示）</span>
         ${M.fixed.length ? `<span class="rvfix">記録の修正を反映：${M.fixed.map((k) => periodLabel(k)).join('・')}</span>` : ''}
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
+
+  // PDFで書き出すとき（印刷）だけ出す見出し：どの試合の、どこまでの記録か
+  const asOf = st.matchOver ? '試合終了時点' : M.live ? `${periodLabel(st.current)} 残り ${mmssUp(periodLen(cfg, st.current) - nowElapsed(st))} 時点` : (pDone('1H') && !pDone('2H')) ? '前半終了時点' : pDone('2H') ? '後半終了時点' : '';
+  const act = activityById(m.activityId);
+  const printHead = `<div class="rvprint"><div class="rvpt">マッチレビュー（${TT}）　${esc(S.team?.name || '')} vs ${esc(m.opponent || '')}</div>
+    <div class="rvps">${esc(fmtDate(m.date))}${m.kickoff ? ' ' + esc(m.kickoff) + 'キックオフ' : ''}　${esc(m.venue || '')}　${esc(act?.name || '')}${m.category ? '　' + esc(m.category) : ''}　<b>${asOf}</b>　（MATCH PLAYの記録から作成${M.fixed.length ? '・記録の修正を反映' : ''}）</div></div>`;
 
   if (!started) {
     return { active: 'acts', html: `<div class="rvw">${head}<div class="card empty">まだ記録がありません。MATCH PLAYで先発を選んでスタートすると、ここに出場時間が表示されます。</div></div>`, bind: bindReview(m) };
@@ -213,7 +219,7 @@ export function vReview(m) {
     <div class="rvbox"><table class="rvtb rvset2"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l}</th>`).join('')}</tr>${body}</table></div></section>`;
   }
 
-  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}<div class="rvbody">${s1}${s1b}${s2}${s3}${s4b}</div></div>`, bind: bindReview(m) };
+  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${s4b}</div></div>`, bind: bindReview(m) };
 }
 
 function bindReview(m) {
@@ -229,6 +235,7 @@ function bindReview(m) {
       render();
     });
     root.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => { runPref = b.dataset.mode === 'run'; try { localStorage.setItem(modeKey, b.dataset.mode); } catch {} render(); });
+    const pdf = root.querySelector('#rvPdf'); if (pdf) pdf.onclick = () => window.print(); // 印刷の画面で「PDFとして保存」（iPadは共有→「ファイルに保存」）
     const c = root.querySelector('#rvCompact'); if (c) c.onclick = () => { try { localStorage.setItem(compactKey, isCompact() ? '0' : '1'); } catch {} render(); };
     root.addEventListener('click', (e) => {
       const j = e.target.closest('[data-jump]'); if (!j) return;
