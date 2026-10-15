@@ -42,7 +42,7 @@ export function matchModel(st, now = Date.now(), fix = null) {
     const d = fixData(fp, p.key);
     p.elapsed = R(fp.elapsed);
     M.stints = M.stints.filter((x) => x.period !== p.key).concat(d.stints);
-    M.zero = M.zero.filter((x) => x.period !== p.key);
+    M.zero = M.zero.filter((x) => x.period !== p.key).concat(d.zero);
     M.empties = M.empties.filter((x) => x.period !== p.key).concat(d.empties);
     M.pp = M.pp.filter((x) => x.period !== p.key).concat(d.pp);
     M.ejections = M.ejections.filter((x) => x.period !== p.key).concat(d.ejections);
@@ -90,7 +90,7 @@ export function toRunning(M, st, now = Date.now()) {
   // 修正していないピリオドは、MATCH PLAYの記録そのもの（時計が止まっている間だけの出場も含む）から数える
   const src = (list, own) => [...own.filter((x) => C(x.period) && !C(x.period).fixed), ...list.filter((x) => C(x.period)?.fixed)];
   const endOf = (x, c, w) => (w != null ? w : st.periods[x.period].status !== 'done' && !c.fixed ? c.E : c.wallOf(x.to));
-  for (const s of src(M.stints, st.stints)) {
+  for (const s of src([...M.stints, ...(M.zero || [])], st.stints)) {
     const c = C(s.period);
     const r = c.fixed ? span(s, c.wF(s.pid, s.from), c.wT(s.pid, s.to)) : span(s, s.wf, endOf(s, c, s.wt));
     if (r && r.to > r.from) out.stints.push(r);
@@ -206,10 +206,10 @@ export function seatWalk(fp) {
 }
 
 export function fixData(fp, key) {
-  const stints = [], empties = [], ejections = [];
+  const stints = [], empties = [], ejections = [], zero = [];
   for (const { seat, segs } of seatWalk(fp)) {
     for (const g of segs) {
-      if (g.to <= g.from && g.pid) continue;
+      if (g.to <= g.from && g.pid) { if (g.to === g.from && g.startEv) zero.push({ period: key, pid: g.pid, seat, from: g.from, to: g.to }); continue; }
       if (g.pid) stints.push({ period: key, pid: g.pid, seat, from: g.from, to: g.to });
       else if (g.startEv) empties.push({ period: key, seat, pid: g.ejected, from: g.from, to: g.to });
     }
@@ -218,7 +218,7 @@ export function fixData(fp, key) {
     const w = seatWalk(fp)[e.seat].segs.find((g) => g.endEv === e.id);
     ejections.push({ period: key, pid: w?.pid, at: e.at, reason: e.reason || null });
   }
-  return { stints, empties, ejections, pp: (fp.pp || []).map((x) => ({ period: key, team: x.team, from: x.from, to: x.to })) };
+  return { stints, empties, ejections, zero, pp: (fp.pp || []).map((x) => ({ period: key, team: x.team, from: x.from, to: x.to })) };
 }
 
 // 矛盾のチェック（保存できない問題）
