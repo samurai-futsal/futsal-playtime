@@ -1,13 +1,29 @@
 // フィジカルコーチ用（閲覧専用）：交代のタイミングを考えるための画面。記録は一切しない（opsを書かない）。
 // ピッチ＝「今の出場」が長い順、ベンチ＝「休み」が長い順。数字は実際の時間（ランニングタイム）が大きく、
 // プレーイングタイム（試合の時計）を小さく添える。「合計出場」＝この試合の合計。色はランニングタイム用の目安（設定で変えられる）。
-import { watchOps, playerById, teamSettings } from './store.js';
+import { watchOps, resyncOps, playerById, teamSettings } from './store.js';
 import { replay, periodLabel, periodLen, nowElapsed, PERIODS } from './engine.js';
 import { matchModel, toRunning, playerTable, periodSig } from './model.js';
 import { esc } from './ui.js';
 import { render } from './views.js';
 
 let tick = null;
+// 他のアプリから戻ってきたら、自動でつなぎ直す（記録は書かない）
+const physMatch = () => { const x = location.hash.match(/^#\/m\/([^/]+)\/physical/); return x ? x[1] : null; };
+document.addEventListener('visibilitychange', () => { const id = physMatch(); if (!document.hidden && id) resyncOps(id); });
+addEventListener('pageshow', (e) => { const id = physMatch(); if (e.persisted && id) resyncOps(id); });
+addEventListener('online', () => { const id = physMatch(); if (id) resyncOps(id); });
+const clock = (t) => { const d = new Date(t); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+// 最新かどうか：緑＝サーバーとつながっていて最新／黄＝確認中／赤＝つながっていない（いつの数字か）
+function syncState(c) {
+  const t = Date.now();
+  const lastTxt = c.srvAt ? `${clock(c.srvAt)}時点` : '保存済みの数字';
+  if (!navigator.onLine) return { cls: 'ng', txt: `つながっていません（${lastTxt}）` };
+  if (!c.fromCache) return { cls: 'ok', txt: '最新' };
+  const since = c.checkAt || c.cacheAt || t;
+  if (t - since < 10000) return { cls: 'wait', txt: '確認中…' };
+  return { cls: 'ng', txt: `つながっていません（${lastTxt}）` };
+}
 export function stopPhysTick() { clearInterval(tick); tick = null; }
 const mmss = (ms) => { if (ms == null) return '—'; const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const mmssUp = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -63,8 +79,10 @@ export function vPhys(m) {
   else if (live) state = `<span class="phper">${periodLabel(st.current)}</span><span class="phclk">残り <b>${mmssUp(len - el)}</b></span><span class="phrun ${running ? 'on' : ''}">● ${running ? '時計が動いています' : '時計が止まっています'}</span><span class="phrt">${periodLabel(st.current)}の実際の経過 <b>${mmss(runEl)}</b></span>`;
   else if (lastEnd) state = `<span class="phst">${st.periods['1H']?.status === 'done' && st.periods['2H']?.status !== 'done' ? 'ハーフタイム' : 'ピリオドの間'}</span><span class="phrt">${[...PERIODS].reverse().find((p) => st.periods[p.key].status === 'done')?.label || ''}終了時点の数字（止まっています）</span>`;
   else state = '<span class="phst">試合前</span>';
+  const ss = syncState(opsC);
+  if (!live && ss.cls === 'wait') setTimeout(() => { if (physMatch() === m.id) render(); }, 10500 - (Date.now() - (opsC.checkAt || opsC.cacheAt || 0)));
   const pend = live && st.batch.outs.length ? `<div class="phpend">交代待ち：OUT ${st.batch.outs.map((o) => badge(o.pid) + name(o.pid)).join('　')}${st.batch.ins.length ? `　→ IN ${st.batch.ins.map((p) => badge(p) + name(p)).join('　')}` : ''}</div>` : '';
-  const head = `<div class="phtop">${state}<span class="sp"></span><span class="phvs">vs ${esc(m.opponent || '')}</span>${navigator.onLine ? '' : '<span class="phoff">オフライン（記録が届いていません）</span>'}<span class="phro">閲覧専用</span><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></div>
+  const head = `<div class="phtop">${state}<span class="sp"></span><span class="phright"><span class="phvs">vs ${esc(m.opponent || '')}</span><span class="phsy ${ss.cls}">● ${ss.txt}</span><button class="btn sm phsyb" id="phSync">⟳ 同期</button><span class="phro">閲覧専用</span><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></span></div>
     <div class="phlg">数字は<b>実際の時間（ランニングタイム）</b>、<span class="pt">灰色の小さい数字＝プレーイングタイム（試合の時計）</span>。色：<i class="org"></i>${mmss(OR)}〜 <i class="red"></i>${mmss(RD)}〜（設定で変えられる）</div>${pend}`;
 
   const bar = (ms) => `<div class="phbar"><i class="${col(ms)}" style="width:${Math.min(100, ms / MAX * 100).toFixed(1)}%"></i><b style="left:${(OR / MAX * 100).toFixed(1)}%"></b><b style="left:${(RD / MAX * 100).toFixed(1)}%"></b></div>
@@ -85,6 +103,7 @@ export function vPhys(m) {
 
   return {
     active: 'acts',
+    bind: (root) => { const b = root.querySelector('#phSync'); if (b) b.onclick = () => { resyncOps(m.id); }; },
     html: `<div class="phw">${head}<div class="phcols"><div class="phpane"><h3>ピッチ <small>今の出場が長い順</small></h3>${pitchHTML}</div>
       <div class="phpane"><h3>ベンチ <small>休みが長い順。前回・合計の右の灰色の数字＝プレーイングタイム</small></h3>${benchHTML || '<p class="mu pad">ベンチの選手はまだ出場していません</p>'}</div></div></div>`,
   };

@@ -572,3 +572,5 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 .act b{white-space:nowrap}.act b small.ro{font-size:11px;font-weight:700;background:#FFC000;color:#18233A;border-radius:5px;padding:1px 6px;vertical-align:2px}
+.phsy{border-radius:6px;padding:3px 10px;font-weight:700;white-space:nowrap}.phsy.ok{background:#E3F4E8;color:#1E7A3C}.phsy.wait{background:#FFF4CC;color:#7A5A00}.phsy.ng{background:#E03A2E;color:#fff}.phsyb{font-weight:800;white-space:nowrap}
+.phright{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;margin-left:auto}

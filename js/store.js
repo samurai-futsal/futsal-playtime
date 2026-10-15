@@ -139,17 +139,37 @@ export const today = () => { const d = new Date(); return `${d.getFullYear()}-${
 
 // ---------- MATCH PLAY operations (teams/{t}/matches/{m}/ops/{id}) ----------
 // Append-only: an op is never changed or deleted (undo and reset are new ops). See engine.js.
-const opsCache = {}; // matchId -> { list, unsub, pending }
-export function watchOps(matchId) {
+const opsCache = {}; // matchId -> { list, unsub, pending, fromCache, srvAt, checkAt, cacheAt }
+// srvAt = サーバーから最新を受け取った（fromCache:false）最後の時刻。checkAt = つなぎ直しを始めた時刻（確認中の表示用）
+export function watchOps(matchId, keep) {
   if (opsCache[matchId]) return opsCache[matchId];
-  const c = (opsCache[matchId] = { list: [], unsub: null, ready: false, pending: false });
+  const c = (opsCache[matchId] = { list: keep?.list || [], unsub: null, ready: !!keep?.ready, pending: false, fromCache: true, srvAt: keep?.srvAt || 0, checkAt: Date.now(), cacheAt: Date.now() });
   const { onSnapshot, collection } = F.fsM;
   c.unsub = onSnapshot(collection(F.db, 'teams', S.teamId, 'matches', matchId, 'ops'), { includeMetadataChanges: true }, (snap) => {
     track('ops_' + matchId, snap);
     c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     c.ready = true; c.pending = snap.metadata.hasPendingWrites;
+    if (snap.metadata.fromCache) { if (!c.fromCache) c.cacheAt = Date.now(); c.fromCache = true; }
+    else { c.fromCache = false; c.srvAt = Date.now(); c.checkAt = 0; }
     emit();
   }, onErr);
+  return c;
+}
+// 同期（閲覧専用の画面用）：通信をつなぎ直して、この試合の記録を取り直す。記録は一切書かない。
+// 表示中の数字は消さずに残し、サーバーから最新が届いたら置きかわる。
+let resyncing = null;
+export function resyncOps(matchId) {
+  const old = opsCache[matchId];
+  if (old) { old.unsub && old.unsub(); delete opsCache[matchId]; }
+  const c = watchOps(matchId, old);
+  emit();
+  if (!resyncing) {
+    const { disableNetwork, enableNetwork } = F.fsM;
+    resyncing = Promise.resolve()
+      .then(() => disableNetwork && disableNetwork(F.db)).then(() => enableNetwork && enableNetwork(F.db))
+      .catch(() => {}).finally(() => { resyncing = null; });
+  }
+  setTimeout(emit, 10500); // 10秒たっても届かなければ「つながっていません」に切りかえるため描き直す
   return c;
 }
 let opSeq = (() => { try { return +localStorage.getItem('fpt.opSeq') || 0; } catch { return 0; } })();
