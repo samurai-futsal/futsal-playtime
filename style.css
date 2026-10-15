@@ -545,3 +545,8 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .phpr{padding:8px 4px}
 .phun{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}.phunl{font-weight:700;color:#5F6B80;margin-right:2px}
 .phchip{display:inline-flex;align-items:center;font-size:14px;color:#3A4558;white-space:nowrap}.phchip .no{min-width:26px;height:22px;font-size:13px;margin-right:5px}
+.phpr{grid-template-columns:118px 150px 1fr 150px}.phpr .pt{white-space:nowrap}
+.phbr{grid-template-columns:110px .8fr 1.1fr 1.1fr}
+.phbh span{white-space:nowrap;line-height:1.3}
+.phgk{flex-wrap:nowrap;gap:12px;white-space:nowrap}.phgk em{font-size:11px}
+.phbr{grid-template-columns:110px 100px minmax(0,1fr) minmax(0,1fr)}
