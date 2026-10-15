@@ -73,12 +73,13 @@ export function vPhys(m) {
       <div><div class="lab">今日の出場</div><div class="phmid">${mmss(r.totRun)}</div><div class="pt">時計 ${mmss(r.totPlay)}</div></div></div>`).join('')
     + gks.map((r) => `<div class="phgk">${badge(r.pid)}<span class="phgkn">${name(r.pid)}</span><span>今の出場 <b>${mmss(r.curRun)}</b> <em>時計 ${mmss(r.curPlay)}</em></span><span>今日 <b>${mmss(r.totRun)}</b> <em>時計 ${mmss(r.totPlay)}</em></span></div>`).join('')
     || '<p class="mu pad">ピッチに選手がいません（ピリオドの間）</p>';
-  const benchHTML = bench.map((r) => `<div class="phbr"><div class="phnm">${badge(r.pid)}<span>${name(r.pid)}</span></div>
-      <div><div class="lab">休み</div><div class="phbig2">${mmss(r.rest)}</div></div>
-      <div><div class="lab">前回の出場</div><div class="phmid2">${mmss(r.lastRun)}</div></div>
-      <div><div class="lab">今日の出場</div><div class="phmid2">${mmss(r.totRun)}</div><div class="pt">時計 ${mmss(r.totPlay)}</div></div></div>`).join('')
-    + (ejected.length ? `<div class="phun">退場：${ejected.map((r) => badge(r.pid) + name(r.pid)).join('　')}</div>` : '')
-    + (unused.length ? `<div class="phun">まだ出ていない：${unused.map((r) => badge(r.pid) + name(r.pid)).join('　')}</div>` : '');
+  // ベンチは人数が多いので1行に収める（見出しは上に1回だけ）
+  const benchHTML = (bench.length ? '<div class="phbr phbh"><span></span><span>休み</span><span>前回の出場</span><span>今日の出場 <em>時計</em></span></div>' : '')
+    + bench.map((r) => `<div class="phbr"><div class="phnm">${badge(r.pid)}<span>${name(r.pid)}</span></div>
+      <div class="phbig2">${mmss(r.rest)}</div><div class="phmid2">${mmss(r.lastRun)}</div>
+      <div class="phmid2">${mmss(r.totRun)} <span class="pt">${mmss(r.totPlay)}</span></div></div>`).join('')
+    + (ejected.length ? `<div class="phun"><span class="phunl">退場</span>${ejected.map((r) => `<span class="phchip">${badge(r.pid)}${name(r.pid)}</span>`).join('')}</div>` : '')
+    + (unused.length ? `<div class="phun"><span class="phunl">まだ出ていない</span>${unused.map((r) => `<span class="phchip">${badge(r.pid)}${name(r.pid)}</span>`).join('')}</div>` : '');
 
   return {
     active: 'acts',

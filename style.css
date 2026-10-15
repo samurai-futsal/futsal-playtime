@@ -535,3 +535,11 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .phbr{display:grid;grid-template-columns:120px 1fr 1fr 1fr;align-items:center;gap:6px;padding:7px 4px;border-bottom:1px solid #EEF1F6}
 .phbig2{font-size:24px;font-weight:900;color:#3A4558;font-variant-numeric:tabular-nums}.phmid2{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
 .phun{font-size:13px;color:#8A94A6;padding:8px 4px}
+.phun{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}.phunl{font-weight:700;color:#5F6B80;margin-right:2px}
+.phchip{display:inline-flex;align-items:center;white-space:nowrap;color:#3A4558;font-size:14px}.phchip .no{min-width:26px;height:22px;font-size:13px;margin-right:5px}
+.phbr .phnm,.phpr .phnm{white-space:nowrap}
+.phbr{grid-template-columns:118px 1fr 1fr 1.2fr;padding:5px 4px}
+.phbh{padding:0 4px 2px;font-size:11px;color:#8A94A6;border-bottom:1px solid #E1E6EF}.phbh em{font-style:normal;color:#AAB2C0}
+.phbr .phbig2{font-size:24px;line-height:1.1}
+.phbr .phmid2 .pt{font-size:12px;font-weight:500;margin-left:4px}
+.phpr{padding:8px 4px}
