@@ -25,7 +25,7 @@ export function matchModel(st, now = Date.now(), fix = null) {
   // close the ongoing appearances at "now" (出場中の選手は、今の時点までの時間を反映する)
   // 表示はすべて秒単位。区切りの時刻を秒に丸めてから計算するので、帯・表・合計の数字が必ず一致する
   const stints = st.stints
-    .map((s) => ({ ...s, from: R(s.from), to: R(s.to ?? (live && s.period === st.current ? at : s.from)) }))
+    .map((s) => ({ ...s, open: s.to == null, from: R(s.from), to: R(s.to ?? (live && s.period === st.current ? at : s.from)) }))
     .filter((s) => s.to > s.from && periods.some((p) => p.key === s.period));
   // 時計が止まっている間だけの出場（プレーイングタイムで0:00）。時間・回数には入れず、タイムラインに印で出す
   const zero = st.stints
@@ -38,7 +38,8 @@ export function matchModel(st, now = Date.now(), fix = null) {
     const fp = fix?.periods?.[p.key];
     if (!fp || p.status !== 'done') continue;
     // 修正したあとでMATCH PLAYの記録が変わった（リセット・やり直しなど）ピリオドは、修正を使わずに知らせる
-    if (st.sig && fp.basis != null && st.sig[p.key] !== fp.basis) { M.stale = (M.stale || []).concat(p.key); continue; }
+    if (st.sig && fp.basis != null && !basisOk(st.sig, p.key, fp.basis)) { M.stale = (M.stale || []).concat(p.key); continue; }
+    (M.fixP || (M.fixP = {}))[p.key] = fp;
     const d = fixData(fp, p.key);
     p.elapsed = R(fp.elapsed);
     M.stints = M.stints.filter((x) => x.period !== p.key).concat(d.stints);
@@ -55,6 +56,36 @@ export function matchModel(st, now = Date.now(), fix = null) {
 // 同じ記録を「実際に流れた時間」で数え直す。ピリオドの始まり＝キックオフ、終わり＝時計が0:00になった時刻（最後に止まった時刻）。
 // 交代の時刻＝OUTを押した時刻（プレーイングタイムと同じ決め方）。時計が止まっている間もピッチにいた選手の時間に入る。
 // 記録の修正を使うピリオドは、修正前と同じ区切りなら実際の時刻を、変わった区切りは時計の動きから時刻を求める。
+// 記録の修正を使うピリオドのランニングタイム。場所ごとに、修正の区切りを元の記録の区切りと対応させる：
+// 区切りの数が同じなら順番で対応させ、元の実際の時刻を、時計で動かした分だけずらす（例：5秒早めた交代は5秒早く）。
+// 数が違う（交代を足した・消した）ときは、同じ時計の時刻の区切りを使い、なければ時計の動きから時刻を求める。
+function runningFixed(st, key, fp, c) {
+  const stints = [], empties = [];
+  const walk = seatWalk(fp);
+  for (const { seat, segs } of walk) {
+    const fb = segs.slice(1).map((g) => g.from);
+    const bounds = (withSq) => [...st.stints, ...(withSq ? st.squeezed || [] : []), ...st.empties]
+      .filter((x) => x.period === key && x.seat === seat && x.wf != null)
+      .sort((a, b) => a.wf - b.wf || a.from - b.from).slice(1).map((x) => ({ c: R(x.from), w: x.wf }));
+    // 時計を戻して消えた出場も含めて数が合えばそれを、合わなければ含めずに対応させる
+    let ob = bounds(true); if (ob.length !== fb.length) ob = bounds(false);
+    const used = new Set(); const W = [];
+    fb.forEach((cl, i) => {
+      let w;
+      if (ob.length === fb.length) w = ob[i].w + (cl - ob[i].c);
+      else { const j = ob.findIndex((o, oi) => !used.has(oi) && o.c === cl); if (j >= 0) { used.add(j); w = ob[j].w; } else w = c.wallOf(cl); }
+      W.push(Math.min(c.E, Math.max(c.K, i ? W[i - 1] : c.K, w)));
+    });
+    segs.forEach((g, i) => {
+      const wf = i ? W[i - 1] : c.K, wt = i < W.length ? W[i] : c.E;
+      const x = { period: key, seat, from: c.rel(wf), to: c.rel(wt) };
+      if (g.pid) stints.push({ ...x, pid: g.pid });
+      else if (g.startEv) empties.push({ ...x, pid: g.ejected });
+    });
+  }
+  return { stints, empties };
+}
+
 export function toRunning(M, st, now = Date.now()) {
   const out = { ...M, running: true, periods: [], stints: [], zero: [], empties: [], pp: [], ejections: [], timeouts: [] };
   const conv = {};
@@ -67,6 +98,7 @@ export function toRunning(M, st, now = Date.now()) {
     let E;
     if (p.status === 'done') E = ps.endT;
     else if (ps.runningSince != null) E = Math.min(now, ps.runningSince + Math.max(0, len - ps.elapsed));
+    else if (ps.elapsed < len) E = now; // 時計が止まっている間も、実際の時間は進む
     else E = lastR?.t1 ?? now;
     const K = ps.kickT, run = Math.max(0, E - K);
     // 時計の時間（プレーイングタイム）→ 実際の時刻。止まった瞬間と動き出した瞬間が同じ時計の時間なら、止まった時刻を使う
@@ -78,28 +110,32 @@ export function toRunning(M, st, now = Date.now()) {
       return hit;
     };
     const fixed = M.fixed.includes(p.key);
-    const orig = st.stints.filter((x) => x.period === p.key);
-    const wF = (pid, el) => (fixed ? orig.find((x) => x.pid === pid && R(x.from) === el)?.wf : null) ?? wallOf(el);
-    const wT = (pid, el) => (fixed ? orig.find((x) => x.pid === pid && x.to != null && R(x.to) === el)?.wt : null) ?? wallOf(el);
     const rel = (w) => R(Math.max(0, Math.min(run, w - K)));
-    conv[p.key] = { rel, wallOf, wF, wT, fixed, E };
+    conv[p.key] = { rel, wallOf, fixed, E, K };
     out.periods.push({ ...p, elapsed: R(run), len: p.status === 'done' ? R(run) : Math.max(R(run), len), playing: p.elapsed });
   }
   const C = (k) => conv[k];
   const span = (x, wf, wt) => { const c = C(x.period); if (!c) return null; return { ...x, from: c.rel(wf), to: c.rel(wt) }; };
   // 修正していないピリオドは、MATCH PLAYの記録そのもの（時計が止まっている間だけの出場も含む）から数える
-  const src = (list, own) => [...own.filter((x) => C(x.period) && !C(x.period).fixed), ...list.filter((x) => C(x.period)?.fixed)];
   const endOf = (x, c, w) => (w != null ? w : st.periods[x.period].status !== 'done' && !c.fixed ? c.E : c.wallOf(x.to));
-  for (const s of src([...M.stints, ...(M.zero || [])], st.stints)) {
+  const own = (list) => list.filter((x) => C(x.period) && !C(x.period).fixed);
+  for (const s of own([...st.stints, ...(st.squeezed || [])])) {
     const c = C(s.period);
-    const r = c.fixed ? span(s, c.wF(s.pid, s.from), c.wT(s.pid, s.to)) : span(s, s.wf, endOf(s, c, s.wt));
-    if (r && r.to > r.from) out.stints.push(r);
+    const r = span(s, s.wf, endOf(s, c, s.wt));
+    if (r && r.to > r.from) out.stints.push({ ...r, open: s.wt == null && st.periods[s.period].status !== 'done' });
   }
-  for (const e of src(M.empties, st.empties)) {
+  for (const e of own(st.empties)) {
     const c = C(e.period);
-    const r = c.fixed ? span(e, c.wallOf(e.from), c.wallOf(e.to)) : span(e, e.wf, endOf(e, c, e.wt));
+    const r = span(e, e.wf, endOf(e, c, e.wt));
     if (r && r.to > r.from) out.empties.push(r);
   }
+  // 記録の修正を使うピリオド：場所（5つのキュー）ごとに、区切りの実際の時刻を元の記録から引き継ぐ
+  for (const [k, c] of Object.entries(conv)) {
+    if (!c.fixed || !M.fixP?.[k]) continue;
+    const { stints, empties } = runningFixed(st, k, M.fixP[k], c);
+    out.stints.push(...stints.filter((x) => x.to > x.from)); out.empties.push(...empties.filter((x) => x.to > x.from));
+  }
+  const src = (list, ownList) => [...own(ownList), ...list.filter((x) => C(x.period)?.fixed)];
   for (const x of src(M.pp, st.pp)) {
     const c = C(x.period);
     const r = c.fixed ? span(x, c.wallOf(x.from), c.wallOf(x.to)) : span(x, x.wf ?? c.wallOf(x.from), endOf(x, c, x.wt));
@@ -170,9 +206,9 @@ export function replayToFix(st, key) {
   const fp = { elapsed: R(p.elapsed), lineup: [null, null, null, null, null], ev: [], pp: [] };
   for (let seat = 0; seat < 5; seat++) {
     const items = [
-      ...st.stints.filter((x) => x.period === key && x.seat === seat).map((x) => ({ k: 's', pid: x.pid, rf: x.from, rt: x.to ?? p.elapsed })),
-      ...st.empties.filter((x) => x.period === key && x.seat === seat).map((x) => ({ k: 'e', pid: x.pid, rf: x.from, rt: x.to ?? p.elapsed })),
-    ].sort((a, b) => a.rf - b.rf || a.rt - b.rt || (a.k === 'e' ? 1 : -1)) // 並べるのは秒に丸める前の時刻で
+      ...st.stints.filter((x) => x.period === key && x.seat === seat).map((x) => ({ k: 's', pid: x.pid, rf: x.from, rt: x.to ?? p.elapsed, wf: x.wf })),
+      ...st.empties.filter((x) => x.period === key && x.seat === seat).map((x) => ({ k: 'e', pid: x.pid, rf: x.from, rt: x.to ?? p.elapsed, wf: x.wf })),
+    ].sort((a, b) => a.rf - b.rf || (a.wf ?? 0) - (b.wf ?? 0) || a.rt - b.rt || (a.k === b.k ? 0 : a.k === 'e' ? 1 : -1)) // 並べるのは秒に丸める前の時刻、同じなら記録した順
       .map((x) => ({ ...x, from: R(x.rf), to: R(x.rt) }));
     let prev = null;
     for (const it of items) {
@@ -286,11 +322,21 @@ export function whyNot(f2, cfg, pid, seat, startEv, banned = new Set()) {
 }
 
 // MATCH PLAYの記録の「形」：ピリオドごとの有効な操作の数と最後の操作。修正はこれが同じときだけ使う
+// ピリオドの記録の「しるし」。修正（記録の修正）は、保存したときのしるしと今のしるしが同じときだけ使う。
+// 延長戦の質問の答え（extra）とピリオドの選択（select）は、そのピリオドの出場の記録ではないので数えない。
+// alt＝0.5.8までの数え方（それで保存した修正も、そのまま使えるようにする）
+const NOT_PERIOD = new Set(['extra', 'select']);
 export function periodSig(ops) {
-  const { list } = effectiveOps(ops); const sig = {};
-  for (const p of PERIODS) { const l = list.filter((o) => o.period === p.key); sig[p.key] = l.length ? `${l.length}:${l[l.length - 1].id}` : '0'; }
+  const { list } = effectiveOps(ops); const sig = {}; const alt = {};
+  for (const p of PERIODS) {
+    const all = list.filter((o) => o.period === p.key); const l = all.filter((o) => !NOT_PERIOD.has(o.type));
+    sig[p.key] = l.length ? `${l.length}:${l[l.length - 1].id}` : '0';
+    alt[p.key] = all.length ? `${all.length}:${all[all.length - 1].id}` : '0';
+  }
+  Object.defineProperty(sig, 'alt', { value: alt, enumerable: false });
   return sig;
 }
+export const basisOk = (sig, key, basis) => basis === sig[key] || (sig.alt != null && basis === sig.alt[key]);
 
 // ---------- タイムラインの並び（セットが分かる並び） ----------
 // GK（先発のGK → 初めて入った順 → 出ていないGKは背番号順）、そのあとFPを
@@ -301,7 +347,7 @@ export function entryOrder(M) {
   const noOf = (pid) => parseInt(cfg.members?.[pid]?.no, 10) || 999;
   const off = {}; let acc = 0; for (const p of M.periods) { off[p.key] = acc; acc += p.len; }
   const first = {};
-  for (const s of M.stints) {
+  for (const s of [...M.stints, ...(M.zero || [])]) {
     if (off[s.period] == null) continue;
     const t = off[s.period] + s.from;
     if (first[s.pid] == null || t < first[s.pid]) first[s.pid] = t;

@@ -4,7 +4,7 @@
 // the review and analysis use the saved correction instead of the MATCH PLAY record for that period.
 import { S as D, playerById, opts, put, teamPath, watchOps, watchFixLog, addFixLog, updFixLog, teamSettings } from './store.js';
 import { replay, periodLen, PERIODS, periodLabel } from './engine.js';
-import { replayToFix, seatWalk, fixData, checkFix, periodSig, newEvId, matchModel, whyNot } from './model.js';
+import { replayToFix, seatWalk, fixData, checkFix, periodSig, basisOk, newEvId, matchModel, whyNot } from './model.js';
 import { $, esc, openModal, closeModal, confirmBox, toast, optionTags } from './ui.js';
 import { keypadHTML, bindKeypad } from './keypad.js';
 import { render, setLeaveGuard } from './views.js';
@@ -28,7 +28,7 @@ function baseline(m, st, sig) {
   for (const p of PERIODS) {
     if (st.periods[p.key].status !== 'done') continue;
     const saved = m.fix?.periods?.[p.key];
-    if (saved && saved.basis === sig[p.key]) periods[p.key] = clone(saved);
+    if (saved && basisOk(sig, p.key, saved.basis)) periods[p.key] = { ...clone(saved), basis: sig[p.key] }; // 古い数え方のしるしは今の数え方に直す
     else periods[p.key] = { ...replayToFix(st, p.key), basis: sig[p.key] };
     periods[p.key].len = periodLen(st.cfg, p.key);
   }
@@ -43,10 +43,12 @@ const legacyInEffect = (m) => { const l = watchFixLog(m.id).list; return !!m.fix
 let ctx = {}; // MATCH PLAYの記録（修正する前）
 
 // 記録を書く（試合の記録に入れる。マッチレビューと分析にすぐ反映）。origin=true はMATCH PLAYの記録に戻す
-function writeState(m, state, origin = false) {
+// infoKeys：書き戻す試合情報の項目（初めは全部）。「1つ戻す」などでは、取り消す「試合情報」の直しが変えた項目だけ戻す
+// （ほかの画面や端末で直したメモ・会場などを巻き戻さない）
+function writeState(m, state, origin = false, infoKeys = INFO_KEYS) {
   const periods = {};
   for (const [k, fp] of Object.entries(state.periods)) { const { len, ...rest } = fp; periods[k] = rest; }
-  const info = {}; for (const f of INFO_KEYS) if ((m[f] ?? '') !== (state.info[f] ?? '')) info[f] = state.info[f];
+  const info = {}; for (const f of infoKeys) if ((m[f] ?? '') !== (state.info[f] ?? '')) info[f] = state.info[f];
   const fix = origin ? null : { periods, savedAt: Date.now(), dev: devName() };
   put(teamPath('matches', m.id), { fix, ...info });
   Object.assign(m, { fix, ...info }); // すぐ画面に出す（同期の知らせを待たない）
@@ -72,7 +74,7 @@ export function vFix(m) {
   const k = ui.period; const fp = d.periods[k];
   const errs = keys.flatMap((x) => checkFix(d.periods[x], cfg, `${periodLabel(x)}：`, bannedBefore(d, x)));
   const canUndo = activeSteps(m).length > 0;
-  const stale = PERIODS.filter((p) => m.fix?.periods?.[p.key] && st.periods[p.key].status === 'done' && m.fix.periods[p.key].basis !== sig[p.key]).map((p) => p.label);
+  const stale = PERIODS.filter((p) => m.fix?.periods?.[p.key] && st.periods[p.key].status === 'done' && !basisOk(sig, p.key, m.fix.periods[p.key].basis)).map((p) => p.label);
 
   const head = `<div class="fxhead">
     <div class="fxper">${keys.map((x) => `<button class="btn ${x === k ? 'pri' : ''}" data-per="${x}">${periodLabel(x)}</button>`).join('')}
@@ -225,9 +227,20 @@ function tabLog(m, d) {
 // ---------- 戻す（押した時点で記録に反映） ----------
 const nowMark = () => ({ t: Date.now(), devName: devName() });
 // 1つ戻す：いちばん新しい直しを取り消す
+// 取り消す直しのうち「試合情報」の直しが変えた項目（その直しの前と後で値が違う項目）
+function infoKeysOf(m, undone) {
+  const all = savedSteps(m); const keys = new Set();
+  for (const s of undone) {
+    if (s.type !== '試合情報') continue;
+    const next = all[all.indexOf(s) + 1];
+    const after = next?.before?.info || Object.fromEntries(INFO_KEYS.map((k) => [k, m[k] ?? '']));
+    for (const k of INFO_KEYS) if ((s.before?.info?.[k] ?? '') !== (after[k] ?? '')) keys.add(k);
+  }
+  return [...keys];
+}
 function undoOne(m) {
   const s = activeSteps(m).pop(); if (!s) return;
-  writeState(m, s.before);
+  writeState(m, s.before, false, infoKeysOf(m, [s]));
   updFixLog(m.id, s.id, { undone: nowMark() });
   toast(`1つ戻しました（${s.type}）`);
   render();
@@ -242,12 +255,12 @@ async function goTo(m, d, where) {
   if (!(await confirmBox(ask))) return;
   const mark = nowMark();
   if (kind === 'origin') {
-    const first = savedSteps(m)[0]?.before.info || d.info;
-    writeState(m, { periods: ctx.origin.periods, info: first }, true);
+    const first = A[0]?.before.info || d.info;
+    writeState(m, { periods: ctx.origin.periods, info: first }, true, infoKeysOf(m, A));
     addFixLog(m.id, { kind: 'note', seq: mark.t * 100, saveT: mark.t, devName: mark.devName, type: '戻す', text: 'MATCH PLAYの記録（修正する前）に戻した' });
     A.forEach((x) => updFixLog(m.id, x.id, { undone: mark }));
   } else {
-    writeState(m, A[i + 1].before);
+    writeState(m, A[i + 1].before, false, infoKeysOf(m, A.slice(i + 1)));
     A.slice(i + 1).forEach((x) => updFixLog(m.id, x.id, { undone: mark }));
   }
   toast('戻しました');

@@ -1,5 +1,6 @@
-// マッチレビュー (spec 7章「マッチレビュー」). Items 1〜3 are built from the MATCH PLAY record only,
-// so they are always shown. Items 4〜6 need events (④) and are not shown until then.
+// マッチレビュー (spec 7章「マッチレビュー」). 1〜4 は出場と交代の記録だけで作るので常に表示。
+// 5〜8 はイベントが必要（今あるのは 6 セットごとのシュート…。マッチ・ペース・スコア・スタッツは後の工程）。
+// 番号は表示する順の通し番号。ランニングタイムの切り替えは 1〜4 に効く。
 import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvents, opts } from './store.js';
 import { setEventTable } from './events.js';
 import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
@@ -65,7 +66,7 @@ export function vReview(m) {
       <div class="rvrow"><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
         <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button></div>
-      <div class="rvjumps">${jumps}<span class="rvnote">4〜6（マッチ・ペース、スコア、スタッツ）はイベントを入力すると表示します</span>
+      <div class="rvjumps">${jumps}<span class="rvnote">${evs.length ? '' : 'セットごとのシュート・ゾーン進入などは、イベントを入力すると表示します'}</span>
         ${M.fixed.length ? `<span class="rvfix">記録の修正を反映：${M.fixed.map((k) => periodLabel(k)).join('・')}</span>` : ''}
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
 
@@ -74,7 +75,7 @@ export function vReview(m) {
   }
 
   const T = playerTable(M);
-  const shownP = M.periods.filter((p) => p.status !== 'none' || !p.extra);
+  const shownP = M.periods.filter((p) => p.status !== 'none' || !p.extra || cfg.times?.extra); // 延長ありの試合は、延長の前から列を出す（まだ行っていないピリオドは「—」）
   const denomTxt = M.periods.filter((p) => p.status !== 'none').map((p) => `${p.label}${mmss(p.elapsed)}`).join('＋');
 
   // ---------- 1. 出場時間 ----------
@@ -153,7 +154,7 @@ export function vReview(m) {
       const cells = Array.from({ length: n }, (_, i) => {
         const x = l[i]; if (!x) return '<td class="na"></td>';
         const d = x.to - x.from;
-        const now = M.live && p.key === M.current && onNow.has(pid) && i === l.length - 1;
+        const now = x.open && onNow.has(pid);
         return `<td class="${d < 60000 ? 'sh' : ''}"><b>${mmss(d)}</b><small>${clk(p, x.from)}〜${now ? '出場中' : clk(p, x.to)}</small></td>`;
       }).join('');
       return `<tr class="${l.length ? '' : 'zero'}"><td>${badge(pid)} ${esc(last(pid))}</td>${cells}<td class="sum"><b>${mmss(tot)}</b></td><td class="sum">${l.length}</td></tr>`;
@@ -199,15 +200,16 @@ export function vReview(m) {
   let s4b = '';
   if (evs.length) {
     const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
-    const et = setEventTable(M0, sets, evs, goalName);
+    const sets0 = runMode ? setTable(M0) : sets; // 回数はイベントの時刻（試合の時計）で数えるので、ここは時計の時間のセット
+    const et = setEventTable(M0, sets0, evs, goalName);
     const cell = (v, i) => `<td class="${i % 2 ? 'o' : 'w'}">${v ? `<b>${v}</b>` : '<span class="z">0</span>'}</td>`;
     const fpl = (pids) => pids.slice().sort((a, b) => (parseInt(mem(a).no, 10) || 999) - (parseInt(mem(b).no, 10) || 999)).map((pid) => `${badge(pid)}<small>${esc(last(pid))}</small>`).join('');
     const body = et.rows.map((r, i) => `<tr><td>${i + 1}位</td><td class="setn">${fpl(r.pids)}</td><td>${mmss(r.time)}</td>${r.c.map(cell).join('')}</tr>`).join('')
       + `<tr class="ex"><td></td><td class="setn">GKがいない区間・退場で空席の区間</td><td class="na">—</td>${et.special.map(cell).join('')}</tr>`
       + `<tr class="ex"><td></td><td class="setn">交代の瞬間の3秒未満の組み合わせ</td><td class="na">—</td>${et.other.map(cell).join('')}</tr>`
-      + `<tr class="tot"><td></td><td class="setn">合計</td><td>${mmss(sets.reduce((a, x) => a + x.time, 0))}</td>${et.total.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b></td>`).join('')}</tr>`;
-    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>5. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>FP4人のセットがピッチにいる間に起きた回数（並びは「4. セットの出場時間」と同じ）。青＝自チーム、赤＝相手。シュートはSZ内シュートと得点を含む（OGは除く）。FSP＝FINISH SET PLAY</span></div>
-    <div class="rvbox"><table class="rvtb rvset2"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>${runMode ? 'ランニング<br>タイム' : '出場時間'}</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l}</th>`).join('')}</tr>${body}</table></div></section>`;
+      + `<tr class="tot"><td></td><td class="setn">合計</td><td>${mmss(sets0.reduce((a, x) => a + x.time, 0))}</td>${et.total.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b></td>`).join('')}</tr>`;
+    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>5. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>FP4人のセットがピッチにいる間に起きた回数（並びと出場時間は「4. セットの出場時間」のプレーイングタイム）。青＝自チーム、赤＝相手。シュートはSZ内シュートと得点を含む（OGは除く）。FSP＝FINISH SET PLAY</span></div>
+    <div class="rvbox"><table class="rvtb rvset2"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l}</th>`).join('')}</tr>${body}</table></div></section>`;
   }
 
   return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}<div class="rvbody">${s1}${s1b}${s2}${s3}${s4b}</div></div>`, bind: bindReview(m) };

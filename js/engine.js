@@ -85,6 +85,7 @@ export function replay(ops, cfg) {
     empty: [null, null, null, null, null], // {from, pid} when a seat is empty after 退場
     batch: { outs: [], ins: [] },          // 交代待ち: outs [{pid, seat, outAt}], ins [pid]
     stints: [],              // {period, pid, seat, from, to(null=ongoing)}
+    squeezed: [],            // 時計を戻して消えた出場（実際の時刻だけ使う：ランニングタイム）
     empties: [],             // {period, seat, pid, from, to}
     ejected: new Set(),
     ejections: [],           // {period, pid, at, early fill flags...}
@@ -215,6 +216,7 @@ export function replay(ops, cfg) {
       for (const k of keys) {
         S.periods[k] = newPeriod(k);
         S.stints = S.stints.filter((s) => s.period !== k);
+        S.squeezed = S.squeezed.filter((s) => s.period !== k);
         S.empties = S.empties.filter((s) => s.period !== k);
         S.pp = S.pp.filter((s) => s.period !== k);
         S.timeouts = S.timeouts.filter((s) => s.period !== k);
@@ -286,7 +288,9 @@ export function replay(ops, cfg) {
             if (s.period !== S.current) return true;
             const wasClosed = s.to != null;
             s.from = cut(s.from); s.to = cut(s.to);
-            return !(wasClosed && s.to === s.from && s.from === to); // drop appearances squeezed to nothing
+            const gone = wasClosed && s.to === s.from && s.from === to; // drop appearances squeezed to nothing
+            if (gone) S.squeezed.push(s); // ランニングタイム用に、実際の時刻だけ残す
+            return !gone;
           });
           S.empties.filter((e) => e.period === S.current).forEach((e) => { e.from = cut(e.from); e.to = cut(e.to); });
           S.empty.forEach((e) => { if (e) e.from = cut(e.from); });

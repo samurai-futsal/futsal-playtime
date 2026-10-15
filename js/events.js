@@ -69,10 +69,17 @@ export function missing(ev, goalName = (x) => x) {
 // ---------- ピッチの5人 ----------
 const isGK = (cfg, pid) => cfg.members?.[pid]?.pos === 'GK';
 // side: 'before' = 交代の直前の5人、'after' = 直後の5人（同じ秒に交代があるときだけ違う）
+// 同じ秒に入れ替えと戻しがある（時計が止まっている間に守備セットだけ入れ替えた）ときの「交代後」は、
+// 最初の交代のあとの5人（0:00の出場の選手を含む）とする。
 export function pitchAt(M, period, at, side = 'before') {
   const ss = M.stints.filter((s) => s.period === period);
   const useAfter = side === 'after' || at === 0;
-  const on = ss.filter((s) => (useAfter ? s.from <= at && at < s.to : s.from < at && at <= s.to));
+  let on = ss.filter((s) => (useAfter ? s.from <= at && at < s.to : s.from < at && at <= s.to));
+  const zs = useAfter && at > 0 ? (M.zero || []).filter((z) => z.period === period && z.from === at) : [];
+  if (zs.length) {
+    const firstZ = new Map(); for (const z of zs) if (z.seat != null && !firstZ.has(z.seat)) firstZ.set(z.seat, z);
+    on = [...on.filter((s) => !firstZ.has(s.seat)), ...firstZ.values()];
+  }
   // ピリオドの終わり（または記録の先）：最後に出ていた5人
   const res = on.length ? on : ss.filter((s) => s.to === Math.max(...ss.map((x) => x.to)));
   const uniq = [...new Map(res.map((s) => [s.pid, s])).values()];

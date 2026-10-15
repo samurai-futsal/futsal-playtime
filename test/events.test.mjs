@@ -73,6 +73,13 @@ eq(missing({ kind: 'foul', card: 'none' }, gn), 1, 'foul: player');
 // --- order
 eq(sortEvents([{ id: 2, period: '2H', at: 1 }, { id: 3, period: '1H', at: 5, seq: 2 }, { id: 1, period: '1H', at: 5, seq: 1 }], ['1H', '2H']).map((x) => x.id), [1, 3, 2], 'time order, then input order');
 
+// --- 同じ秒の入れ替えと戻し（守備セットプレーだけ入れ替え）：交代後＝最初の交代のあとの5人
+{
+  const M2 = { ...M, zero: [{ period: '1H', pid: 'f', seat: 1, from: 300000, to: 300000 }] };
+  eq(pitchAt(M2, '1H', 300000, 'after'), ['g1', 'b', 'c', 'd', 'f'], 'after at a swap-and-back second: the swapped-in player');
+  eq(pitchAt(M2, '1H', 300000, 'before'), ['g1', 'b', 'c', 'd', 'e'], 'before is unchanged');
+}
+
 // --- セットごとのイベント（4-2）
 {
   const sets = [{ key: ['b', 'c', 'd', 'e'].sort().join('|'), pids: ['b', 'c', 'd', 'e'], time: 1000000 }, { key: ['a', 'b', 'c', 'd'].sort().join('|'), pids: ['a', 'b', 'c', 'd'], time: 100000 }];
