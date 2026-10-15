@@ -57,7 +57,7 @@ export function vReview(m) {
 
   const others = matchesOf(m.activityId).filter((x) => x.status === 'playing' || x.status === 'done' || x.id === m.id);
   const sw = `<select id="rvMatch" class="rvsel">${others.map((x) => `<option value="${x.id}" ${x.id === m.id ? 'selected' : ''}>vs ${esc(x.opponent)}（${fmtShort(x.date)}）</option>`).join('')}</select>`;
-  const jumps = [[1, '出場時間'], [2, 'タイムライン'], [3, 'セット']].map(([n, t]) => `<a class="rvjp" href="#rv${n}" data-jump="rv${n}"><b>${n}</b>${t}</a>`).join('');
+  const jumps = [[1, '出場時間', 'rv1'], ['1-2', '1回ごと', 'rv1b'], [2, 'タイムライン', 'rv2'], [3, 'セット', 'rv3']].map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
@@ -122,6 +122,29 @@ export function vReview(m) {
     <table class="rvtb"><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${th}${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}</tr>${rows}</table>
     <p class="rvhint">見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）。「選手」を押すと背番号順に戻ります</p></div></section>`;
 
+  // ---------- 1-2. 1回ごとの出場時間 ----------
+  // ピリオドごとに、選手の1回目・2回目…の出場時間。小さい数字＝入った〜出た（プレーイングタイムは残り時間、ランニングタイムはキックオフからの時間）
+  const clk = (p, v) => (runMode ? mmss(v) : mmss(p.len - v));
+  const onNow = new Set(M.live ? st.seats.filter(Boolean) : []);
+  const perTables = M.periods.filter((p) => p.status !== 'none').map((p) => {
+    const lists = Object.fromEntries(byNo.map((pid) => [pid, M.stints.filter((x) => x.period === p.key && x.pid === pid).sort((a, b) => a.from - b.from)]));
+    const n = Math.max(1, ...Object.values(lists).map((l) => l.length));
+    const hd = Array.from({ length: n }, (_, i) => `<th>${i + 1}回目</th>`).join('');
+    const body = byNo.map((pid) => {
+      const l = lists[pid]; const tot = l.reduce((a, x) => a + x.to - x.from, 0);
+      const cells = Array.from({ length: n }, (_, i) => {
+        const x = l[i]; if (!x) return '<td class="na"></td>';
+        const d = x.to - x.from;
+        const now = M.live && p.key === M.current && onNow.has(pid) && i === l.length - 1;
+        return `<td class="${d < 60000 ? 'sh' : ''}"><b>${mmss(d)}</b><small>${clk(p, x.from)}〜${now ? '出場中' : clk(p, x.to)}</small></td>`;
+      }).join('');
+      return `<tr class="${l.length ? '' : 'zero'}"><td>${badge(pid)} ${esc(last(pid))}</td>${cells}<td class="sum"><b>${mmss(tot)}</b></td><td class="sum">${l.length}</td></tr>`;
+    }).join('');
+    return `<div class="rvst2"><b>${p.label}</b><span>（${mmss(p.elapsed)}）</span></div><table class="rvtb rvper"><tr><th>選手</th>${hd}<th>合計</th><th>回数</th></tr>${body}</table>`;
+  }).join('');
+  const s1b = `<section class="rvsec" id="rv1b"><div class="rvtt"><b>1-2. 1回ごとの出場時間</b><span>ピッチに入ってから出るまでの1回ごとの時間（${TT}）。大きい数字＝その回の時間、小さい数字＝入った〜出た（${runMode ? 'キックオフからの時間' : '時計の残り時間'}）。オレンジ＝1分未満。合計・回数は「1. 出場時間」と同じ</span></div>
+    <div class="rvbox">${perTables}</div></section>`;
+
   // ---------- 2. 出場タイムライン ----------
   const axis = M.periods.filter((p) => !p.extra || p.status !== 'none' || st.askExtra || cfg.times?.extra);
   const total = axis.reduce((s, p) => s + p.len, 0);
@@ -152,7 +175,7 @@ export function vReview(m) {
   const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>3. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。GKがいない区間（パワープレー）、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは除く。得点・失点はイベント入力（④）のあとで表示</span></div>
     <div class="rvbox"><table class="rvtb rvset"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}</table></div></section>`;
 
-  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}<div class="rvbody">${s1}${s2}${s3}</div></div>`, bind: bindReview(m) };
+  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}<div class="rvbody">${s1}${s1b}${s2}${s3}</div></div>`, bind: bindReview(m) };
 }
 
 function bindReview(m) {
