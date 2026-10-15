@@ -81,23 +81,24 @@ export function vPhys(m) {
   else state = '<span class="phst">試合前</span>';
   const ss = syncState(opsC);
   if (!live && ss.cls === 'wait') setTimeout(() => { if (physMatch() === m.id) render(); }, 10500 - (Date.now() - (opsC.checkAt || opsC.cacheAt || 0)));
-  const pend = live && st.batch.outs.length ? `<div class="phpend">交代待ち：OUT ${st.batch.outs.map((o) => badge(o.pid) + name(o.pid)).join('　')}${st.batch.ins.length ? `　→ IN ${st.batch.ins.map((p) => badge(p) + name(p)).join('　')}` : ''}</div>` : '';
   const head = `<div class="phtop">${state}<span class="sp"></span><span class="phright"><span class="phvs">vs ${esc(m.opponent || '')}</span><span class="phsy ${ss.cls}">● ${ss.txt}</span><button class="btn sm phsyb" id="phSync">⟳ 同期</button><span class="phro">閲覧専用</span><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></span></div>
-    <div class="phlg">数字は<b>実際の時間（ランニングタイム）</b>、<span class="pt">灰色の小さい数字＝プレーイングタイム（試合の時計）</span>。色：<i class="org"></i>${mmss(OR)}〜 <i class="red"></i>${mmss(RD)}〜（設定で変えられる）</div>${pend}`;
+    <div class="phlg"><span class="lgrun">0:00</span> 枠の中の黒い数字＝<b>実際の時間（ランニングタイム）</b>　<span class="ptv s">0:00</span> 緑の数字＝<b>プレーイングタイム（試合の時計）</b>　枠の色：<i class="org"></i>${mmss(OR)}〜 <i class="red"></i>${mmss(RD)}〜（設定で変えられる）</div>`;
 
   const bar = (ms) => `<div class="phbar"><i class="${col(ms)}" style="width:${Math.min(100, ms / MAX * 100).toFixed(1)}%"></i><b style="left:${(OR / MAX * 100).toFixed(1)}%"></b><b style="left:${(RD / MAX * 100).toFixed(1)}%"></b></div>
     <div class="phtk"><span style="left:${(OR / MAX * 100).toFixed(1)}%">${mmss(OR)}</span><span style="left:${(RD / MAX * 100).toFixed(1)}%">${mmss(RD)}</span></div>`;
+  const PT = (ms, cls = '') => `<span class="ptv ${cls}">${mmss(ms)}</span>`;
   const pitchHTML = pitch.map((r) => `<div class="phpr"><div class="phnm">${badge(r.pid)}<span>${name(r.pid)}</span></div>
-      <div><div class="lab">今の出場</div><div class="phbig ${col(r.curRun)}">${mmss(r.curRun)}</div><div class="pt">プレーイングタイム ${mmss(r.curPlay)}</div></div>
+      <div class="phnow"><div class="phnowh">今の出場</div><div class="phrbox ${col(r.curRun)}"><div class="lab">ランニングタイム</div><div class="phbig">${mmss(r.curRun)}</div></div>
+        <div class="phpt"><div class="lab">プレーイングタイム</div>${PT(r.curPlay, 'l')}</div></div>
       <div class="phbw">${bar(r.curRun)}</div>
-      <div><div class="lab">合計出場</div><div class="phmid">${mmss(r.totRun)}</div><div class="pt">プレーイングタイム ${mmss(r.totPlay)}</div></div></div>`).join('')
-    + gks.map((r) => `<div class="phgk">${badge(r.pid)}<span class="phgkn">${name(r.pid)}</span><span>今の出場 <b>${mmss(r.curRun)}</b> <em>プレーイングタイム ${mmss(r.curPlay)}</em></span><span>合計出場 <b>${mmss(r.totRun)}</b> <em>プレーイングタイム ${mmss(r.totPlay)}</em></span></div>`).join('')
+      <div class="phtot"><div class="lab">合計出場</div><div class="phmid">${mmss(r.totRun)}</div>${PT(r.totPlay, 'm')}</div></div>`).join('')
+    + gks.map((r) => `<div class="phgk">${badge(r.pid)}<span class="phgkn">${name(r.pid)}</span><span class="phgkc"><span class="lab">今の出場</span><b class="phrbox sm">${mmss(r.curRun)}</b>${PT(r.curPlay, 's')}</span><span class="phgkc"><span class="lab">合計出場</span><b>${mmss(r.totRun)}</b>${PT(r.totPlay, 's')}</span></div>`).join('')
     || '<p class="mu pad">ピッチに選手がいません（ピリオドの間）</p>';
-  // ベンチは人数が多いので1行に収める（見出しは上に1回だけ）
   const benchHTML = (bench.length ? '<div class="phbr phbh"><span></span><span>休み</span><span>前回の出場</span><span>合計出場</span></div>' : '')
     + bench.map((r) => `<div class="phbr"><div class="phnm">${badge(r.pid)}<span>${name(r.pid)}</span></div>
-      <div class="phbig2">${mmss(r.rest)}</div><div class="phmid2">${mmss(r.lastRun)} <span class="pt">${mmss(r.lastPlay)}</span></div>
-      <div class="phmid2">${mmss(r.totRun)} <span class="pt">${mmss(r.totPlay)}</span></div></div>`).join('')
+      <div><span class="phrbox rest">${mmss(r.rest)}</span></div>
+      <div class="phpair"><b>${mmss(r.lastRun)}</b>${PT(r.lastPlay, 's')}</div>
+      <div class="phpair"><b>${mmss(r.totRun)}</b>${PT(r.totPlay, 's')}</div></div>`).join('')
     + (ejected.length ? `<div class="phun"><span class="phunl">退場</span>${ejected.map((r) => `<span class="phchip">${badge(r.pid)}${name(r.pid)}</span>`).join('')}</div>` : '')
     + (unused.length ? `<div class="phun"><span class="phunl">まだ出ていない</span>${unused.map((r) => `<span class="phchip">${badge(r.pid)}${name(r.pid)}</span>`).join('')}</div>` : '');
 
@@ -105,6 +106,6 @@ export function vPhys(m) {
     active: 'acts',
     bind: (root) => { const b = root.querySelector('#phSync'); if (b) b.onclick = () => { resyncOps(m.id); }; },
     html: `<div class="phw">${head}<div class="phcols"><div class="phpane"><h3>ピッチ <small>今の出場が長い順</small></h3>${pitchHTML}</div>
-      <div class="phpane"><h3>ベンチ <small>休みが長い順。前回・合計の右の灰色の数字＝プレーイングタイム</small></h3>${benchHTML || '<p class="mu pad">ベンチの選手はまだ出場していません</p>'}</div></div></div>`,
+      <div class="phpane"><h3>ベンチ <small>休みが長い順。左＝実際の時間　右の緑＝プレーイングタイム</small></h3>${benchHTML || '<p class="mu pad">ベンチの選手はまだ出場していません</p>'}</div></div></div>`,
   };
 }
