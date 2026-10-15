@@ -11,7 +11,8 @@ const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const mmssUp = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 let tick = null;
-let sortState = { col: '', dir: 'desc' }; // 出場時間の表の並べ替え
+const SORT0 = { col: 'total', dir: 'desc' }; // 初めは合計の長い順
+let sortState = { ...SORT0 }; // 出場時間の表とグラフの並べ替え
 const compactKey = 'fpt.reviewCompact';
 const isCompact = () => { try { return localStorage.getItem(compactKey) === '1'; } catch { return false; } };
 // 時間の数え方：プレーイングタイム（時計の時間）／ランニングタイム（実際に流れた時間）
@@ -77,17 +78,31 @@ export function vReview(m) {
   const denomTxt = M.periods.filter((p) => p.status !== 'none').map((p) => `${p.label}${mmss(p.elapsed)}`).join('＋');
 
   // ---------- 1. 出場時間 ----------
-  // 目盛りの最大＝ここまでに行ったピリオドの公式の長さの合計（前半中・ハーフタイムは20分、後半に入ると40分、延長に入ると延長の分も足す）
-  const maxT = Math.max(M.periods.filter((p) => p.status !== 'none').reduce((s, p) => s + p.len, 0), 60000);
-  const gridStep = maxT > 30 * 60000 ? 10 : 5; // 分
-  const W = 1040, Hc = 170, L = 52;
-  const n = byNo.length, cw = (W - L) / Math.max(n, 1), bw = Math.min(46, cw * 0.62);
+  const legend = M.periods.filter((p) => !p.extra || p.status !== 'none' || cfg.times?.extra).map((p) => `<span class="lg"><i style="background:${COL[p.key]}"></i>${p.label}</span>`).join('');
+  // 表の並べ替え：見出しを押すと 多い順 → 少ない順 → 背番号順（初めは合計の長い順）。グラフも同じ順に並ぶ
+  const sortVal = (pid, col) => {
+    const r = T[pid] || { per: {}, total: 0, count: 0 };
+    if (col === 'total') return r.total; if (col === 'count' || col === 'rate') return col === 'count' ? r.count : r.total;
+    const [k, f] = col.split(':'); const ps = M.periods.find((p) => p.key === k);
+    if (!ps || ps.status === 'none') return -1; const c = r.per[k]; return f === 'n' ? (c?.count || 0) : (c?.time || 0);
+  };
+  const sorted = sortState.col ? byNo.slice().sort((a, b) => (sortVal(b, sortState.col) - sortVal(a, sortState.col)) * (sortState.dir === 'asc' ? -1 : 1) || byNo.indexOf(a) - byNo.indexOf(b)) : byNo;
+  // ---------- 1. 出場時間のグラフ：FPだけ（GKは右の枠に数字）。目盛りはFPの一番長い時間に合わせ、FPの平均を点線で引く ----------
+  const isGKp = (pid) => mem(pid).pos === 'GK';
+  const fpList = sorted.filter((pid) => !isGKp(pid)), gkList = byNo.filter(isGKp);
+  const fpPlayed = fpList.filter((pid) => (T[pid]?.total || 0) > 0);
+  const fpAvg = fpPlayed.length ? fpPlayed.reduce((a, pid) => a + T[pid].total, 0) / fpPlayed.length : 0;
+  const fpMax = Math.max(0, ...fpList.map((pid) => T[pid]?.total || 0));
+  const gridStep = fpMax > 10 * 60000 ? 5 : fpMax > 4 * 60000 ? 2 : 1; // 分
+  const maxT = Math.max(gridStep * 60000, Math.ceil(fpMax / (gridStep * 60000)) * gridStep * 60000);
+  const W = 1040, GW = 200, Hc = 170, L = 52, PW = W - GW - 16;
+  const n = fpList.length, cw = (PW - L) / Math.max(n, 1), bw = Math.min(46, cw * 0.62);
   const sv = [`<svg class="rvbar" viewBox="0 0 ${W + 10} ${Hc + 64}" preserveAspectRatio="xMinYMin meet">`];
   for (let mi = 0; mi * 60000 <= maxT; mi += gridStep) {
     const y = 20 + Hc - Hc * (mi * 60000) / maxT;
-    sv.push(`<line x1="${L}" y1="${y}" x2="${W + 8}" y2="${y}" stroke="${mi === 0 ? '#18233A' : '#E1E6EF'}"/><text x="${L - 6}" y="${y + 4}" font-size="12" fill="#8A94A6" text-anchor="end">${mi}:00</text>`);
+    sv.push(`<line x1="${L}" y1="${y}" x2="${PW}" y2="${y}" stroke="${mi === 0 ? '#18233A' : '#E1E6EF'}"/><text x="${L - 6}" y="${y + 4}" font-size="12" fill="#8A94A6" text-anchor="end">${mi}:00</text>`);
   }
-  byNo.forEach((pid, k) => {
+  fpList.forEach((pid, k) => {
     const x = L + 6 + k * cw + (cw - bw) / 2; let y = 20 + Hc;
     for (const p of M.periods) {
       const t = T[pid]?.per[p.key]?.time || 0; if (!t) continue;
@@ -96,19 +111,20 @@ export function vReview(m) {
     }
     const tot = T[pid]?.total || 0;
     sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="15" font-weight="800" fill="#0B2D6B" text-anchor="middle">${mmss(tot)}</text>`);
-    sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 19}" font-size="15" font-weight="800" fill="${mem(pid).pos === 'GK' ? '#C8372D' : '#1F5FBF'}" text-anchor="middle">${esc(mem(pid).no ?? '')}</text>`
+    sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 19}" font-size="15" font-weight="800" fill="#1F5FBF" text-anchor="middle">${esc(mem(pid).no ?? '')}</text>`
       + `<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 37}" font-size="12.5" fill="#5F6B80" text-anchor="middle">${esc(last(pid))}</text>`);
   });
+  if (fpAvg) {
+    const ya = 20 + Hc - Hc * fpAvg / maxT;
+    sv.push(`<line x1="${L}" y1="${ya.toFixed(1)}" x2="${PW}" y2="${ya.toFixed(1)}" stroke="#E0832B" stroke-width="2.5" stroke-dasharray="7 5"/><text x="${PW + 4}" y="${(ya - 4).toFixed(1)}" font-size="12" font-weight="800" fill="#E0832B">FP平均</text><text x="${PW + 4}" y="${(ya + 11).toFixed(1)}" font-size="12" font-weight="800" fill="#E0832B">${mmss(fpAvg)}</text>`);
+  }
+  const gx = W - GW + 40;
+  sv.push(`<rect x="${gx - 10}" y="16" width="${GW - 40}" height="${Hc + 8}" rx="10" fill="#F6F8FB" stroke="#E1E6EF"/><text x="${gx + (GW - 60) / 2}" y="38" font-size="13" font-weight="800" fill="#0B2D6B" text-anchor="middle">GK（別枠）</text>`);
+  gkList.forEach((pid, i) => {
+    const y = 66 + i * 34;
+    sv.push(`<rect x="${gx}" y="${y - 14}" width="26" height="20" rx="4" fill="#C8372D"/><text x="${gx + 13}" y="${y + 1}" font-size="12.5" font-weight="800" fill="#fff" text-anchor="middle">${esc(mem(pid).no ?? '')}</text><text x="${gx + 32}" y="${y + 1}" font-size="13" fill="#18233A">${esc(last(pid))}</text><text x="${gx + GW - 62}" y="${y + 1}" font-size="15" font-weight="800" fill="#0B2D6B" text-anchor="end">${mmss(T[pid]?.total || 0)}</text>`);
+  });
   sv.push('</svg>');
-  const legend = M.periods.filter((p) => !p.extra || p.status !== 'none' || cfg.times?.extra).map((p) => `<span class="lg"><i style="background:${COL[p.key]}"></i>${p.label}</span>`).join('');
-  // 表の並べ替え：見出しを押すと 多い順 → 少ない順 → 背番号順（初めは背番号順）
-  const sortVal = (pid, col) => {
-    const r = T[pid] || { per: {}, total: 0, count: 0 };
-    if (col === 'total') return r.total; if (col === 'count' || col === 'rate') return col === 'count' ? r.count : r.total;
-    const [k, f] = col.split(':'); const ps = M.periods.find((p) => p.key === k);
-    if (!ps || ps.status === 'none') return -1; const c = r.per[k]; return f === 'n' ? (c?.count || 0) : (c?.time || 0);
-  };
-  const sorted = sortState.col ? byNo.slice().sort((a, b) => (sortVal(b, sortState.col) - sortVal(a, sortState.col)) * (sortState.dir === 'asc' ? -1 : 1) || byNo.indexOf(a) - byNo.indexOf(b)) : byNo;
   const sh = (col, label) => `<th class="srt ${sortState.col === col ? 'on' : ''}" data-sort="${col}">${label}<i>${sortState.col === col ? (sortState.dir === 'asc' ? '▲' : '▼') : '⇅'}</i></th>`;
   const th = shownP.map((p) => sh(`${p.key}:t`, p.label) + sh(`${p.key}:n`, '回数')).join('');
   const rows = sorted.map((pid) => {
@@ -119,10 +135,10 @@ export function vReview(m) {
     }).join('');
     return `<tr class="${r.total ? '' : 'zero'}"><td>${badge(pid)} ${esc(last(pid))}</td>${cells}<td><b>${mmss(r.total)}</b></td><td>${r.count}</td><td>${played ? Math.round(r.total / played * 100) : 0}%</td></tr>`;
   }).join('');
-  const s1 = `<section class="rvsec" id="rv1"><div class="rvtt"><b>1. 出場時間</b><span>棒＝ピリオドを積み上げ、上の数字＝合計。${runMode ? '時間はすべてランニングタイム（キックオフから時計が0:00になるまでの実際の時間。止まっている間もピッチにいた選手の時間に入る）。' : ''}出場率は、ここまでの${TT}（${denomTxt}）に対して</span></div>
+  const s1 = `<section class="rvsec" id="rv1"><div class="rvtt"><b>1. 出場時間</b><span>グラフはFPだけ（GKは右の枠）。棒＝ピリオドを積み上げ、上の数字＝合計、オレンジの点線＝FPの平均。並びは下の表と同じ。${runMode ? '時間はすべてランニングタイム（キックオフから時計が0:00になるまでの実際の時間。止まっている間もピッチにいた選手の時間に入る）。' : ''}出場率は、ここまでの${TT}（${denomTxt}）に対して</span></div>
     <div class="rvbox"><div class="rvlg">${legend}</div>${sv.join('')}
     <table class="rvtb"><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${th}${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}</tr>${rows}</table>
-    <p class="rvhint">見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）。「選手」を押すと背番号順に戻ります</p></div></section>`;
+    <p class="rvhint">初めは合計の長い順。見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）、「選手」を押すと背番号順。グラフも同じ順に並びます</p></div></section>`;
 
   // ---------- 2. 1回ごとの出場時間 ----------
   // ピリオドごとに、選手の1回目・2回目…の出場時間。小さい数字＝入った〜出た（プレーイングタイムは残り時間、ランニングタイムはキックオフからの時間）
