@@ -134,3 +134,33 @@ export function summary(ev, nm, goalName = (x) => x) {
   if ((k === 'foul' || k === 'fouled') && ev.card === 'none') parts.push('カードなし');
   return parts.join('・');
 }
+
+// ---------- セットごとのイベント（マッチレビュー 4-2） ----------
+// sets = setTable(M) の結果（並び・出場時間はそのまま使う）。Mp = プレーイングタイムの試合の形（ピッチの5人を決める）。
+// 得点はシュートに、失点は被シュートに数える（OGは数えない）。返す：{ cols, rows:[{key,pids,time,c[]}], special, other, total }
+export const SET_COLS = [['shot', 'シュート'], ['oshot', '被シュート'], ['z4', 'Z4進入'], ['oz4', '被Z4進入'], ['sz', 'SZ進入'], ['osz', '被SZ進入'], ['fspat', 'FSP AT'], ['fspdf', 'FSP DF']];
+export function setEventTable(Mp, sets, events, goalName = (x) => x) {
+  const col = (e) => {
+    const k = e.kind;
+    if (k === 'shot' || k === 'szshot') return 0;
+    if (k === 'goal') return e.pid === OPP_OG ? -1 : 0;
+    if (k === 'oshot' || k === 'oszshot') return 1;
+    if (k === 'conc') return isOG(goalName(e.gtype)) ? -1 : 1;
+    const i = ['z4', 'oz4', 'sz', 'osz', 'fspat', 'fspdf'].indexOf(k);
+    return i < 0 ? -1 : i + 2;
+  };
+  const zero = () => SET_COLS.map(() => 0);
+  const rows = sets.map((s) => ({ key: s.key, pids: s.pids, time: s.time, c: zero() }));
+  const special = zero(), other = zero(), total = zero();
+  for (const e of events) {
+    if (e.deleted) continue;
+    const ci = col(e); if (ci < 0) continue;
+    const side = e.side || (isFsp(e.kind) ? 'after' : 'before');
+    const on = pitchAt(Mp, e.period, e.at, side);
+    const gks = on.filter((p) => isGK(Mp.cfg, p)), fps = on.filter((p) => !isGK(Mp.cfg, p));
+    const key = gks.length === 1 && fps.length === 4 ? fps.slice().sort().join('|') : null;
+    const r = key ? rows.find((x) => x.key === key) : null;
+    (r ? r.c : key ? other : special)[ci]++; total[ci]++;
+  }
+  return { cols: SET_COLS, rows, special, other, total };
+}

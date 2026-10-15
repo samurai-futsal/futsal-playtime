@@ -1,6 +1,7 @@
 // マッチレビュー (spec 7章「マッチレビュー」). Items 1〜3 are built from the MATCH PLAY record only,
 // so they are always shown. Items 4〜6 need events (④) and are not shown until then.
-import { S, matchById, playerById, matchesOf, teamSettings, watchOps } from './store.js';
+import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvents, opts } from './store.js';
+import { setEventTable } from './events.js';
 import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
 import { matchModel, toRunning, playerTable, setTable, playedTime, periodSig } from './model.js';
 import { esc, fmtShort } from './ui.js';
@@ -27,6 +28,7 @@ export function vReview(m) {
   const st = replay(opsC.list, cfg);
   st.sig = periodSig(opsC.list);
   const M0 = matchModel(st, Date.now(), m.fix);
+  const evs = watchEvents(m.id).list.filter((e) => !e.deleted);
   const runMode = isRun();
   const M = runMode ? toRunning(M0, st, Date.now()) : M0;
   const TT = runMode ? 'ランニングタイム' : 'プレーイングタイム';
@@ -57,7 +59,7 @@ export function vReview(m) {
 
   const others = matchesOf(m.activityId).filter((x) => x.status === 'playing' || x.status === 'done' || x.id === m.id);
   const sw = `<select id="rvMatch" class="rvsel">${others.map((x) => `<option value="${x.id}" ${x.id === m.id ? 'selected' : ''}>vs ${esc(x.opponent)}（${fmtShort(x.date)}）</option>`).join('')}</select>`;
-  const jumps = [[1, '出場時間', 'rv1'], ['1-2', '1回ごと', 'rv1b'], [2, 'タイムライン', 'rv2'], [3, 'セット', 'rv3']].map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
+  const jumps = [[1, '出場時間', 'rv1'], ['1-2', '1回ごと', 'rv1b'], [2, 'タイムライン', 'rv2'], [3, 'セット', 'rv3'], ...(evs.length ? [['4-2', 'セット別', 'rv4b']] : [])].map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
@@ -175,7 +177,22 @@ export function vReview(m) {
   const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>3. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。GKがいない区間（パワープレー）、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは除く。得点・失点はイベント入力（④）のあとで表示</span></div>
     <div class="rvbox"><table class="rvtb rvset"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}</table></div></section>`;
 
-  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}<div class="rvbody">${s1}${s1b}${s2}${s3}</div></div>`, bind: bindReview(m) };
+  // ---------- 4-2. セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントがあるときだけ） ----------
+  let s4b = '';
+  if (evs.length) {
+    const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
+    const et = setEventTable(M0, sets, evs, goalName);
+    const cell = (v, i) => `<td class="${i % 2 ? 'o' : 'w'}">${v ? `<b>${v}</b>` : '<span class="z">0</span>'}</td>`;
+    const fpl = (pids) => pids.slice().sort((a, b) => (parseInt(mem(a).no, 10) || 999) - (parseInt(mem(b).no, 10) || 999)).map((pid) => `${badge(pid)}<small>${esc(last(pid))}</small>`).join('');
+    const body = et.rows.map((r, i) => `<tr><td>${i + 1}位</td><td class="setn">${fpl(r.pids)}</td><td>${mmss(r.time)}</td>${r.c.map(cell).join('')}</tr>`).join('')
+      + `<tr class="ex"><td></td><td class="setn">GKがいない区間・退場で空席の区間</td><td class="na">—</td>${et.special.map(cell).join('')}</tr>`
+      + `<tr class="ex"><td></td><td class="setn">交代の瞬間の3秒未満の組み合わせ</td><td class="na">—</td>${et.other.map(cell).join('')}</tr>`
+      + `<tr class="tot"><td></td><td class="setn">合計</td><td>${mmss(sets.reduce((a, x) => a + x.time, 0))}</td>${et.total.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b></td>`).join('')}</tr>`;
+    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>4-2. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>FP4人のセットがピッチにいる間に起きた回数（並びは「3. セット」と同じ）。青＝自チーム、赤＝相手。シュートはSZ内シュートと得点を含む（OGは除く）。FSP＝FINISH SET PLAY</span></div>
+    <div class="rvbox"><table class="rvtb rvset2"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>${runMode ? 'ランニング<br>タイム' : '出場時間'}</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l}</th>`).join('')}</tr>${body}</table></div></section>`;
+  }
+
+  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}<div class="rvbody">${s1}${s1b}${s2}${s3}${s4b}</div></div>`, bind: bindReview(m) };
 }
 
 function bindReview(m) {

@@ -500,3 +500,9 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .rvper td.sh b{color:#B4541A}.rvper td.na{background:#F6F8FB}
 .rvper td.sum{background:#EEF3FB;text-align:right}
 .rvw.compact .rvper td small{font-size:9px}
+/* マッチレビュー 4-2. セットごとのイベント */
+.rvset2 th{text-align:center}.rvset2 th:nth-child(2){text-align:left}.rvset2 th.w{background:#1F5FBF}.rvset2 th.o{background:#C8312B}
+.rvset2 td{text-align:center}.rvset2 td:first-child{text-align:left}.rvset2 td.w{background:#F2F6FD}.rvset2 td.o{background:#FDF3F2}
+.rvset2 td.w b{color:#1F5FBF}.rvset2 td.o b{color:#C8312B}.rvset2 .z{color:#C3C9D4;font-weight:400}
+.rvset2 td.setn{text-align:left;font-weight:500}.rvset2 td.setn small{font-size:12px;margin-right:6px}
+.rvset2 tr.ex td{background:#F6F7FA;font-size:14px}.rvset2 tr.tot td{background:#EEF3FB;font-weight:700}

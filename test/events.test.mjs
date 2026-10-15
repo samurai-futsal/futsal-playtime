@@ -1,6 +1,6 @@
 // Event rules (spec 6章・13章): 未入力の数え方、ピッチの5人（交代と同じ秒）、分類の初めの選択、要確認。
 // Run: node test/events.test.mjs
-import { missing, pitchAt, subAtSecond, autoCls, needsCheck, OPP_OG, NO_ASSIST, UNKNOWN, sortEvents } from '../js/events.js';
+import { missing, pitchAt, subAtSecond, autoCls, needsCheck, OPP_OG, NO_ASSIST, UNKNOWN, sortEvents, setEventTable } from '../js/events.js';
 
 let pass = 0, fail = 0;
 const eq = (a, b, msg) => { const ok = JSON.stringify(a) === JSON.stringify(b); ok ? pass++ : (fail++, console.log('FAIL', msg, '\n  got', JSON.stringify(a), '\n  want', JSON.stringify(b))); };
@@ -72,6 +72,23 @@ eq(missing({ kind: 'foul', card: 'none' }, gn), 1, 'foul: player');
 
 // --- order
 eq(sortEvents([{ id: 2, period: '2H', at: 1 }, { id: 3, period: '1H', at: 5, seq: 2 }, { id: 1, period: '1H', at: 5, seq: 1 }], ['1H', '2H']).map((x) => x.id), [1, 3, 2], 'time order, then input order');
+
+// --- セットごとのイベント（4-2）
+{
+  const sets = [{ key: ['b', 'c', 'd', 'e'].sort().join('|'), pids: ['b', 'c', 'd', 'e'], time: 1000000 }, { key: ['a', 'b', 'c', 'd'].sort().join('|'), pids: ['a', 'b', 'c', 'd'], time: 100000 }];
+  const gn = (id) => ({ og: 'OG', t1: '定位置' }[id] || '');
+  const evs = [
+    { kind: 'shot', period: '1H', at: 50000 }, { kind: 'goal', period: '1H', at: 60000, pid: 'a' }, { kind: 'goal', period: '1H', at: 61000, pid: OPP_OG },
+    { kind: 'oszshot', period: '1H', at: 150000 }, { kind: 'conc', period: '1H', at: 160000, gtype: 't1' }, { kind: 'conc', period: '1H', at: 161000, gtype: 'og' },
+    { kind: 'z4', period: '1H', at: 100000, side: 'after' }, { kind: 'fspat', period: '1H', at: 100000 }, // 交代と同じ秒：FSPは交代後
+    { kind: 'oz4', period: '1H', at: 230000 }, { kind: 'rec', period: '1H', at: 50000 }, { kind: 'shot', period: '1H', at: 70000, deleted: true },
+  ];
+  const t = setEventTable(M, sets, evs, gn);
+  eq(t.rows[1].c, [2, 0, 0, 0, 0, 0, 0, 0], 'set abcd: shot + goal (opp OG not a shot)');
+  eq(t.rows[0].c, [0, 2, 1, 0, 0, 0, 1, 0], 'set bcde: opp SZ shot + conc (own OG not), z4 after sub, FSP after sub');
+  eq(t.special, [0, 0, 0, 1, 0, 0, 0, 0], 'GK absent → special row');
+  eq(t.total, [2, 2, 1, 1, 0, 0, 1, 0], 'total');
+}
 
 console.log(`events: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
