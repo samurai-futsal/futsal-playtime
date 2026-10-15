@@ -2,7 +2,7 @@
 // ピッチ＝「今の出場」が長い順、ベンチ＝「休み」が長い順。数字は実際の時間（ランニングタイム）が大きく、
 // プレーイングタイム（試合の時計）を小さく添える。「合計出場」＝この試合の合計。色はランニングタイム用の目安（設定で変えられる）。
 import { watchOps, playerById, teamSettings } from './store.js';
-import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
+import { replay, periodLabel, periodLen, nowElapsed, PERIODS } from './engine.js';
 import { matchModel, toRunning, playerTable, periodSig } from './model.js';
 import { esc } from './ui.js';
 import { render } from './views.js';
@@ -18,15 +18,17 @@ export function vPhys(m) {
   const ts = teamSettings();
   const OR = (ts.runOrange || 180) * 1000, RD = (ts.runRed || 300) * 1000, MAX = Math.max(RD + 60000, RD * 1.2);
   const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: ts.setplayAuto || 60 };
-  const now = Date.now();
   const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
-  const M = matchModel(st, now, m.fix); const R = toRunning(M, st, now);
-  const TP = playerTable(M), TR = playerTable(R);
   const per = st.periods[st.current];
   const live = per?.status === 'live';
   const running = live && per.runningSince != null;
+  // 試合中は今の時刻まで数える。ハーフタイム・試合終了のあとは、最後に終わったピリオドの終わり（時計が0:00になった時刻）で止める
+  const lastEnd = Math.max(0, ...Object.values(st.periods).filter((p) => p.status === 'done' && p.endT != null).map((p) => p.endT));
+  const now = live || !lastEnd ? Date.now() : lastEnd;
+  const M = matchModel(st, now, m.fix); const R = toRunning(M, st, now);
+  const TP = playerTable(M), TR = playerTable(R);
   stopPhysTick();
-  tick = setInterval(() => { if (!location.hash.endsWith('/physical')) return stopPhysTick(); render(); }, 1000);
+  if (live) tick = setInterval(() => { if (!location.hash.endsWith('/physical')) return stopPhysTick(); render(); }, 1000); // 数字が進むのは試合中だけ
 
   const mem = (pid) => m.members?.[pid] || {};
   const isGK = (pid) => mem(pid).pos === 'GK';
@@ -57,9 +59,9 @@ export function vPhys(m) {
   const len = periodLen(cfg, st.current);
   const runEl = R.periods.find((p) => p.key === st.current)?.elapsed || 0;
   let state;
-  if (st.matchOver) state = '<span class="phst">試合終了</span>';
+  if (st.matchOver) state = '<span class="phst">試合終了</span><span class="phrt">試合終了時点の数字（止まっています）</span>';
   else if (live) state = `<span class="phper">${periodLabel(st.current)}</span><span class="phclk">残り <b>${mmssUp(len - el)}</b></span><span class="phrun ${running ? 'on' : ''}">● ${running ? '時計が動いています' : '時計が止まっています'}</span><span class="phrt">${periodLabel(st.current)}の実際の経過 <b>${mmss(runEl)}</b></span>`;
-  else if (st.periods['1H']?.status === 'done' && st.periods['2H']?.status !== 'done') state = '<span class="phst">ハーフタイム</span>';
+  else if (lastEnd) state = `<span class="phst">${st.periods['1H']?.status === 'done' && st.periods['2H']?.status !== 'done' ? 'ハーフタイム' : 'ピリオドの間'}</span><span class="phrt">${[...PERIODS].reverse().find((p) => st.periods[p.key].status === 'done')?.label || ''}終了時点の数字（止まっています）</span>`;
   else state = '<span class="phst">試合前</span>';
   const pend = live && st.batch.outs.length ? `<div class="phpend">交代待ち：OUT ${st.batch.outs.map((o) => badge(o.pid) + name(o.pid)).join('　')}${st.batch.ins.length ? `　→ IN ${st.batch.ins.map((p) => badge(p) + name(p)).join('　')}` : ''}</div>` : '';
   const head = `<div class="phtop">${state}<span class="sp"></span><span class="phvs">vs ${esc(m.opponent || '')}</span>${navigator.onLine ? '' : '<span class="phoff">オフライン（記録が届いていません）</span>'}<span class="phro">閲覧専用</span><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></div>
