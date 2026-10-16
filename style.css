@@ -687,3 +687,4 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .sppre button{display:block;width:100%;text-align:left;border:1px solid #C9D1DE;border-radius:9px;padding:8px 10px;margin-bottom:6px;background:#F6F8FB}.sppre button small{display:block;color:#5F6B80;font-size:11px;margin-top:2px}
 .evform .mainev.bigrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px}.evform .mainev.bigrow .btn{min-height:66px;font-size:17px;font-weight:800}
 .evw .evform .mainev.bigrow .btn{min-height:66px;font-size:17px;font-weight:800}
+.evrole button.dev{margin-left:auto;border:1px solid #C9D1DE;background:#fff;border-radius:8px;padding:5px 10px;font-size:13px;color:#5F6B80}.evrole button.dev span{color:#1F5FBF;font-weight:700;margin-left:4px}

@@ -46,6 +46,15 @@ export function splitOf(m) {
   return { n, names, assign };
 }
 const roleKey = (m) => `fpt.evRole.${m.id}`;
+// 担当者の名前をその場で変える（端末を別の人に渡したとき）
+function changeWho() {
+  const md = openModal(`<h2>担当者の名前</h2><p class="mu">この端末で入力する人の名前です。端末を別の人に渡したときは、ここで変えてください（このあとの入力と履歴がその名前になります）。</p>
+    <input id="whoIn" value="${esc((() => { try { return localStorage.getItem('fpt.deviceName') || ''; } catch { return ''; } })())}" placeholder="例：谷本" style="width:100%;font-size:18px">
+    <div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-ok>決める</button></div>`);
+  md.querySelector('[data-c]').onclick = closeModal;
+  md.querySelector('[data-ok]').onclick = () => { const v = md.querySelector('#whoIn').value.trim(); try { if (v) localStorage.setItem('fpt.deviceName', v); else localStorage.removeItem('fpt.deviceName'); } catch {} closeModal(); toast(v ? `担当者を「${v}」にしました` : '名前を消しました'); render(); };
+  setTimeout(() => md.querySelector('#whoIn')?.focus(), 50);
+}
 function roleOf(m, n) {
   if (n <= 1) return 0;
   try { const v = parseInt(localStorage.getItem(roleKey(m)), 10); return Number.isInteger(v) && v >= 0 && v < n ? v : null; } catch { return null; }
@@ -169,10 +178,10 @@ export function vEvents(m) {
   // 分担しているのに、この端末の担当がまだ決まっていない → まず担当を選ぶ
   if (sp.n > 1 && role == null) {
     return { active: 'acts', html: `${crumbE}<h1>イベント入力：どの担当ですか？</h1>
-      <p class="mu">この試合は ${sp.n}人で分けて入力します。この端末で入力する担当を押してください（あとから変えられます）。担当者：<b>${esc(devName())}</b>（名前は「設定」の「担当者の名前（この端末）」で変えられます）</p>
+      <p class="mu">この試合は ${sp.n}人で分けて入力します。この端末で入力する担当を押してください（あとから変えられます）。担当者：<b>${esc(devName())}</b> <button class="btn xs" id="evWho">変える</button></p>
       <div class="rolepick">${Array.from({ length: sp.n }, (_, i) => `<button class="card" data-role="${i}"><b>${roleName(m, i)}</b><span>${kindsOf(sp, i).map(kindLabel).join('・')}</span></button>`).join('')}</div>
       <p><a class="btn" href="#/m/${m.id}/split">入力担当の設定</a></p>`,
-      bind: (root) => root.querySelectorAll('[data-role]').forEach((b) => { b.onclick = () => { setRole(m, +b.dataset.role); render(); }; }) };
+      bind: (root) => { root.querySelectorAll('[data-role]').forEach((b) => { b.onclick = () => { setRole(m, +b.dataset.role); render(); }; }); const w = root.querySelector('#evWho'); if (w) w.onclick = changeWho; } };
   }
   const mine = sp.n > 1 ? kindsOf(sp, role) : ALLK;
   { const me = (m.evRoles || {})[deviceId()]; if (sp.n > 1 && role != null && (!me || me.role !== role || me.name !== devName())) setRole(m, role); }
@@ -212,11 +221,11 @@ export function vEvents(m) {
       <div class="st">時刻<small>映像のスコアボードと同じ残り時間。「1205」で 12:05</small></div>
       <div class="evtime"><div class="evper">${periods.map((p) => `<button class="btn ${p.key === ui.period ? 'pri' : ''}" data-per="${p.key}">${p.label}</button>`).join('')}</div>
         <div class="evkp">${keypadHTML({ steps: [-1, 1], id: 'evkp' })}</div></div></div></div>`;
-  const showAll = sp.n <= 1 || ui.showAll;
-  const mineRow = sp.n > 1 ? `<div class="mainev bigrow">${mine.map(evBtn).join('')}</div>
-      <button class="btn sm moreev" id="evShowAll">${ui.showAll ? '− ほかのイベントをしまう' : '＋ ほかのイベントも出す'}</button>` : '';
+  // 分担しているときは担当のイベントだけを出す（担当以外は入れない＝しっかり分業。見逃しは試合後に「1人（全部）」で直す）
+  const showAll = sp.n <= 1;
+  const mineRow = sp.n > 1 ? `<div class="mainev bigrow">${mine.map(evBtn).join('')}</div>` : '';
   const step2 = `<div class="step"><span class="num">2</span><div>
-      <div class="st">イベント<small>${sp.n > 1 ? `${roleName(m, role)}のイベントを大きく出しています` : 'メインイベント：上が自チーム、下が相手チーム'}</small></div>${mineRow}${showAll ? `
+      <div class="st">イベント<small>${sp.n > 1 ? `${roleName(m, role)}が入力するイベント` : 'メインイベント：上が自チーム、下が相手チーム'}</small></div>${mineRow}${showAll ? `
       <div class="mainev"><span class="lab own">自チーム</span>${MAIN_OWN.map(evBtn).join('')}<span class="lab opp">相手チーム</span>${MAIN_OPP.map(evBtn).join('')}</div>
       <div class="subev"><span class="lab">サブイベント</span>${SUBS.map(evBtn).join('')}</div>` : ''}</div></div>`;
   const lm = lastMine(all);
@@ -232,7 +241,7 @@ export function vEvents(m) {
     html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › イベント入力</div>
       <div class="row between"><h1 style="margin:0">イベント入力</h1><span class="mu">記録した時点で試合の記録になり、マッチレビューにすぐ反映されます</span></div>
       <div class="evrole"><span class="rl">入力の担当人数</span><b>${sp.n}人</b>${sp.n > 1 ? `<span class="rl">この端末</span><b>${roleName(m, role)}</b><span class="mu">${mine.map(kindLabel).join('・')}</span><button class="btn sm" id="evRoleChange">担当を変える</button>` : '<span class="mu">（1人で全部のイベントを入力）</span>'}
-        <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><span class="dev">担当者：<b>${esc(devName())}</b></span></div>
+        <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><button class="dev" id="evWho">担当者：<b>${esc(devName())}</b> <span>変える</span></button></div>
       <div class="evw mt">${list}${form}</div>`,
     bind: (root) => bindEv(root, ctx),
   };
@@ -348,7 +357,7 @@ function bindEv(root, ctx) {
     if (b.dataset.per) { ui.period = b.dataset.per; ui.listPer = b.dataset.per; applyAuto(ctx); return render(); }
     if (b.dataset.lper) { ui.listPer = b.dataset.lper; return render(); }
     if (b.dataset.ltab) { ui.ltab = b.dataset.ltab; return render(); }
-    if (b.id === 'evShowAll') { ui.showAll = !ui.showAll; return render(); }
+    if (b.id === 'evWho') return changeWho();
     if (b.id === 'evRoleChange') { setRole(m, null); return render(); }
     if (b.dataset.rv) { const ev = ctx.all.find((x) => x.id === b.dataset.rv); if (ev && revertLast(m, ev)) toast('取り消しました'); return render(); }
     if (b.id === 'evUndo') { const lm = lastMine(ctx.all); if (lm && revertLast(m, lm.ev)) toast(`1つ戻しました（${ACT[lm.h.act]}を取り消し）`); resetForm(); return render(); }

@@ -681,8 +681,8 @@ function vSettings() {
       <p>ログイン中：${esc(ctx.user.email)}　<button class="btn sm" id="btnOut">ログアウト</button></p>
       <p class="mu">同期の状態：${!navigator.onLine ? 'オフライン（記録は端末に保存され、つながったときに送られます）' : S.pending ? '同期待ち（送っている途中です）' : '同期済み'}</p></div>
     <div class="card"><h3>担当者の名前（この端末）</h3>
-      <p class="mu">この端末を使う人の名前です。イベント入力の「担当者」・入力したイベントの印・直した履歴・MATCH PLAYの記録中の表示・記録の修正の履歴に出ます。人の名前でも端末の名前でも、自由に付けられます（この端末だけに保存）。</p>
-      <div class="row"><input id="devNameIn" value="${esc((() => { try { return localStorage.getItem('fpt.deviceName') || ''; } catch { return ''; } })())}" placeholder="例：谷本、記録用iPad、分析PC"><button class="btn sm pri" id="btnDevName">保存</button></div></div>
+      <p class="mu">この端末で入力する人の名前です。イベント入力の「担当者」・入力したイベントの印・直した履歴・MATCH PLAYの記録中の表示・記録の修正の履歴に出ます（この端末だけに保存）。端末を別の人に渡したときは名前を変えてください（イベント入力の「担当者」からも変えられます）。</p>
+      <div class="row"><input id="devNameIn" value="${esc((() => { try { return localStorage.getItem('fpt.deviceName') || ''; } catch { return ''; } })())}" placeholder="例：谷本"><button class="btn sm pri" id="btnDevName">保存</button></div></div>
     <div class="card"><h3>バックアップ</h3>
       <p class="mu">全チームの記録をファイルに書き出します。最後に書き出した日時：${lb ? new Date(lb).toLocaleString('ja-JP') : 'まだありません'}</p>
       <div class="row"><button class="btn pri" id="btnBk">バックアップを書き出す</button><button class="btn" disabled>ファイルから戻す（次の版で入ります）</button></div></div>
