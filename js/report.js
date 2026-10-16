@@ -13,13 +13,33 @@ export function printReport(ms, agg = 'sum') {
   printPages(reportHTML(pages), 'prrep', fitPages);
 }
 
-// A4横（余白8mm）＝ 約1062×733px。1ページを幅1400pxで組み、高さがはみ出すページはさらに縮める
-const PAGE_W = 1062, PAGE_H = 728, DESIGN_W = 1400;
+// A4横（余白8mm）＝ 約1062×733px。見出しと下の一行はそのままの大きさで、中身だけを用紙いっぱいに広げる：
+// ① 中身を組む幅を 1400px から狭めていき、縮めずに収まる一番大きい倍率を探す（最大1.3倍）
+// ② それでも下が余るときは、表の行の高さを少しずつ広げて埋める
+const PAGE_W = 1062, PAGE_H = 726, MAX_Z = 1.3;
 export function fitPages(root) {
-  root.querySelectorAll('.rpin').forEach((w) => {
-    const h = w.scrollHeight, wd = Math.max(DESIGN_W, w.scrollWidth);
-    const z = Math.min(PAGE_W / wd, PAGE_H / h);
-    w.style.transform = `scale(${z.toFixed(4)})`;
+  root.querySelectorAll('.rpw').forEach((pg) => {
+    const bx = pg.querySelector('.rpbx'), w = pg.querySelector('.rpin');
+    const availH = bx.clientHeight, availW = PAGE_W;
+    const fits = (W) => { w.style.width = W + 'px'; const h = w.scrollHeight, sw = w.scrollWidth; const z = Math.min(availW / W, MAX_Z); return { W, h, z, ok: sw <= W + 2 && h * z <= availH }; };
+    let best = fits(1400);
+    if (!best.ok) { // 1400px でも高さが入らない：さらに広く組んで、全体を縮める
+      let f = best; for (let W = 1500; W <= 2200; W += 100) { const g = fits(W); if (Math.min(availW / g.W, availH / g.h) > Math.min(availW / f.W, availH / f.h)) f = g; }
+      fits(f.W); best = { ...f, z: Math.min(availW / f.W, availH / f.h) };
+    } else {
+      for (let W = 1350; W >= availW / MAX_Z; W -= 25) { const g = fits(W); if (!g.ok) break; best = g; }
+      fits(best.W);
+      // 余った高さを、表の行に配る（1行につき最大40px）
+      const rows = [...w.querySelectorAll('.rpbody table tr')].filter((r) => !r.closest('svg'));
+      const spare = availH / best.z - w.scrollHeight - 4;
+      if (rows.length && spare > 8) {
+        const add = Math.min(40, spare / rows.length);
+        const hs = rows.map((r) => r.getBoundingClientRect().height);
+        rows.forEach((r, k) => { r.style.height = (hs[k] + add).toFixed(1) + 'px'; });
+        if (w.scrollHeight * best.z > availH - 4) rows.forEach((r) => { r.style.height = ''; });
+      }
+    }
+    w.style.transform = `scale(${best.z.toFixed(4)})`;
   });
 }
 
@@ -27,8 +47,8 @@ export function reportHTML(pages) {
   const now = new Date(); const made = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')} 作成`;
   const team = esc(S.team?.name || '');
   // 用紙をA4横にする（印刷が終わると #prArea ごと消える）
-  return '<style>@media print{@page{size:A4 landscape;margin:8mm}}</style>' + pages.map((p, i) => `<div class="rpw"><div class="rpin"><div class="rphd"><b class="rpt">マッチレポート</b><span class="rpwho">${team} ${p.who}</span><span class="rpttl">${p.title}</span><span class="rpno">${i + 1} / ${pages.length}</span></div>
-    <div class="rpbody">${p.html}</div><div class="rpft">${made}。MATCH PLAYとイベント入力の記録から作成（分析画面と同じ計算）</div></div></div>`).join('');
+  return '<style>@media print{@page{size:A4 landscape;margin:8mm}}</style>' + pages.map((p, i) => `<div class="rpw"><div class="rphd"><b class="rpt">マッチレポート</b><span class="rpwho">${team} ${p.who}</span><span class="rpttl">${p.title}</span><span class="rpno">${i + 1} / ${pages.length}</span></div>
+    <div class="rpbx"><div class="rpin"><div class="rpbody">${p.html}</div></div></div><div class="rpft">${made}。MATCH PLAYとイベント入力の記録から作成（分析画面と同じ計算）</div></div>`).join('');
 }
 
 // 試合ページの「マッチレポート（PDF）」から開く画面

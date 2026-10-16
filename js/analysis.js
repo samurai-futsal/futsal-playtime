@@ -490,10 +490,10 @@ export function reportPages(ms, agg = 'sum') {
       A.scope = 'match'; A.agg = 'sum';
       const one = buildCtx([m]); const x = one.ctx.ok[0]; const c = oneCtx(x);
       const who = vs(m) + `<small>${esc(asOfX(x))}</small>`;
-      pages.push({ title: '試合情報・スコア・チームスタッツ', who, html: `<div class="rpinfo">${infoLine(x)}</div><div class="rp1">${teamSection(c, { plain: true })}</div>` });
+      pages.push({ title: '試合情報・スコア・チームスタッツ', who, html: `<div class="rpinfo">${infoLine(x)}</div><div class="rp1">${teamSection(c, { plain: true })}${x.hasEv ? bandTable(c) : ''}</div>` });
       pages.push({ title: '出場時間と出場回数', who, html: timeTab(one.ctx) });
       pages.push({ title: '出場タイムライン', who, html: tlView(one.ctx) });
-      pages.push({ title: 'マッチ・ペース', who, html: `<div class="antbl anscroll">${paceSection(c, { bin: 60000, rows: x.hasEv ? ['shot', 'ent', 'fsp', 'rl'] : [], svgOnly: true })}</div><p class="anhint">1分ごと。時間はプレーイングタイム（ピリオドごとの経過時間）。緑の線＝得点、赤の線＝失点</p>` });
+      pages.push({ title: 'マッチ・ペース', who, html: `<div class="antbl anscroll">${paceSection(c, { bin: 60000, rows: x.hasEv ? ['shot', 'ent', 'fsp', 'rl'] : [], svgOnly: true, tw: 1100, rowH: 19, gh: 98 })}</div><p class="anhint">1分ごと。時間はプレーイングタイム（ピリオドごとの経過時間）。緑の線＝得点、赤の線＝失点</p>` });
       pushCommon(pages, one.ctx, vs(m));
     }
     return pages;
@@ -550,5 +550,16 @@ function summaryPage(ctx) {
   const cm = `<table class="rpcmp"><thead><tr><th></th><th class="w">${own}<br><small>合計</small></th><th class="w"><small>1試合平均</small></th><th class="o">相手<br><small>合計</small></th><th class="o"><small>1試合平均</small></th></tr></thead><tbody>
     ${cmp('得点', T.score.own, T.score.opp)}${cmp('シュート', a.shots, b.shots, [`SZ内 ${a.sz}`, `SZ内 ${b.sz}`])}${cmp('枠内', a.in, b.in)}${cmp('Z4進入', a.z4, b.z4)}${cmp('SZ進入', a.szE, b.szE)}${cmp('FINISH SET PLAY', a.fsp, b.fsp, [fspSub(a), fspSub(b)])}${cmp('ファール', a.foul, b.foul)}${cmp('カード', a.cards.yellow + a.cards.y2 + a.cards.red, b.cards.yellow + b.cards.y2 + b.cards.red, [cardSub(a), cardSub(b)])}${cmp('タイムアウト', T.timeouts.own, T.timeouts.opp)}
     <tr><td class="cl">リカバリー／ロスト</td><td class="cv" colspan="2">${T.rec} / ${T.lost}<small>1試合平均 ${av(T.rec)} / ${av(T.lost)}</small></td><td colspan="2"></td></tr></tbody></table>`;
-  return `<h3 class="anh3">試合ごとの結果</h3>${list}<h3 class="anh3">チームの合計と1試合平均</h3>${cm}<p class="anhint">シュートは得点を含む（OGは除く）。相手のファール・カード＝自チームの被ファールで記録したもの。このあとに${n}試合の合計のページ、そのあとに試合ごとのページが続きます</p>`;
+  // 得点者・アシスト（選手ごとの合計）
+  const sc = ctx.pids.filter((p) => ctx.P[p].goals || ctx.P[p].assists).sort((x, y) => ctx.P[y].goals - ctx.P[x].goals || ctx.P[y].assists - ctx.P[x].assists);
+  const scT = `<table class="antb rpsc"><thead><tr><th class="apl">選手</th><th>得点</th><th>アシスト</th><th>出場試合数</th></tr></thead><tbody>${sc.map((p) => `<tr><td class="apl">${badge(ctx, p)} ${name(p)}</td><td><b>${ctx.P[p].goals}</b></td><td>${ctx.P[p].assists}</td><td>${ctx.P[p].games}</td></tr>`).join('') || '<tr><td colspan="4" class="mu">得点・アシストはまだありません</td></tr>'}</tbody></table>`;
+  return `<h3 class="anh3">試合ごとの結果</h3>${list}<div class="rpsum2"><div><h3 class="anh3">チームの合計と1試合平均</h3>${cm}</div><div><h3 class="anh3">得点者・アシスト（${n}試合の合計）</h3>${scT}</div></div><p class="anhint">シュートは得点を含む（OGは除く）。相手のファール・カード＝自チームの被ファールで記録したもの。このあとに${n}試合の合計のページ、そのあとに試合ごとのページが続きます</p>`;
+}
+// 時間帯ごとの数（マッチスタッツの下段と同じ区切り：試合通算の0〜10・11〜20・21〜30・31〜40分、延長）
+function bandTable(c) {
+  const { R, own, opp } = c; const { A: a, B: b } = R;
+  const L = ['0〜10分', '11〜20分', '21〜30分', '31〜40分', '延長'].slice(0, a.shotBand.length);
+  const row = (lab, x, y) => `<tr><td class="apl">${lab}</td>${x.map((v, i) => `<td class="w">${v}</td><td class="o">${y[i]}</td>`).join('')}<td class="w"><b>${x.reduce((s, v) => s + v, 0)}</b></td><td class="o"><b>${y.reduce((s, v) => s + v, 0)}</b></td></tr>`;
+  return `<div class="rpband"><h3 class="anh3">時間帯ごとの数<small>試合の時計（プレーイングタイム）。左＝${esc(own)}、右＝${esc(opp)}</small></h3><table class="antb"><thead><tr><th class="apl"></th>${L.map((l) => `<th colspan="2">${l}</th>`).join('')}<th colspan="2">合計</th></tr></thead><tbody>
+    ${row('シュート', a.shotBand, b.shotBand)}${row('Z4進入', a.z4Band, b.z4Band)}${row('FINISH SET PLAY', a.fspBand, b.fspBand)}</tbody></table></div>`;
 }

@@ -38,7 +38,7 @@ export function paceSection(c, o = {}) {
   const axis = M0.periods.filter((p) => !p.extra || p.status !== 'none');
   // 名前の列は一番長い名前に合わせ、番号と名前を0:00のすぐ横にそろえる。右端は番号と合計を近づける
   const nameW = Math.max(2, ...order.map((pid) => last(pid).length)) * 13.5;
-  const X0 = 40 + nameW, MID = 46 + nameW, RW = 8, TW = 840, rowH = 24; // 右端の合計は出さない（流れを見る項目なので。2026-10-16）
+  const X0 = 40 + nameW, MID = 46 + nameW, RW = 8, TW = o.tw || 840, rowH = o.rowH || 24, GH = o.gh || 138; // 右端の合計は出さない（流れを見る項目なので。2026-10-16）
   const sumLen = axis.reduce((a, p) => a + p.len, 0);
   const HW = Object.fromEntries(axis.map((p) => [p.key, TW * p.len / sumLen]));
   const X = {}; let xx = X0; axis.forEach((p, i) => { if (i) xx += MID; X[p.key] = xx; xx += HW[p.key]; });
@@ -50,8 +50,7 @@ export function paceSection(c, o = {}) {
   const top = 44 + nLane * 14;
   const yEnd = top + order.length * rowH;
   const groups = rowKeys.map((k) => PACE_ROWS[k]).filter(Boolean);
-  const unit = BIN < 60000 ? 9 : 11;
-  const H = yEnd + 30 + groups.length * 138;
+  const H = yEnd + 30 + groups.length * GH;
   let s = `<svg class="pace" viewBox="0 0 ${PW} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Hiragino Sans, Noto Sans CJK JP, sans-serif">`;
   // 目盛り：ピリオドごとの経過時間（5分ごと）
   for (const p of axis) {
@@ -84,22 +83,31 @@ export function paceSection(c, o = {}) {
   let gy = yEnd + 30;
   const lowTop = gy;
   for (const [lab, sub, fo, fp, upL, dnL] of groups) {
-    const mid = gy + 60;
-    // 見出しはグラフの上に1行で（左の名前の列は狭いので）
-    s += `<text x="4" y="${gy + 4}" font-size="11.5" font-weight="800" fill="#0B2D6B">${lab}<tspan font-size="9.5" font-weight="500" fill="#56607A">${sub}</tspan><tspan dx="10" font-size="10" fill="#1F5FBF">上＝${esc(upL === 'own' ? own : upL)}</tspan><tspan dx="6" font-size="10" fill="${RED}">下＝${esc(dnL === 'opp' ? opp : dnL)}</tspan></text>`;
-    for (const p of axis) {
+    // 見出しは、グラフの上の帯（グラフとは重ならない）に1行で。色の四角で上・下のチームを示す
+    const TH = 18;
+    s += `<rect x="0" y="${gy - 13}" width="${PW}" height="${TH}" rx="3" fill="#EEF2F8"/>`;
+    s += `<text x="6" y="${gy}" font-size="12" font-weight="800" fill="#0B2D6B">${lab}<tspan font-size="10" font-weight="500" fill="#56607A">${sub}</tspan>`
+      + `<tspan dx="18" font-size="10.5" font-weight="700" fill="#1F5FBF">■ ${esc(upL === 'own' ? own : upL)}（上）</tspan><tspan dx="12" font-size="10.5" font-weight="700" fill="${RED}">■ ${esc(dnL === 'opp' ? opp : dnL)}（下）</tspan></text>`;
+    // 区切りごとの回数を先に数え、一番多い数でも帯にかからない高さにする
+    const bins = axis.map((p) => {
       const nMin = Math.ceil(p.len / BIN);
       const bo = Array(nMin).fill(0), bp = Array(nMin).fill(0);
       for (const e of c.evs) { if (e.period !== p.key) continue; const b = Math.min(nMin - 1, Math.floor(e.at / BIN)); if (fo(e)) bo[b]++; if (fp(e)) bp[b]++; }
+      return { p, nMin, bo, bp };
+    });
+    const half = (GH - TH - 8) / 2, mid = gy + TH - 13 + 4 + half;
+    const mxUp = Math.max(1, ...bins.flatMap((b) => b.bo)), mxDn = Math.max(1, ...bins.flatMap((b) => b.bp));
+    const unitU = Math.min(BIN < 60000 ? 9 : 11, (half - 13) / mxUp), unitD = Math.min(BIN < 60000 ? 9 : 11, (half - 13) / mxDn);
+    for (const { p, nMin, bo, bp } of bins) {
       s += `<line x1="${X[p.key]}" x2="${X[p.key] + HW[p.key]}" y1="${mid}" y2="${mid}" stroke="#8A93A6"/>`;
       const bw0 = HW[p.key] / nMin;
       for (let i = 0; i < nMin; i++) {
         const bx = X[p.key] + i * bw0 + (BIN < 60000 ? 1 : 2), bw = bw0 - (BIN < 60000 ? 2 : 4);
-        if (bo[i]) s += `<rect x="${bx}" y="${mid - bo[i] * unit}" width="${bw}" height="${bo[i] * unit}" fill="#1F5FBF"/><text x="${bx + bw / 2}" y="${mid - bo[i] * unit - 2}" font-size="10" text-anchor="middle" fill="#1F5FBF">${bo[i]}</text>`;
-        if (bp[i]) s += `<rect x="${bx}" y="${mid}" width="${bw}" height="${bp[i] * unit}" fill="#E04A3A"/><text x="${bx + bw / 2}" y="${mid + bp[i] * unit + 11}" font-size="10" text-anchor="middle" fill="#E04A3A">${bp[i]}</text>`;
+        if (bo[i]) s += `<rect x="${bx}" y="${mid - bo[i] * unitU}" width="${bw}" height="${bo[i] * unitU}" fill="#1F5FBF"/><text x="${bx + bw / 2}" y="${mid - bo[i] * unitU - 2}" font-size="10" text-anchor="middle" fill="#1F5FBF">${bo[i]}</text>`;
+        if (bp[i]) s += `<rect x="${bx}" y="${mid}" width="${bw}" height="${bp[i] * unitD}" fill="#E04A3A"/><text x="${bx + bw / 2}" y="${mid + bp[i] * unitD + 11}" font-size="10" text-anchor="middle" fill="#E04A3A">${bp[i]}</text>`;
       }
     }
-    gy += 138;
+    gy += GH;
   }
   // タップ用：区切りごとの透明な枠（その時間帯にピッチにいた選手を data-on に持つ）
   if (o.tap) for (const p of axis) {
