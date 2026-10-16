@@ -225,6 +225,18 @@ export function toRunning(M, st, now = Date.now()) {
   for (const x of M.timeouts || []) { const c = C(x.period); if (c) out.timeouts.push({ ...x, at: c.rel(x.t ?? c.wallOf(x.at)) }); }
   // イベント（得点・失点など）の時刻（時計の経過）→ キックオフからの実際の時間
   out.relOf = (k, at) => { const c = C(k); return c ? c.rel(c.wallOf(at)) : at; };
+  // 逆向き：キックオフからの実際の時間（ms）→ 試合の時計の経過。時計が止まっている間は止まった時計の値（Sportscode の取り込みで使う）
+  out.elOfRel = (k, rel) => {
+    const c = C(k); if (!c) return rel; const w = c.K + rel;
+    if (out.clock[k]?.runs) return elOfRuns(out.clock[k].runs, w);
+    let el = 0;
+    for (const r of st.periods[k].runs || []) {
+      const t1 = r.t1 ?? c.E; const e1 = r.el1 ?? (r.el0 + Math.max(0, t1 - r.t0));
+      if (w < r.t0) break;
+      el = w >= t1 ? e1 : r.el0 + (w - r.t0);
+    }
+    return el;
+  };
   return out;
 }
 

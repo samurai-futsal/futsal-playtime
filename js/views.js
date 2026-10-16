@@ -11,12 +11,13 @@ import { vEvents, vSplit, openTodo } from './evinput.js';
 import { vStats } from './stats.js';
 import { vAnalysis } from './analysis.js';
 import { vSportscode } from './scview.js';
+import { vScImport } from './scimportview.js';
 import { vPhys, stopPhysTick } from './viewer.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js'];
 export function startApp(c) {
   ctx = c;
   try { const t = localStorage.getItem('fpt.team'); if (t) selectTeam(t); } catch {}
@@ -107,13 +108,13 @@ function bindFrame() { const b = $('#btnBack'); b && (b.onclick = goBack); }
 function captureInputs(root) {
   const a = document.activeElement;
   const vals = {};
-  $$('input[id],textarea[id],select[id]', root).forEach((el) => { vals[el.id] = el.type === 'checkbox' ? el.checked : el.value; });
+  $$('input[id]:not([type=file]),textarea[id],select[id]', root).forEach((el) => { vals[el.id] = el.type === 'checkbox' ? el.checked : el.value; });
   return { vals, focus: a && a.id && root.contains(a) ? a.id : null, sel: a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null };
 }
 function restoreInputs(root, k) {
   for (const [id, v] of Object.entries(k.vals)) {
     const el = root.querySelector('#' + CSS.escape(id));
-    if (!el || el.dataset.fresh) continue;
+    if (!el || el.dataset.fresh || el.type === 'file') continue;
     if (el.type === 'checkbox') el.checked = v; else el.value = v;
   }
   if (k.focus) { const el = root.querySelector('#' + CSS.escape(k.focus)); if (el) { el.focus(); try { k.sel && el.setSelectionRange(...k.sel); } catch {} } }
@@ -500,6 +501,7 @@ function vMatch(r) {
   if (r.sub === 'stats') return vStats(m);
   if (r.sub === 'analysis') return vAnalysis(r, m);
   if (r.sub === 'sportscode') return vSportscode(m);
+  if (r.sub === 'scimport') return vScImport(m);
   if (r.sub === 'physical') return vPhys(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
@@ -539,6 +541,7 @@ function vMatch(r) {
     <div class="acts acts2">
       ${btn('イベント入力', '映像を見ながら入力\n試合中に入れたものの確認も', `#/m/${m.id}/events`, { kind: 'rec' })}
       ${btn('記録の修正', '交代・スタメン・退場\nパワープレー・試合情報', `#/m/${m.id}/fix`, { kind: 'rec' })}
+      ${btn('Sportscodeから取り込み', 'XML・CSVを読み込んで\nイベント入力に自動で記録', `#/m/${m.id}/scimport`, { kind: 'rec' })}
     </div>
     <div class="grp">見る（ハーフタイムでも、いつでも）</div>
     <div class="acts acts2">
