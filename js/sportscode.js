@@ -110,7 +110,8 @@ export function buildXML(o) {
     for (const pid of nos) { const gk = mem(pid).pos === 'GK'; xml += `<row>\n<code>#${xesc(mem(pid).no)}</code>\n<R>${gk ? 51400 : 8000}</R>\n<G>${gk ? 12800 : 24400}</G>\n<B>${gk ? 11000 : 49000}</B>\n</row>\n`; }
   }
   xml += '</ROWS>\n</file>\n';
-  return { xml, count: inst.length, players: inst.filter((i) => i.code.startsWith('#')).length, events: inst.filter((i) => !i.code.startsWith('#') && i.code !== 'Kick Off').length };
+  const rowOrder = [...evCodes, ...(o.withPlayers !== false ? Object.keys(members).sort((a, b) => (mem(a).pos === 'GK' ? 0 : 1) - (mem(b).pos === 'GK' ? 0 : 1) || (+mem(a).no || 0) - (+mem(b).no || 0)).map((pid) => '#' + mem(pid).no) : [])];
+  return { xml, inst, rowOrder, count: inst.length, players: inst.filter((i) => i.code.startsWith('#')).length, events: inst.filter((i) => !i.code.startsWith('#') && i.code !== 'Kick Off').length };
 }
 function clsOf(name) {
   if (['CK', 'CK-KI', 'KI', 'FK', 'PK', '第2PK'].includes(name)) return 'set';
@@ -118,3 +119,21 @@ function clsOf(name) {
   return { 定位置: 'pos', トランジション: 'trans', GK活用: 'gk' }[name] || null;
 }
 
+
+// CSV（Sportscode の「書き出し」と同じ形。2026-10-16 決定）：Sportscode への読み込みと、Excel などで見る・集計する両方に使う。
+// 列：Timeline, Start time, Duration, Row, Instance number, ラベルのグループ（名前の順）, Ungrouped, Notes, Flags。1行1件。
+// 同じグループに2つ付くときは「A, B」で1つのマスに入れる。行はコード（Row）ごとにまとめ、その中は時刻順。
+export function buildCSV(r, timeline, { bom = false } = {}) {
+  const q = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const groups = [...new Set(r.inst.flatMap((i) => i.labels.map(([g]) => g)))].sort();
+  const order = (c) => { const k = r.rowOrder.indexOf(c); return k < 0 ? (c === 'Kick Off' ? -1 : 9999) : k; };
+  const list = r.inst.slice().sort((a, b) => order(a.code) - order(b.code) || a.start - b.start);
+  const n = {}; const lines = [['Timeline', 'Start time', 'Duration', 'Row', 'Instance number', ...groups, 'Ungrouped', 'Notes', 'Flags'].map(q).join(',')];
+  for (const i of list) {
+    n[i.code] = (n[i.code] || 0) + 1;
+    const byG = {}; for (const [g, t] of i.labels) (byG[g] = byG[g] || []).push(t);
+    const st = Math.max(0, i.start), en = Math.max(0, i.end);
+    lines.push([timeline, +st.toFixed(3), +(en - st).toFixed(3), i.code, n[i.code], ...groups.map((g) => (byG[g] || []).join(', ')), '', '', ''].map(q).join(','));
+  }
+  return (bom ? '\uFEFF' : '') + lines.join('\n') + '\n';
+}

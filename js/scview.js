@@ -4,7 +4,7 @@ import { replay } from './engine.js';
 import { matchModel, toRunning, periodSig } from './model.js';
 import { esc, toast } from './ui.js';
 import { render } from './views.js';
-import { buildXML, DEFAULT_LEAD, LEAD_LABEL } from './sportscode.js';
+import { buildXML, buildCSV, DEFAULT_LEAD, LEAD_LABEL } from './sportscode.js';
 import { OPP_OG, UNKNOWN } from './events.js';
 
 // ---------- 画面（試合ページ「Sportscode（XML）」） ----------
@@ -36,12 +36,12 @@ export function vSportscode(m) {
     const vt = (e) => (k0 == null ? '—' : fmtT(+k0 + (+shift[p.key] || 0) + rel(p.key, e.at) / 1000));
     const gt = goals.length ? `<table class="sctb"><tr><th>得点・失点</th><th>試合の時計（経過）</th><th>XMLの時刻</th></tr>${goals.map((e) => `<tr><td class="${e.kind === 'goal' ? 'w' : 'o'}">${e.kind === 'goal' ? '得点' : '失点'}${e.kind === 'goal' && e.pid && e.pid !== OPP_OG && e.pid !== UNKNOWN ? '（' + esc(name(e.pid)) + '）' : ''}</td><td>${fmtT(e.at / 1000).replace(/\.0$/, '')}</td><td><b>${vt(e)}</b></td></tr>`).join('')}</table><p class="mu sm">XMLの時刻です。Sportscode でタイムラインを動画に合わせたあと、ゴールの場面と合っているかの確認に使えます</p>` : '<p class="mu sm">このピリオドに得点・失点はありません</p>';
     return `<div class="card sccard"><h3>${p.label}<small>実際の長さ ${fmtT(p.elapsed / 1000).replace(/\.\d$/, '')}（キックオフから時計が0:00になるまで）</small></h3>
-      <div class="scrow"><span class="scpos">XMLの ${fmtT(k0).replace(/\.0$/, '')} ＝ ${p.label}のキックオフ${prev ? `（${prev.label}の終わりのすぐあと）` : ''}</span><span class="sp"></span><button class="btn pri" data-dl="${p.key}">${p.label}のXMLを書き出す</button></div></div>`;
+      <div class="scrow"><span class="scpos">XMLの ${fmtT(k0).replace(/\.0$/, '')} ＝ ${p.label}のキックオフ${prev ? `（${prev.label}の終わりのすぐあと）` : ''}</span><span class="sp"></span><span class="scbtns"><button class="btn pri" data-dl="${p.key}" data-fmt="xml">${p.label}のXML</button><button class="btn" data-dl="${p.key}" data-fmt="csv">CSV（Sportscode用）</button><button class="btn" data-dl="${p.key}" data-fmt="xls">CSV（Excel用）</button></span></div></div>`;
   }).join('');
   const leadT = `<table class="sctb"><tr><th>コード</th><th>イベントの何秒前から</th><th>何秒後まで</th></tr>${Object.keys(DEFAULT_LEAD).map((k) => `<tr><td>${LEAD_LABEL[k]}</td><td><input data-lead="${k}:0" value="${lead[k][0]}" inputmode="decimal"></td><td><input data-lead="${k}:1" value="${lead[k][1]}" inputmode="decimal"></td></tr>`).join('')}</table>`;
-  const html = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › Sportscode（XML）</div>
-    <h1>Sportscode（XML）の書き出し</h1>
-    <p class="mu">前半のキックオフを 0:00 として、MATCH PLAYの実際の時刻（ランニングタイム）でピリオドごとのXMLを書き出します（前半・後半は別のファイル）。後半は前半の終わりのすぐあとに続けます。動画との位置合わせは Sportscode 側で行ってください。</p>
+  const html = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › Sportscode（XML・CSV）</div>
+    <h1>Sportscode（XML・CSV）の書き出し</h1>
+    <p class="mu">前半のキックオフを 0:00 として、MATCH PLAYの実際の時刻（ランニングタイム）でピリオドごとのXMLまたはCSVを書き出します（前半・後半は別のファイル）。CSVはSportscodeの書き出しと同じ形で、Sportscodeへの読み込み用と、Excelで開く用（日本語が文字化けしない形）の2つを選べます。後半は前半の終わりのすぐあとに続けます。動画との位置合わせは Sportscode 側で行ってください。</p>
     <div class="card"><div class="scrow"><label class="ck"><input type="checkbox" id="scP" ${opt.players ? 'checked' : ''}>出場の帯（#背番号の行。時計が動いていた区間ごと）</label>
       <label class="ck"><input type="checkbox" id="scE" ${opt.events ? 'checked' : ''}>イベント（今のコードウィンドウと同じコード名：シュート、ゾーン4進入、SETPLAY AT、ROBO、ファウルなど）${evs.length ? `　${evs.length}件` : '　（まだありません）'}</label></div></div>
     ${ps.length ? cards : '<div class="card empty">キックオフを押したピリオドがありません</div>'}
@@ -55,11 +55,15 @@ export function vSportscode(m) {
       root.querySelectorAll('[data-dl]').forEach((b) => b.onclick = () => {
         const k = b.dataset.dl; const p = ps.find((x) => x.key === k);
         const r = buildXML({ M, R, st, members: m.members || {}, events: evs, goalName: gn, key: k, ko: ko[k], shift: shift[k], lead: loadLead(), name, withPlayers: opt.players, withEvents: opt.events });
-        const blob = new Blob([r.xml], { type: 'application/xml' });
+        const fmt = b.dataset.fmt; const base = `vs${m.opponent || ''}_${p.label}_${(m.date || '').replace(/-/g, '')}`;
+        const timeline = `${S.team?.name || ''} vs ${m.opponent || ''}`.trim();
+        // Excel用は先頭に BOM を付ける（Excel で開いたときに日本語が文字化けしないように）。Sportscode用は Sportscode の書き出しと同じ BOM なし
+        const body = fmt === 'xml' ? r.xml : buildCSV(r, timeline, { bom: fmt === 'xls' });
+        const blob = new Blob([body], { type: fmt === 'xml' ? 'application/xml' : 'text/csv' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `vs${m.opponent || ''}_${p.label}_${(m.date || '').replace(/-/g, '')}.xml`; document.body.appendChild(a); a.click(); a.remove();
+        a.download = `${base}${fmt === 'xls' ? '_Excel用' : ''}.${fmt === 'xml' ? 'xml' : 'csv'}`; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-        toast(`${p.label}のXMLを書き出しました（出場の帯 ${r.players}本・イベント ${r.events}件）`);
+        toast(`${p.label}の${fmt === 'xml' ? 'XML' : fmt === 'csv' ? 'CSV（Sportscode用）' : 'CSV（Excel用）'}を書き出しました（出場の帯 ${r.players}本・イベント ${r.events}件）`);
       });
     },
   };

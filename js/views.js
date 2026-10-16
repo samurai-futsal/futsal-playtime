@@ -550,7 +550,7 @@ function vMatch(r) {
       ${btn('マッチレビュー（PDF）', '出場時間だけ（1〜4）\nまたは すべて（1〜8）', `#/m/${m.id}/review/pdf`, { kind: 'out' })}
       ${btn('マッチレポート（PDF）', 'A4横・試合のすべて', '', { soon: true, soonText: '⑥の続きで入ります', kind: 'out' })}
       ${btn('データシート（Excel）', 'イベント一覧・選手スタッツ\n数式で集計', '', { soon: true, soonText: '⑥の続きで入ります', kind: 'out' })}
-      ${btn('Sportscode（XML）', '出場の帯とイベント\n映像に合わせて', `#/m/${m.id}/sportscode`, { kind: 'out' })}
+      ${btn('Sportscode（XML・CSV）', '出場の帯とイベント\nSportscode・Excel用', `#/m/${m.id}/sportscode`, { kind: 'out' })}
     </div>
     <p class="mu actnote">左の色：青＝記録する（記録が変わる）／緑＝見るだけ／紫＝書き出す</p>`,
   };

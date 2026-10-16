@@ -840,3 +840,4 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .sctb td.w{color:#1F5FBF;font-weight:700}.sctb td.o{color:#C8312B;font-weight:700}.sctb input{width:70px;font:inherit;padding:3px 6px}
 .mu.sm{font-size:12px}
 .scpos{font-size:14px;color:#3A4558;font-weight:600;align-self:center}
+.scbtns{display:inline-flex;gap:8px;flex-wrap:wrap}
