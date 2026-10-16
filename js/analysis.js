@@ -338,13 +338,15 @@ function tlView(ctx) {
 
 // ---------- セット ----------
 function setTab(ctx) {
-  const rows = new Map(); let special = null, other = null;
+  const rows = new Map(); let special = null, other = null, ppRow = null;
   const blank = () => ({ time: 0, count: 0, sh: 0, osh: 0, gf: 0, ga: 0, en: 0, oen: 0, games: new Set() });
   const isGK = (x, pid) => x.m.members?.[pid]?.pos === 'GK';
   for (const x of ctx.ok) {
-    const Mk = { ...x.Mw, periods: x.Mw.periods.filter((p) => !x.keys || x.keys.includes(p.key)) };
+    // セットの時間と回数は、5×4・4×5の時間帯をいつも除いて数える（2026-10-16 決定）
+    const Wex = windowsOf(x.M, x.W, 'ex'); const inEx = winTest(Wex, x.M); const Mx = clipModel(x.M, Wex);
+    const Mk = { ...Mx, periods: Mx.periods.filter((p) => !x.keys || x.keys.includes(p.key)) };
     for (const st of setTable(Mk)) { const r = rows.get(st.key) || rows.set(st.key, { ...blank(), pids: st.pids }).get(st.key); r.time += st.time; r.count += st.count; r.games.add(x.m.id); }
-    const ev = x.evs.filter((e) => (!x.keys || x.keys.includes(e.period)) && (!x.win || x.win(e)));
+    const ev = x.evs.filter((e) => !x.keys || x.keys.includes(e.period));
     const own = new Set(shotsOf(ev, x.gn, true).map((s) => s.e)), opp = new Set(shotsOf(ev, x.gn, false).map((s) => s.e));
     for (const e of ev) {
       const f = own.has(e) ? 'sh' : opp.has(e) ? 'osh' : (e.kind === 'z4' || e.kind === 'sz') ? 'en' : (e.kind === 'oz4' || e.kind === 'osz') ? 'oen' : null;
@@ -353,11 +355,15 @@ function setTab(ctx) {
       const on = pitchAt(x.M, e.period, e.at, e.side || (isFsp(e.kind) ? 'after' : 'before'));
       const gks = on.filter((p) => isGK(x, p)), fps = on.filter((p) => !isGK(x, p));
       const key = gks.length === 1 && fps.length === 4 ? fps.slice().sort().join('|') : null;
-      let r = key ? rows.get(key) : null;
+      let r = !inEx(e) ? (ppRow = ppRow || blank()) : key ? rows.get(key) : null;
       if (!r) { if (key) { other = other || blank(); r = other; } else { special = special || blank(); r = special; } }
       if (f) r[f]++; if (g) r[g]++;
     }
   }
+  // 出場時間が短いセット（設定画面の基準、初めは1分未満）は表に出さず、下の行にまとめる
+  const setMin = (teamSettings().setMin ?? 60) * 1000;
+  let short = null, shortN = 0;
+  for (const [k, r] of [...rows.entries()]) if (r.time < setMin) { short = short || blank(); shortN++; for (const f of ['time', 'count', 'sh', 'osh', 'gf', 'ga', 'en', 'oen']) short[f] += r[f]; rows.delete(k); }
   const list = [...rows.values()].sort((a, b) => b.time - a.time);
   const pm = (v, t) => (t > 0 ? (v / (t / 60000)).toFixed(2) : '—');
   const sgn = (v) => (v > 0 ? '+' + v : String(v));
@@ -372,9 +378,9 @@ function setTab(ctx) {
     <td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.sh - r.osh, r.time)}</td><td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.en - r.oen, r.time)}</td></tr>`;
   const th = (k, h, cls = '') => `<th class="srt ${A.sort.col === k ? 'on' : ''} ${cls}" data-sort="${k}">${h}</th>`;
   const head = `<tr><th>順位</th><th style="text-align:left">FP4人のセット</th>${th('time', '出場時間')}<th>回数</th>${ctx.ok.length > 1 ? '<th>試合数</th>' : ''}${th('sh', 'シュート', 'w')}${th('osh', '被シュート', 'o')}${th('gf', '得点', 'w')}${th('ga', '失点', 'o')}${th('pm', '±')}${th('en', 'Z4・SZ<br>進入', 'w')}${th('oen', '被Z4・SZ<br>進入', 'o')}${th('dsh', 'シュート差<br>／分')}${th('den', '進入差<br>／分')}</tr>`;
-  const body = list.map((r, i) => row(r, i)).join('') + (special ? row(special, 0, 'GKがいない区間・退場で空席の区間') : '') + (other ? row(other, 0, '交代の瞬間の3秒未満の組み合わせ') : '');
+  const body = list.map((r, i) => row(r, i)).join('') + (short ? row(short, 0, `出場時間が${mmss(setMin)}未満のセット（${shortN}組・合計 ${mmss(short.time)}）`) : '') + (ppRow ? row(ppRow, 0, 'パワープレー（5×4・4×5）の時間帯') : '') + (special ? row(special, 0, 'GKがいない区間・退場で空席の区間') : '') + (other ? row(other, 0, '交代の瞬間の3秒未満の組み合わせ') : '');
   return `<div class="antbl"><table class="antb anset"><thead>${head}</thead><tbody>${body || '<tr><td colspan="14" class="mu">GKが1人・FPが4人そろった時間がありません</td></tr>'}</tbody></table></div>
-    <p class="anhint">FP4人の組み合わせごと（出場時間の長い順。見出しで並べ替え）。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。差／分＝（自チーム−相手）÷出場時間。GKがいない区間（パワープレー）、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは別の行。薄い数字＝出場時間が${mmss(ref)}未満で参考値</p>`;
+    <p class="anhint">FP4人の組み合わせごと（出場時間の長い順。見出しで並べ替え）。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。差／分＝（自チーム−相手）÷出場時間。出場時間が${mmss(setMin)}未満のセット（設定画面で変えられます）、パワープレー（5×4・4×5）の時間帯、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは表に出さず、下の行にまとめます（全部足すとチーム全体の数になります）。薄い数字＝出場時間が${mmss(ref)}未満で参考値</p>`;
 }
 
 // ---------- パワープレー ----------

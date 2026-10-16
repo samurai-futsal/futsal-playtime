@@ -824,3 +824,4 @@ svg.anbar{width:100%;height:auto;max-height:30vh;display:block}
 svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin.on{fill:rgba(255,190,40,.28)}
 .antl{padding:8px 10px}.antl .rvtl .tlr{cursor:pointer}
 .antl .tlr:not(.tlhead):nth-child(even){background:#EAF0F9;border-radius:6px}.antl .tlr.hl{background:#FFE9A8!important}
+.rvset tr.ex td{font-size:14px;color:#5F6B80;font-weight:500}

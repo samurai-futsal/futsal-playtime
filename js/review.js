@@ -5,6 +5,7 @@ import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvent
 import { setEventTable } from './events.js';
 import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
 import { matchModel, toRunning, playerTable, setTable, playedTime, periodSig, entryOrder } from './model.js';
+import { ppWindows, windowsOf, clipModel } from './teamstats.js';
 import { esc, fmtShort, fmtDate, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge } from './review58.js';
@@ -189,10 +190,14 @@ export function vReview(m) {
 
   // ---------- 4. セットの出場時間 ----------
   const sets = setTable(M);
-  const setRows = sets.length ? sets.map((s, i) => `<tr><td>${i + 1}位</td><td class="setn">${s.pids.map((pid) => `${badge(pid)}<small>${esc(last(pid))}</small>`).join('')}</td><td><b>${mmss(s.time)}</b></td><td>${s.count}</td></tr>`).join('')
+  // 4 の表：5×4・4×5の時間帯を除き、出場時間が短いセット（設定、初めは1分未満）は出さない（2026-10-16 決定。6 は全部のセットのまま）
+  const setMin = (teamSettings().setMin ?? 60) * 1000;
+  const setsAll4 = setTable(clipModel(M, windowsOf(M, ppWindows(M), 'ex')));
+  const sets4 = setsAll4.filter((x) => x.time >= setMin), shortS = setsAll4.filter((x) => x.time < setMin);
+  const setRows = sets4.length ? sets4.map((s, i) => `<tr><td>${i + 1}位</td><td class="setn">${s.pids.map((pid) => `${badge(pid)}<small>${esc(last(pid))}</small>`).join('')}</td><td><b>${mmss(s.time)}</b></td><td>${s.count}</td></tr>`).join('')
     : '<tr><td colspan="4" class="na" style="text-align:center">GKが1人・FPが4人そろった時間がまだありません</td></tr>';
-  const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>4. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。GKがいない区間（パワープレー）、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは除く。得点・失点はイベント入力（④）のあとで表示</span></div>
-    <div class="rvbox"><table class="rvtb rvset"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}</table></div></section>`;
+  const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>4. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。パワープレー（5×4・4×5）の時間帯、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは除く。出場時間が${mmss(setMin)}未満のセットは最後の行にまとめる（基準は設定画面で変えられる）</span></div>
+    <div class="rvbox"><table class="rvtb rvset"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}${shortS.length ? `<tr class="ex"><td></td><td class="setn">出場時間が${mmss(setMin)}未満のセット（${shortS.length}組）</td><td>${mmss(shortS.reduce((t, x) => t + x.time, 0))}</td><td>${shortS.reduce((t, x) => t + x.count, 0)}</td></tr>` : ''}</table></div></section>`;
 
   // ---------- 6. セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントがあるときだけ） ----------
   let s4b = '';

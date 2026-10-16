@@ -712,6 +712,7 @@ function vSettings() {
       <div><label for="tRed">カラータイマー：赤（分:秒）</label><input id="tRed" name="colorRed" value="${mmss(ts.colorRed)}"></div>
       <div><label for="tSp">セットプレーの自動終了（分:秒）</label><input id="tSp" name="setplayAuto" value="${mmss(ts.setplayAuto)}"></div>
       <div><label for="tRef">「参考値」にする出場時間（分:秒未満）</label><input id="tRef" name="refMin" value="${mmss(ts.refMin)}"></div>
+      <div><label for="tSetMin">セットの表に出す出場時間（分:秒以上）</label><input id="tSetMin" name="setMin" value="${mmss(ts.setMin)}"></div>
       <div><label for="tROr">フィジカルコーチ用：オレンジ（実際の時間・分:秒）</label><input id="tROr" name="runOrange" value="${mmss(ts.runOrange)}"></div>
       <div><label for="tRRed">フィジカルコーチ用：赤（実際の時間・分:秒）</label><input id="tRRed" name="runRed" value="${mmss(ts.runRed)}"></div>
     </div><p class="mu">カラータイマーは試合を作るときの初期値です。試合ごとに事前設定で変えられます。フィジカルコーチ用の色は、ピッチに入ってからの実際の時間（時計が止まっている間も進む）で付きます。</p>
@@ -753,7 +754,7 @@ function vSettings() {
       const ts2 = $('#btnTeamSet');
       ts2 && (ts2.onclick = () => {
         const v = formVals($('#teamSet'));
-        const s = { colorOrange: parseMmss(v.colorOrange, ts.colorOrange), colorRed: parseMmss(v.colorRed, ts.colorRed), setplayAuto: parseMmss(v.setplayAuto, ts.setplayAuto), refMin: parseMmss(v.refMin, ts.refMin), runOrange: parseMmss(v.runOrange, ts.runOrange), runRed: parseMmss(v.runRed, ts.runRed) };
+        const s = { colorOrange: parseMmss(v.colorOrange, ts.colorOrange), colorRed: parseMmss(v.colorRed, ts.colorRed), setplayAuto: parseMmss(v.setplayAuto, ts.setplayAuto), refMin: parseMmss(v.refMin, ts.refMin), setMin: parseMmss(v.setMin, ts.setMin), runOrange: parseMmss(v.runOrange, ts.runOrange), runRed: parseMmss(v.runRed, ts.runRed) };
         if (s.colorRed <= s.colorOrange || s.runRed <= s.runOrange) return toast('赤になる時間は、オレンジより後にしてください');
         put(['teams', S.teamId], { settings: s }); toast('保存しました');
       });

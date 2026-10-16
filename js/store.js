@@ -17,7 +17,7 @@ export const DEFAULT_OPTIONS = {
   matchCategories: ['予選リーグ', '決勝トーナメント', '順位決定戦'],
   goalTypes: ['定位置', 'トランジション', 'CK', 'CK-KI', 'KI', 'FK', 'GK活用', 'パワープレー', 'パワープレー返し', 'PK', '第2PK', 'OG'],
 };
-export const DEFAULT_TEAM_SETTINGS = { colorOrange: 120, colorRed: 180, setplayAuto: 60, refMin: 120, runOrange: 180, runRed: 300 };
+export const DEFAULT_TEAM_SETTINGS = { colorOrange: 120, colorRed: 180, setplayAuto: 60, refMin: 120, setMin: 60, runOrange: 180, runRed: 300 };
 export const DEFAULT_TIMES = { half: 20, extra: false, extraHalf: 5 };
 
 let F = null; // { fsM, db }
