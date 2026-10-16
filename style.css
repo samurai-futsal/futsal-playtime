@@ -811,3 +811,16 @@ svg.anbar{width:100%;height:auto;max-height:30vh;display:block}
 .antb .z{color:#C3C9D4}
 .anpp{white-space:nowrap}
 .antb thead small{color:#C9D6EE}
+/* 分析 ⑤-2：セット・パワープレー・種類別・マッチ・ペース・タイムライン */
+.antb th.w{background:#1F5FBF}.antb th.o{background:#C8312B}.antb td.w{background:#F2F6FD!important;color:#1F5FBF;font-weight:700}.antb td.o{background:#FDF3F2!important;color:#C8312B;font-weight:700}
+.antb tr.ex td{background:#F6F7FA!important;color:#5F6B80;font-size:13px}.antb tr.low td.ref{color:#AAB2C0}
+.anset .setn{text-align:left;white-space:nowrap}.anset .setn small{font-size:12px;margin:0 6px 0 2px;color:#3A4558}
+.anscroll{padding:4px 12px 12px}.anscroll .antb{width:auto;min-width:60%;margin-bottom:6px}.anscroll .antb thead th{position:static}
+.anh3{font-size:15px;color:#0B2D6B;margin:14px 0 6px}.anh3 small{font-size:12px;color:#6B7486;font-weight:500;margin-left:10px}
+.antypes{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:4px 24px}.antypes .antb{width:100%}
+.xbar{text-align:left!important;width:170px}.xbar i{display:inline-block;height:12px;background:#1F5FBF;border-radius:2px;vertical-align:middle}.antb.o .xbar i{background:#E04A3A}
+.anlab{font-size:12.5px;font-weight:800;color:#5F6B80;align-self:center}
+.anpinfo{font-size:12.5px;color:#8A5A00;font-weight:700;align-self:center;margin-left:10px}
+svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin.on{fill:rgba(255,190,40,.28)}
+.antl{padding:8px 10px}.antl .rvtl .tlr{cursor:pointer}
+.antl .tlr:not(.tlhead):nth-child(even){background:#EAF0F9;border-radius:6px}.antl .tlr.hl{background:#FFE9A8!important}

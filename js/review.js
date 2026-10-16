@@ -183,38 +183,7 @@ export function vReview(m) {
 
   // ---------- 3. 出場タイムライン ----------
   // ピリオドごとに帯を分けて並べ、2つ目以降のピリオドの前に背番号と名前の列をもう一度置く（右の方の帯も誰か分かるように）
-  const axis = M.periods.filter((p) => !p.extra || p.status !== 'none' || st.askExtra || cfg.times?.extra);
-  const pp = (p, v) => (Math.max(0, Math.min(1, v / p.len)) * 100).toFixed(3);
-  const gAt = (g) => (runMode && M.relOf ? M.relOf(g.period, g.at) : g.at); // ランニングタイムでは実際の時間に置きかえる
-    // 目盛りは経過時間（0:00→）。プレーイングタイムもランニングタイムも同じ向き（2026-10-16 決定）
-  const ticksOf = (p) => `<span style="left:0%">${p.label} 0:00</span><span style="left:50%">${mmss(p.len / 2)}</span><span class="r" style="left:100%">${mmss(p.len)}</span>`;
-  const futureOf = (p) => (p.status === 'none' ? '<i class="tlfut" style="left:0%;width:100%"></i>'
-    : (M.live && p.key === M.current ? `<i class="tlfut" style="left:${pp(p, p.elapsed)}%;width:${pp(p, p.len - p.elapsed)}%"></i>` : ''));
-  const tlCols = (nm, mid, end) => `${nm}px ${axis.map((p, i) => (i ? `${mid}px ` : '') + `minmax(0,${p.len}fr)`).join(' ')} ${end}px`;
-  // 名前の列は一番長い名前に合わせる（番号と名前を0:00のすぐ横にそろえる）。合計の列も番号と時間を近づける
-  const nameW = Math.max(2, ...order.map((pid) => last(pid).length)) * 15;
-  const tlStyle = `style="--tlc:${tlCols(40 + nameW, 51 + nameW, 82)};--tlcc:${tlCols(84, 30, 66)}"`;
-  const who = (pid, cls) => `<span class="${cls}">${badge(pid)}<span class="tln">${esc(last(pid))}</span></span>`;
-  const tlRows = gkLast(order).map((pid) => {
-    const tracks = axis.map((p, i) => {
-      const bands = M.stints.filter((s) => s.pid === pid && s.period === p.key).map((s) => {
-        const d = s.to - s.from, l = pp(p, s.from), w = pp(p, d);
-        const small = d / p.len < (isCompact() ? 0.16 : 0.09);
-        return `<span class="tlb ${mem(pid).pos === 'GK' ? 'gk' : ''}" style="left:${l}%;width:${w}%">${small ? '' : mmss(d)}</span>${small ? `<span class="tls" style="left:${(+l + +w / 2).toFixed(3)}%">${mmss(d)}</span>` : ''}`;
-      }).join('');
-      const zeros = (M.zero || []).filter((s) => s.pid === pid && s.period === p.key)
-        .map((s) => `<i class="tlz" style="left:${pp(p, s.from)}%" title="時計が止まっている間だけの出場"></i><span class="tlzl" style="left:${pp(p, s.from)}%">0:00</span>`).join('');
-      const gl = marks.filter((g) => g.period === p.key).map((g) => `<i class="tlgl ${g.own ? 'own' : 'opp'}" style="left:${pp(p, gAt(g))}%"></i>`).join('');
-      return (i ? who(pid, 'tlmid') : '') + `<div class="tlt">${futureOf(p)}${bands}${zeros}${gl}</div>`;
-    }).join('');
-    return `<div class="tlr ${tlHl.has(pid) ? 'hl' : ''}" data-tl="${pid}" ${tlStyle}>${who(pid, 'tlnm')}${tracks}<b class="tlend">${badge(pid)}<span class="tlsum">${mmss(T[pid]?.total || 0)}</span></b></div>`;
-  }).join('');
-  // 得点・失点のラベル：目盛りの上の段（重なるときは段をずらす）。時刻は経過時間
-  const lane = (p) => { const ls = stagger(marks.filter((g) => g.period === p.key).map((g) => ({ ...g, x: +pp(p, gAt(g)) })), isCompact() ? 44 : 26);
-    if (!marks.length) return '';
-    const n = Math.max(1, ...ls.map((l) => l.row + 1));
-    return `<div class="tlgoal" style="height:${n * 15 + 2}px">${ls.map((l) => `<span class="${l.own ? 'own' : 'opp'} ${l.x > 88 ? 'r' : l.x < 12 ? 'l' : ''}" style="left:${l.x}%;top:${l.row * 15}px">${esc(l.label)}</span>`).join('')}</div>`; };
-  const tlHead = `<div class="tlr tlhead" ${tlStyle}><span></span>${axis.map((p, i) => (i ? '<span></span>' : '') + `<div class="tlaxw">${lane(p)}<div class="tlax">${ticksOf(p)}</div></div>`).join('')}<span>合計</span></div>`;
+  const { tlHead, tlRows } = timelineHTML({ M, order, mem, last, badge, gkLast, T, marks, runMode, compact: isCompact(), hl: tlHl, showExtra: !!(st.askExtra || cfg.times?.extra) });
   const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝先発のFP（背番号順）、そのあとは初めてピッチに入った順、GKは一番下。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : '（目盛りは試合の時計の経過時間）'}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計${marks.length ? '。緑＝得点・赤＝失点の線（上の文字は試合の時計の経過時間と得点者）' : ''}${(M.zero || []).length ? '。オレンジの線と「0:00」＝時計が止まっている間だけの出場（セットプレーの守備などで入れ替えたとき。実際の時間に合わせるなら「記録の修正」で時刻を直す）' : ''}</span></div>
     <div class="rvbox rvtl">${tlHead}${tlRows}</div></section>`;
 
@@ -289,4 +258,42 @@ function pdfChoice(m) {
     closeModal(); document.body.classList.toggle('pr14', b.dataset.pdf === '14');
     setTimeout(() => { window.print(); document.body.classList.remove('pr14'); }, 50);
   });
+}
+
+// 出場タイムライン（マッチレビュー 3 と分析画面の出場時間タブで使う）。o = { M, order, mem, last, badge, gkLast, T, marks, runMode, compact, hl, showExtra }
+export function timelineHTML(o) {
+  const { M, order, mem, last, badge, gkLast, T, marks, runMode } = o;
+  const axis = M.periods.filter((p) => !p.extra || p.status !== 'none' || o.showExtra);
+  const pp = (p, v) => (Math.max(0, Math.min(1, v / p.len)) * 100).toFixed(3);
+  const gAt = (g) => (runMode && M.relOf ? M.relOf(g.period, g.at) : g.at); // ランニングタイムでは実際の時間に置きかえる
+    // 目盛りは経過時間（0:00→）。プレーイングタイムもランニングタイムも同じ向き（2026-10-16 決定）
+  const ticksOf = (p) => `<span style="left:0%">${p.label} 0:00</span><span style="left:50%">${mmss(p.len / 2)}</span><span class="r" style="left:100%">${mmss(p.len)}</span>`;
+  const futureOf = (p) => (p.status === 'none' ? '<i class="tlfut" style="left:0%;width:100%"></i>'
+    : (M.live && p.key === M.current ? `<i class="tlfut" style="left:${pp(p, p.elapsed)}%;width:${pp(p, p.len - p.elapsed)}%"></i>` : ''));
+  const tlCols = (nm, mid, end) => `${nm}px ${axis.map((p, i) => (i ? `${mid}px ` : '') + `minmax(0,${p.len}fr)`).join(' ')} ${end}px`;
+  // 名前の列は一番長い名前に合わせる（番号と名前を0:00のすぐ横にそろえる）。合計の列も番号と時間を近づける
+  const nameW = Math.max(2, ...order.map((pid) => last(pid).length)) * 15;
+  const tlStyle = `style="--tlc:${tlCols(40 + nameW, 51 + nameW, 82)};--tlcc:${tlCols(84, 30, 66)}"`;
+  const who = (pid, cls) => `<span class="${cls}">${badge(pid)}<span class="tln">${esc(last(pid))}</span></span>`;
+  const tlRows = gkLast(order).map((pid) => {
+    const tracks = axis.map((p, i) => {
+      const bands = M.stints.filter((s) => s.pid === pid && s.period === p.key).map((s) => {
+        const d = s.to - s.from, l = pp(p, s.from), w = pp(p, d);
+        const small = d / p.len < (o.compact ? 0.16 : 0.09);
+        return `<span class="tlb ${mem(pid).pos === 'GK' ? 'gk' : ''}" style="left:${l}%;width:${w}%">${small ? '' : mmss(d)}</span>${small ? `<span class="tls" style="left:${(+l + +w / 2).toFixed(3)}%">${mmss(d)}</span>` : ''}`;
+      }).join('');
+      const zeros = (M.zero || []).filter((s) => s.pid === pid && s.period === p.key)
+        .map((s) => `<i class="tlz" style="left:${pp(p, s.from)}%" title="時計が止まっている間だけの出場"></i><span class="tlzl" style="left:${pp(p, s.from)}%">0:00</span>`).join('');
+      const gl = marks.filter((g) => g.period === p.key).map((g) => `<i class="tlgl ${g.own ? 'own' : 'opp'}" style="left:${pp(p, gAt(g))}%"></i>`).join('');
+      return (i ? who(pid, 'tlmid') : '') + `<div class="tlt">${futureOf(p)}${bands}${zeros}${gl}</div>`;
+    }).join('');
+    return `<div class="tlr ${o.hl?.has(pid) ? 'hl' : ''}" data-tl="${pid}" ${tlStyle}>${who(pid, 'tlnm')}${tracks}<b class="tlend">${badge(pid)}<span class="tlsum">${mmss(T[pid]?.total || 0)}</span></b></div>`;
+  }).join('');
+  // 得点・失点のラベル：目盛りの上の段（重なるときは段をずらす）。時刻は経過時間
+  const lane = (p) => { const ls = stagger(marks.filter((g) => g.period === p.key).map((g) => ({ ...g, x: +pp(p, gAt(g)) })), o.compact ? 44 : 26);
+    if (!marks.length) return '';
+    const n = Math.max(1, ...ls.map((l) => l.row + 1));
+    return `<div class="tlgoal" style="height:${n * 15 + 2}px">${ls.map((l) => `<span class="${l.own ? 'own' : 'opp'} ${l.x > 88 ? 'r' : l.x < 12 ? 'l' : ''}" style="left:${l.x}%;top:${l.row * 15}px">${esc(l.label)}</span>`).join('')}</div>`; };
+  const tlHead = `<div class="tlr tlhead" ${tlStyle}><span></span>${axis.map((p, i) => (i ? '<span></span>' : '') + `<div class="tlaxw">${lane(p)}<div class="tlax">${ticksOf(p)}</div></div>`).join('')}<span>合計</span></div>`;
+  return { tlHead, tlRows };
 }

@@ -3,9 +3,12 @@
 // 画面全体はスクロールせず、選手の表の中だけをスクロールする（条件を切り替えて見比べる画面のため）。
 import { S, watchOps, watchEvents, opts, teamSettings, playerById, activityById, matchStatus } from './store.js';
 import { replay, periodLabel } from './engine.js';
-import { matchModel, playerTable, periodSig } from './model.js';
+import { matchModel, playerTable, periodSig, setTable, entryOrder } from './model.js';
 import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppWindows, windowsOf, clipModel, winTest, ppTime } from './teamstats.js';
-import { missing } from './events.js';
+import { missing, pitchAt, isFsp, OPP_OG, isOG } from './events.js';
+import { shotsOf, CLS_KEYS } from './teamstats.js';
+import { paceSection, goalMarks, PACE_ROWS } from './review58.js';
+import { timelineHTML } from './review.js';
 import { esc, fmtShort, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 
@@ -15,11 +18,12 @@ const MCOL = ['#1F5FBF', '#E0832B', '#2E8B57', '#8A5AC8', '#C8312B', '#0E8A9E', 
 const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '種類別'], ['pace', 'マッチ・ペース']];
 const PPM = [['all', 'すべて'], ['ex', '5×4/4×5を除く']]; // 2026-10-16：この2つだけ
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
-const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', sub: 'sum', sort: { col: '', dir: 'desc' } };
+const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
 let fromHash = null;
+let paceSel = null;
 if (!['all', 'ex'].includes(A.pp)) A.pp = 'all';
-const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub })); } catch {} };
+const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub, tview, bin, rows } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub, tview, bin, rows })); } catch {} };
 
 // 分析できる試合（試合中・終わった試合）
 const candidates = () => S.matches.filter((m) => !m.deleted && (m.status === 'playing' || m.status === 'done'))
@@ -49,7 +53,7 @@ function oneMatch(m, per) {
   const gn = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
   const evs = evC.list.filter((e) => !e.deleted);
   // パワープレー（5×4）の時間帯で分ける：出場時間もイベントも、選んだ時間帯の中だけで数える
-  const W = ppWindows(M); const wins = windowsOf(M, W, A.pp); const win = winTest(wins);
+  const W = ppWindows(M); const wins = windowsOf(M, W, A.pp); const win = winTest(wins, M);
   const Mw = clipModel(M, wins);
   const T = playerTable(Mw);
   if (wins) for (const r of Object.values(T)) { // 回数は、元の出場（1回の帯）で数える（区間で切れても1回）
@@ -62,7 +66,7 @@ function oneMatch(m, per) {
   const len = Mw.periods.filter((p) => p.status !== 'none' && (!keys || keys.includes(p.key))).reduce((a, p) => a + p.elapsed, 0);
   const empty = Mw.empties.filter((e) => !keys || keys.includes(e.period)).reduce((a, e) => a + e.to - e.from, 0);
   const todo = evs.filter((e) => missing(e, gn) > 0 || e.check).length;
-  return { m, M, T, R, D, keys, len, empty, hasEv: evs.length > 0, todo, ready: evC.ready, hasOpp: W.hasOpp };
+  return { m, M, Mw, T, R, D, keys, len, empty, hasEv: evs.length > 0, todo, ready: evC.ready, hasOpp: W.hasOpp, evs, gn, W, win, wins };
 }
 
 export function vAnalysis(r, mFrom = null) {
@@ -106,13 +110,16 @@ export function vAnalysis(r, mFrom = null) {
       <span class="anpp">パワープレー${seg('pp', PPM)}</span>
       ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4（こちらの4×5）の記録なし ${noOpp}試合</span>` : ''}
       ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}</div>
-    <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} ${['set', 'pp', 'type', 'pace'].includes(v) ? 'later' : ''}" data-tab="${v}">${l}</button>`).join('')}</div></div>`;
+    <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} " data-tab="${v}">${l}</button>`).join('')}</div></div>`;
 
   let body;
   if (!ms.length) body = '<div class="card empty">対象の試合がありません（試合が始まると分析できます）</div>';
   else if (A.tab === 'time') body = timeTab(ctx);
   else if (A.tab === 'stats') body = statsTab(ctx);
-  else body = `<div class="card empty"><b>${TABS.find((t) => t[0] === A.tab)[1]}</b><p>このタブは次の段階（⑤-2）で入ります。</p></div>`;
+  else if (A.tab === 'set') body = setTab(ctx);
+  else if (A.tab === 'pp') body = ppTab(ctx);
+  else if (A.tab === 'type') body = typeTab(ctx);
+  else body = paceTab(ctx);
   return { active: 'analysis', html: `<div class="anw">${head}<div class="anbody">${body}</div></div>`, bind: bindAnalysis };
 }
 
@@ -184,7 +191,9 @@ function timeTab(ctx) {
   const sum = pids.reduce((a, p) => a + P[p].time, 0);
   const expect = team.len * 5 - team.empty;
   const chk = `<span class="${Math.abs(sum - expect) < 1000 * ok.length * 5 ? 'anok' : 'anng'}">全員の合計 ${mmss(sum)} ＝ 試合時間 ${mmss(team.len)} × 5人${team.empty ? ` − 退場による空席 ${mmss(team.empty)}` : ''}${Math.abs(sum - expect) < 1000 * ok.length * 5 ? ' ✓' : `（${mmss(expect)} と合いません）`}</span>`;
-  return `<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ' : 'ピリオドを積み上げ'}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間（${mmss(team.len)}）に対して。タイムラインは⑤-2で入ります` })}</div>`;
+  const tv = `<div class="ansubs"><button class="${A.tview !== 'tl' ? 'on' : ''}" data-tview="list">一覧</button><button class="${A.tview === 'tl' ? 'on' : ''}" data-tview="tl">タイムライン</button></div>`;
+  if (A.tview === 'tl') return tv + tlView(ctx);
+  return `${tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ' : 'ピリオドを積み上げ'}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間（${mmss(team.len)}）に対して。「タイムライン」は1試合を選んだときに見られます` })}</div>`;
 }
 
 // ---------- スタッツ ----------
@@ -268,6 +277,19 @@ function bindAnalysis(root) {
   });
   const sel = root.querySelector('#anMatch'); if (sel) sel.onchange = () => { A.matchId = sel.value; keep(); render(); };
   const pk = root.querySelector('#anPick'); if (pk) pk.onclick = pickModal;
+  root.querySelectorAll('[data-tview]').forEach((b) => b.onclick = () => { A.tview = b.dataset.tview; keep(); render(); });
+  root.querySelectorAll('[data-bin-set]').forEach((b) => b.onclick = () => { A.bin = +b.dataset.binSet; keep(); render(); });
+  root.querySelectorAll('[data-prow-set]').forEach((b) => b.onclick = () => { const k = b.dataset.prowSet; const r = new Set(A.rows); r.has(k) ? r.delete(k) : r.add(k); A.rows = Object.keys(PACE_ROWS).filter((x) => r.has(x)); keep(); render(); });
+  root.querySelectorAll('[data-tl]').forEach((r) => r.onclick = () => r.classList.toggle('hl'));
+  // マッチ・ペース：棒（区切り）をタップ → その時間帯にピッチにいた選手を強調。選手名をタップ → その選手が出ていた区切りを強調
+  const svg = root.querySelector('svg.pace');
+  if (svg) svg.addEventListener('click', (e) => {
+    const bin = e.target.closest('.pbin'), nmEl = e.target.closest('[data-pname]');
+    const info = root.querySelector('#paceInfo');
+    svg.querySelectorAll('.on').forEach((x) => x.classList.remove('on'));
+    if (bin) { const on = new Set(bin.dataset.on.split(',')); bin.classList.add('on'); svg.querySelectorAll('[data-prow]').forEach((g) => g.classList.toggle('on', on.has(g.dataset.prow))); if (info) info.textContent = `${bin.dataset.bin} にピッチにいた選手を黄色にしています（もう一度押すと戻ります）`; if (paceSel === bin.dataset.bin) { svg.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); paceSel = null; if (info) info.textContent = ''; } else paceSel = bin.dataset.bin; }
+    else if (nmEl) { const pid = nmEl.dataset.pname; if (paceSel === pid) { paceSel = null; if (info) info.textContent = ''; return; } paceSel = pid; svg.querySelector(`[data-prow="${pid}"]`)?.classList.add('on'); svg.querySelectorAll('.pbin').forEach((b) => b.classList.toggle('on', b.dataset.on.split(',').includes(pid))); if (info) info.textContent = `${name(pid)} がピッチにいた区切りを黄色にしています（もう一度押すと戻ります）`; }
+  });
 }
 function pickModal() {
   const f = A.f; const acts = S.activities.filter((a) => !a.deleted);
@@ -292,4 +314,138 @@ function pickModal() {
   const all = md.querySelector('#pkAll'); if (all) all.onclick = () => { A.picked = [...new Set([...(A.picked || []), ...filtered().map((m) => m.id)])]; draw(md); };
   const none = md.querySelector('#pkNone'); if (none) none.onclick = () => { const ids = new Set(filtered().map((m) => m.id)); A.picked = (A.picked || []).filter((x) => !ids.has(x)); draw(md); };
   md.querySelector('#pkOk').onclick = () => { keep(); closeModal(); render(); };
+}
+
+// ---------- 1試合だけの表示の共通 ----------
+const onlyOne = (ctx, what) => (ctx.ok.length === 1 ? null : `<div class="card empty"><b>${what}は1試合を選んだときだけ表示します</b><p>上で「この試合」を選んでください。</p></div>`);
+const memOf = (x) => (pid) => x.m.members?.[pid] || {};
+function oneCtx(x) {
+  const mem = memOf(x); const last = (pid) => playerById(pid)?.last || '';
+  const badgeF = (pid) => `<span class="no ${mem(pid).pos === 'GK' ? 'gk' : 'fp'}">${esc(mem(pid).no ?? '')}</span>`;
+  const gkLast = (list) => [...list.filter((p) => mem(p).pos !== 'GK'), ...list.filter((p) => mem(p).pos === 'GK')];
+  const R = teamStats(x.M, x.evs, x.gn);
+  return { M0: x.M, order: entryOrder(x.M), byNo: Object.keys(x.m.members || {}), mem, last, badge: badgeF, gkLast, evs: x.evs, goalName: x.gn, R, T0: playerTable(x.M), own: S.team?.name || '自チーム', opp: x.m.opponent || '相手' };
+}
+
+// ---------- 出場時間：タイムライン ----------
+function tlView(ctx) {
+  const no1 = onlyOne(ctx, 'タイムライン'); if (no1) return no1;
+  const x = ctx.ok[0]; const c = oneCtx(x);
+  const marks = x.hasEv ? goalMarks(c.R, c) : [];
+  const { tlHead, tlRows } = timelineHTML({ M: x.M, order: c.order, mem: c.mem, last: c.last, badge: c.badge, gkLast: c.gkLast, T: c.T0, marks, runMode: false, compact: false, hl: null, showExtra: !!x.m.times?.extra });
+  return `<div class="antbl antl"><div class="rvtl">${tlHead}${tlRows}</div></div><p class="anhint">並び＝先発のFP（背番号順）、そのあとは初めてピッチに入った順、GKは一番下。帯の中の数字＝その出場の時間、右端＝合計。緑＝得点・赤＝失点。行を押すと黄色く強調。パワープレーと前半／後半の切り替えに関係なく、試合全体を出します</p>`;
+}
+
+// ---------- セット ----------
+function setTab(ctx) {
+  const rows = new Map(); let special = null, other = null;
+  const blank = () => ({ time: 0, count: 0, sh: 0, osh: 0, gf: 0, ga: 0, en: 0, oen: 0, games: new Set() });
+  const isGK = (x, pid) => x.m.members?.[pid]?.pos === 'GK';
+  for (const x of ctx.ok) {
+    const Mk = { ...x.Mw, periods: x.Mw.periods.filter((p) => !x.keys || x.keys.includes(p.key)) };
+    for (const st of setTable(Mk)) { const r = rows.get(st.key) || rows.set(st.key, { ...blank(), pids: st.pids }).get(st.key); r.time += st.time; r.count += st.count; r.games.add(x.m.id); }
+    const ev = x.evs.filter((e) => (!x.keys || x.keys.includes(e.period)) && (!x.win || x.win(e)));
+    const own = new Set(shotsOf(ev, x.gn, true).map((s) => s.e)), opp = new Set(shotsOf(ev, x.gn, false).map((s) => s.e));
+    for (const e of ev) {
+      const f = own.has(e) ? 'sh' : opp.has(e) ? 'osh' : (e.kind === 'z4' || e.kind === 'sz') ? 'en' : (e.kind === 'oz4' || e.kind === 'osz') ? 'oen' : null;
+      const g = e.kind === 'goal' ? 'gf' : e.kind === 'conc' ? 'ga' : null;
+      if (!f && !g) continue;
+      const on = pitchAt(x.M, e.period, e.at, e.side || (isFsp(e.kind) ? 'after' : 'before'));
+      const gks = on.filter((p) => isGK(x, p)), fps = on.filter((p) => !isGK(x, p));
+      const key = gks.length === 1 && fps.length === 4 ? fps.slice().sort().join('|') : null;
+      let r = key ? rows.get(key) : null;
+      if (!r) { if (key) { other = other || blank(); r = other; } else { special = special || blank(); r = special; } }
+      if (f) r[f]++; if (g) r[g]++;
+    }
+  }
+  const list = [...rows.values()].sort((a, b) => b.time - a.time);
+  const pm = (v, t) => (t > 0 ? (v / (t / 60000)).toFixed(2) : '—');
+  const sgn = (v) => (v > 0 ? '+' + v : String(v));
+  const sorters = { time: (r) => r.time, sh: (r) => r.sh, osh: (r) => r.osh, gf: (r) => r.gf, ga: (r) => r.ga, en: (r) => r.en, oen: (r) => r.oen, dsh: (r) => (r.time ? (r.sh - r.osh) / r.time : -1e9), den: (r) => (r.time ? (r.en - r.oen) / r.time : -1e9), pm: (r) => r.gf - r.ga };
+  if (A.sort.col && sorters[A.sort.col]) list.sort((a, b) => (sorters[A.sort.col](b) - sorters[A.sort.col](a)) * (A.sort.dir === 'asc' ? -1 : 1));
+  const nm = (pid) => { const no = ctx.no[pid]; return `<span class="no fp">${esc(no ?? '')}</span><small>${name(pid)}</small>`; };
+  const fpSort = (pids) => pids.slice().sort((a, b) => (parseInt(ctx.no[a], 10) || 999) - (parseInt(ctx.no[b], 10) || 999));
+  const ref = (teamSettings().refMin || 120) * 1000;
+  const row = (r, i, label) => `<tr class="${label ? 'ex' : ''} ${!label && r.time < ref ? 'low' : ''}"><td>${label ? '' : (i + 1) + '位'}</td><td class="setn">${label || fpSort(r.pids).map(nm).join('')}</td>
+    <td>${label ? '—' : mmss(r.time)}</td><td>${label ? '—' : r.count}</td>${ctx.ok.length > 1 ? `<td>${label ? '—' : r.games.size}</td>` : ''}
+    <td class="w">${r.sh}</td><td class="o">${r.osh}</td><td class="w">${r.gf}</td><td class="o">${r.ga}</td><td><b>${sgn(r.gf - r.ga)}</b></td><td class="w">${r.en}</td><td class="o">${r.oen}</td>
+    <td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.sh - r.osh, r.time)}</td><td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.en - r.oen, r.time)}</td></tr>`;
+  const th = (k, h, cls = '') => `<th class="srt ${A.sort.col === k ? 'on' : ''} ${cls}" data-sort="${k}">${h}</th>`;
+  const head = `<tr><th>順位</th><th style="text-align:left">FP4人のセット</th>${th('time', '出場時間')}<th>回数</th>${ctx.ok.length > 1 ? '<th>試合数</th>' : ''}${th('sh', 'シュート', 'w')}${th('osh', '被シュート', 'o')}${th('gf', '得点', 'w')}${th('ga', '失点', 'o')}${th('pm', '±')}${th('en', 'Z4・SZ<br>進入', 'w')}${th('oen', '被Z4・SZ<br>進入', 'o')}${th('dsh', 'シュート差<br>／分')}${th('den', '進入差<br>／分')}</tr>`;
+  const body = list.map((r, i) => row(r, i)).join('') + (special ? row(special, 0, 'GKがいない区間・退場で空席の区間') : '') + (other ? row(other, 0, '交代の瞬間の3秒未満の組み合わせ') : '');
+  return `<div class="antbl"><table class="antb anset"><thead>${head}</thead><tbody>${body || '<tr><td colspan="14" class="mu">GKが1人・FPが4人そろった時間がありません</td></tr>'}</tbody></table></div>
+    <p class="anhint">FP4人の組み合わせごと（出場時間の長い順。見出しで並べ替え）。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。差／分＝（自チーム−相手）÷出場時間。GKがいない区間（パワープレー）、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは別の行。薄い数字＝出場時間が${mmss(ref)}未満で参考値</p>`;
+}
+
+// ---------- パワープレー ----------
+function ppTab(ctx) {
+  const occ = []; const split = { ex: null, own: null, opp: null, all: null };
+  for (const x of ctx.ok) {
+    const inK = (k) => !x.keys || x.keys.includes(k);
+    for (const [team, W] of [['own', x.W.own], ['opp', x.W.opp]]) for (const [k, iv] of Object.entries(W)) {
+      if (!inK(k)) continue;
+      const pl = x.M.periods.find((p) => p.key === k);
+      for (const [a, b] of iv) {
+        const pe = x.M.periods.find((p) => p.key === k)?.elapsed; const ev = x.evs.filter((e) => e.period === k && e.at >= a && (e.at < b || (e.at === b && b === pe)));
+        occ.push({ m: x.m, team, label: pl?.label || k, a, b, sh: shotsOf(ev, x.gn, true).length, osh: shotsOf(ev, x.gn, false).length, gf: ev.filter((e) => e.kind === 'goal').length, ga: ev.filter((e) => e.kind === 'conc').length });
+      }
+    }
+    for (const mode of ['ex', 'own', 'opp', 'all']) {
+      const wins = windowsOf(x.M, x.W, mode === 'all' ? 'all' : mode);
+      const R = teamStats(x.M, x.evs, x.gn, x.keys, winTest(wins, x.M));
+      const Mk = clipModel(x.M, wins);
+      const len = Mk.periods.filter((p) => p.status !== 'none' && (!x.keys || x.keys.includes(p.key))).reduce((t, p) => t + p.elapsed, 0);
+      split[mode] = addInto(split[mode] || {}, { len, gf: R.rangeScore.own, ga: R.rangeScore.opp, A: R.A, B: R.B, rec: R.rec, lost: R.lost });
+    }
+  }
+  const sum = (team) => { const l = occ.filter((o) => o.team === team); return { n: l.length, t: l.reduce((s, o) => s + o.b - o.a, 0), sh: l.reduce((s, o) => s + o.sh, 0), osh: l.reduce((s, o) => s + o.osh, 0), gf: l.reduce((s, o) => s + o.gf, 0), ga: l.reduce((s, o) => s + o.ga, 0) }; };
+  const so = sum('own'), sp = sum('opp');
+  const noOpp = ctx.ok.filter((x) => !x.hasOpp).length;
+  const top = `<table class="antb anpp1"><thead><tr><th></th><th>回数</th><th>時間</th><th>シュート</th><th>被シュート</th><th>得点</th><th>失点</th></tr></thead><tbody>
+    <tr><td class="apl"><b>自チームの5×4</b>（攻撃・GKを入れ替え）</td><td>${so.n}</td><td>${mmss(so.t)}</td><td class="w">${so.sh}</td><td class="o">${so.osh}</td><td class="w">${so.gf}</td><td class="o">${so.ga}<small>${so.ga ? '（PP返し）' : ''}</small></td></tr>
+    <tr><td class="apl"><b>相手の5×4</b>（こちらは4×5・守備）</td><td>${noOpp === ctx.ok.length ? '<span class="z">記録なし</span>' : sp.n}</td><td>${mmss(sp.t)}</td><td class="w">${sp.sh}</td><td class="o">${sp.osh}</td><td class="w">${sp.gf}<small>${sp.gf ? '（PP返し）' : ''}</small></td><td class="o">${sp.ga}</td></tr></tbody></table>`;
+  const S2 = split; const tm = (o, f) => (o ? f(o) : 0);
+  const metrics = [['時間', (o) => mmss(o.len)], ['得点', (o) => o.gf], ['失点', (o) => o.ga], ['シュート', (o) => o.A.shots], ['被シュート', (o) => o.B.shots], ['枠内', (o) => o.A.in], ['被枠内', (o) => o.B.in],
+    ['Z4・SZ進入', (o) => o.A.z4 + o.A.szE], ['被Z4・SZ進入', (o) => o.B.z4 + o.B.szE], ['FINISH SET PLAY AT', (o) => o.A.fsp], ['FINISH SET PLAY DF', (o) => o.B.fsp], ['リカバリー', (o) => o.rec], ['ロスト', (o) => o.lost], ['ファール', (o) => o.A.foul], ['被ファール', (o) => o.B.foul]];
+  const mid = `<table class="antb anpp2"><thead><tr><th class="apl">チームの数字</th><th>5×4/4×5を除く</th><th>5×4（攻撃）</th><th>4×5（守備）</th><th>合計</th></tr></thead><tbody>${metrics.map(([l, f]) => `<tr><td class="apl">${l}</td>${['ex', 'own', 'opp', 'all'].map((k) => `<td>${S2[k] ? f(S2[k]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const list = occ.sort((a, b) => (a.m.date || '').localeCompare(b.m.date || '') || a.label.localeCompare(b.label) || a.a - b.a).map((o) => `<tr><td>${fmtShort(o.m.date)} vs ${esc(o.m.opponent)}</td><td>${o.label} ${mmss(o.a)}〜${mmss(o.b)}</td><td>${mmss(o.b - o.a)}</td><td class="${o.team === 'own' ? 'w' : 'o'}">${o.team === 'own' ? '自チームの5×4' : '相手の5×4'}</td><td class="w">${o.sh}</td><td class="o">${o.osh}</td><td class="w">${o.gf}</td><td class="o">${o.ga}</td></tr>`).join('');
+  const bottom = `<table class="antb"><thead><tr><th>試合</th><th>時間帯（経過時間）</th><th>長さ</th><th>どちら</th><th>シュート</th><th>被シュート</th><th>得点</th><th>失点</th></tr></thead><tbody>${list || '<tr><td colspan="8" class="mu">パワープレーの時間帯はありません</td></tr>'}</tbody></table>`;
+  return `<div class="antbl anscroll"><h3 class="anh3">回数と時間</h3>${top}<h3 class="anh3">5×4/4×5 の前後で分けたチームの数字</h3>${mid}<h3 class="anh3">1回ごとの一覧</h3>${bottom}</div>
+    <p class="anhint">自チームの5×4＝パワープレー（自チーム）の記録と、GKがピッチにいない区間。相手の5×4＝MATCH PLAY・記録の修正で入れたパワープレー（相手）${noOpp ? `。相手の5×4の記録がない試合：${noOpp}試合` : ''}。「PP返し」＝5×4の間に相手に決められた得点（守備側から見ると得点）。上の「パワープレー」の切り替えに関係なく、両方を出します</p>`;
+}
+
+// ---------- 種類別 ----------
+function typeTab(ctx) {
+  const gf = new Map(), ga = new Map(); let gfN = 0, gaN = 0, gfMiss = 0, gaMiss = 0;
+  const cls = { own: CLS_KEYS.map(() => ({ sh: 0, g: 0 })), opp: CLS_KEYS.map(() => ({ sh: 0, g: 0 })), z4: CLS_KEYS.map(() => 0), oz4: CLS_KEYS.map(() => 0) };
+  const miss = { own: 0, opp: 0, z4: 0, oz4: 0 };
+  for (const x of ctx.ok) {
+    const ev = x.evs.filter((e) => (!x.keys || x.keys.includes(e.period)) && (!x.win || x.win(e)));
+    for (const e of ev) {
+      if (e.kind === 'goal') { gfN++; const n = e.pid === OPP_OG ? '相手OG' : e.gtype ? x.gn(e.gtype) : null; if (n) gf.set(n, (gf.get(n) || 0) + 1); else gfMiss++; }
+      if (e.kind === 'conc') { gaN++; const n = e.gtype ? x.gn(e.gtype) : null; if (n) ga.set(n, (ga.get(n) || 0) + 1); else gaMiss++; }
+      if (e.kind === 'z4' || e.kind === 'oz4') { const i = CLS_KEYS.indexOf(e.cls); if (i >= 0) cls[e.kind][i]++; else miss[e.kind]++; }
+    }
+    for (const [side, own] of [['own', true], ['opp', false]]) for (const s of shotsOf(ev, x.gn, own)) { const i = CLS_KEYS.indexOf(s.cls); if (i >= 0) { cls[side][i].sh++; if (s.goal) cls[side][i].g++; } else miss[side]++; }
+  }
+  const order = opts('goalTypes', true).map((o) => o.name);
+  const typeRows = (map, total) => [...map.entries()].sort((a, b) => b[1] - a[1] || order.indexOf(a[0]) - order.indexOf(b[0])).map(([n, v]) => `<tr><td class="apl">${esc(n)}</td><td>${v}</td><td>${total ? Math.round(v / total * 100) : 0}%</td><td class="xbar"><i style="width:${total ? Math.round(v / total * 160) : 0}px"></i></td></tr>`).join('');
+  const T1 = (title, map, total, missN, c) => `<div class="antype"><h3 class="anh3">${title}<small>合計 ${total}${missN ? `・種類が未入力 ${missN}` : ''}</small></h3><table class="antb ${c}"><thead><tr><th class="apl">種類</th><th>数</th><th>割合</th><th></th></tr></thead><tbody>${typeRows(map, total) || '<tr><td colspan="4" class="mu">ありません</td></tr>'}</tbody></table></div>`;
+  const L = ['定位置', 'セットプレー', 'トランジション', 'GK活用', '特殊局面'];
+  const clsT = `<table class="antb"><thead><tr><th class="apl">分類</th><th class="w">シュート</th><th class="w">得点</th><th class="w">決定率</th><th class="o">被シュート</th><th class="o">失点</th><th class="w">Z4進入</th><th class="o">被Z4進入</th></tr></thead><tbody>
+    ${L.map((l, i) => `<tr><td class="apl">${l}</td><td class="w">${cls.own[i].sh}</td><td class="w">${cls.own[i].g}</td><td class="w">${cls.own[i].sh ? Math.round(cls.own[i].g / cls.own[i].sh * 100) + '%' : '—'}</td><td class="o">${cls.opp[i].sh}</td><td class="o">${cls.opp[i].g}</td><td class="w">${cls.z4[i]}</td><td class="o">${cls.oz4[i]}</td></tr>`).join('')}
+    <tr class="ex"><td class="apl">分類が未入力</td><td class="w">${miss.own}</td><td></td><td></td><td class="o">${miss.opp}</td><td></td><td class="w">${miss.z4}</td><td class="o">${miss.oz4}</td></tr></tbody></table>`;
+  return `<div class="antbl anscroll"><div class="antypes">${T1('得点の種類', gf, gfN, gfMiss, 'w')}${T1('失点の種類', ga, gaN, gaMiss, 'o')}</div><h3 class="anh3">分類ごとのシュート・決定率・Z4進入</h3>${clsT}</div>
+    <p class="anhint">得点・失点もシュートに数え、得点・失点の種類から分類を付けます（OGはシュートに数えない）。決定率＝得点÷シュート。割合は、その種類の数÷合計</p>`;
+}
+
+// ---------- マッチ・ペース ----------
+function paceTab(ctx) {
+  const no1 = onlyOne(ctx, 'マッチ・ペース'); if (no1) return no1;
+  const x = ctx.ok[0]; const c = oneCtx(x);
+  const ctl = `<div class="ansubs"><span class="anlab">区切り</span><button class="${A.bin === 30000 ? 'on' : ''}" data-bin-set="30000">30秒</button><button class="${A.bin !== 30000 ? 'on' : ''}" data-bin-set="60000">1分</button>
+    <span class="anlab" style="margin-left:14px">表示する行</span>${Object.entries(PACE_ROWS).map(([k, r]) => `<button class="${A.rows.includes(k) ? 'on' : ''}" data-prow-set="${k}">${r[0]}</button>`).join('')}<span id="paceInfo" class="anpinfo"></span></div>`;
+  if (!x.hasEv) return `${ctl}<div class="antbl anscroll">${paceSection(c, { bin: A.bin, rows: [], svgOnly: true, tap: true })}</div><p class="anhint">イベントが入力されていないので、下段のグラフはありません</p>`;
+  return `${ctl}<div class="antbl anscroll">${paceSection(c, { bin: A.bin, rows: A.rows, svgOnly: true, tap: true })}</div>
+    <p class="anhint">棒の区切りを押すと、その時間帯にピッチにいた選手を黄色にします。選手の名前を押すと、その選手が出ていた区切りを黄色にします。時間はプレーイングタイム（ピリオドごとの経過時間）。パワープレーと前半／後半の切り替えに関係なく、試合全体を出します</p>`;
 }

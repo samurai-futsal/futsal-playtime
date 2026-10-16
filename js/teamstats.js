@@ -228,7 +228,12 @@ export function clipModel(M, wins) {
   const periods = M.periods.map((p) => ({ ...p, elapsed: (wins[p.key] || []).reduce((t, [x, y]) => t + y - x, 0) }));
   return { ...M, stints, empties, periods };
 }
-export const winTest = (wins) => (wins ? (e) => (wins[e.period] || []).some(([x, y]) => e.at >= x && e.at < y) : null);
+// 区間の中か。区間の終わりは含まない（次の区間に入る）。ただしピリオドの終わり（時計が0:00）の瞬間は、そこで終わる区間に入れる
+export const winTest = (wins, M = null) => {
+  if (!wins) return null;
+  const end = Object.fromEntries((M?.periods || []).map((p) => [p.key, p.elapsed]));
+  return (e) => (wins[e.period] || []).some(([x, y]) => e.at >= x && (e.at < y || (e.at === y && y === end[e.period])));
+};
 // 選手ごとの5×4の出場時間（攻撃＝自チームの5×4、守備＝相手の5×4）
 export function ppTime(M, W, pid) {
   let own = 0, opp = 0;

@@ -44,6 +44,12 @@ const R = teamStats(M, ev, gn, null, win);
 eq([R.rangeScore.own, R.rangeScore.opp, R.A.shots, R.B.shots], [1, 0, 2, 1], 'team stats without 5x4');
 eq([ppTime(M, W, 'f'), ppTime(M, W, 'b')], [{ own: 60000, opp: 0 }, { own: 60000, opp: 100000 }], '5x4 time per player');
 eq(addInto(blankDetail(), D.a).on.shot, 2, 'addInto');
+// 区間の境目とピリオドの終わりの瞬間：どの時間帯にもちょうど1回だけ入る（5×4/4×5を除く＋5×4＋4×5＝合計）
+{
+  const ev2 = [200000, 260000, 600000, 700000, 1200000, 0].map((at, i) => ({ id: 'b' + i, kind: 'oshot', period: '1H', at }));
+  const n = (mode) => teamStats(M, ev2, gn, null, winTest(windowsOf(M, W, mode), M)).B.shots;
+  eq([n('ex'), n('own'), n('opp'), n('all')], [4, 1, 1, 6], 'boundaries: each event counted once');
+}
 
 console.log(`analysis: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
