@@ -8,6 +8,9 @@ import { esc } from './ui.js';
 import { render } from './views.js';
 
 let tick = null;
+// ベンチの並べ方（この端末だけで覚える）。合計出場はプレーイングタイムの合計で並べる
+const SORTS = { 'rest-desc': ['休み', '長い順'], 'rest-asc': ['休み', '短い順'], 'tot-desc': ['合計出場', '長い順'], 'tot-asc': ['合計出場', '短い順'] };
+let benchSort = (() => { try { const v = localStorage.getItem('fpt.physBenchSort'); return SORTS[v] ? v : 'rest-desc'; } catch { return 'rest-desc'; } })();
 // 他のアプリから戻ってきたら、自動でつなぎ直す（記録は書かない）
 const physMatch = () => { const x = location.hash.match(/^#\/m\/([^/]+)\/physical/); return x ? x[1] : null; };
 document.addEventListener('visibilitychange', () => { const id = physMatch(); if (!document.hidden && id) resyncOps(id); });
@@ -68,7 +71,10 @@ export function vPhys(m) {
   const pitch = rows.filter((r) => r.on && !isGK(r.pid)).sort((a, b) => b.curRun - a.curRun || noOf(a.pid) - noOf(b.pid));
   const gks = rows.filter((r) => r.on && isGK(r.pid));
   const ejected = rows.filter((r) => st.ejected.has(r.pid)).sort((a, b) => noOf(a.pid) - noOf(b.pid));
-  const bench = rows.filter((r) => !r.on && r.played && !st.ejected.has(r.pid)).sort((a, b) => b.rest - a.rest || noOf(a.pid) - noOf(b.pid));
+  const bench = rows.filter((r) => !r.on && r.played && !st.ejected.has(r.pid)).sort((a, b) => {
+    const [k, d] = benchSort.split('-'); const va = k === 'rest' ? a.rest : a.totPlay, vb = k === 'rest' ? b.rest : b.totPlay;
+    return (d === 'desc' ? vb - va : va - vb) || noOf(a.pid) - noOf(b.pid);
+  });
   const unused = rows.filter((r) => !r.on && !r.played && !st.ejected.has(r.pid)).sort((a, b) => noOf(a.pid) - noOf(b.pid));
 
   // 上の帯
@@ -94,7 +100,7 @@ export function vPhys(m) {
       <div class="phtot"><div class="lab">合計出場</div><div class="phmid">${mmss(r.totRun)}</div>${PT(r.totPlay, 'm')}</div></div>`).join('')
     + gks.map((r) => `<div class="phgk">${badge(r.pid)}<span class="phgkn">${name(r.pid)}</span><span class="phgkc"><span class="lab">今の出場</span><b class="phrbox sm">${mmss(r.curRun)}</b>${PT(r.curPlay, 's')}</span><span class="phgkc"><span class="lab">合計出場</span><b>${mmss(r.totRun)}</b>${PT(r.totPlay, 's')}</span></div>`).join('')
     || '<p class="mu pad">ピッチに選手がいません（ピリオドの間）</p>';
-  const benchHTML = (bench.length ? '<div class="phbr phbh"><span></span><span>休み</span><span>前回の出場</span><span>合計出場</span></div>' : '')
+  const benchHTML = (bench.length ? `<div class="phbr phbh"><span></span><span class="${benchSort.startsWith('rest') ? 'on' : ''}">休み${benchSort === 'rest-desc' ? ' ▼' : benchSort === 'rest-asc' ? ' ▲' : ''}</span><span>前回の出場</span><span class="${benchSort.startsWith('tot') ? 'on' : ''}">合計出場${benchSort === 'tot-desc' ? ' ▼' : benchSort === 'tot-asc' ? ' ▲' : ''}</span></div>` : '')
     + bench.map((r) => `<div class="phbr"><div class="phnm">${badge(r.pid)}<span>${name(r.pid)}</span></div>
       <div><span class="phrbox rest">${mmss(r.rest)}</span></div>
       <div class="phpair"><b>${mmss(r.lastRun)}</b>${PT(r.lastPlay, 's')}</div>
@@ -104,8 +110,12 @@ export function vPhys(m) {
 
   return {
     active: 'acts',
-    bind: (root) => { const b = root.querySelector('#phSync'); if (b) b.onclick = () => { resyncOps(m.id); }; },
+    bind: (root) => {
+      const b = root.querySelector('#phSync'); if (b) b.onclick = () => { resyncOps(m.id); };
+      root.querySelectorAll('[data-bs]').forEach((x) => { x.onclick = () => { benchSort = x.dataset.bs; try { localStorage.setItem('fpt.physBenchSort', benchSort); } catch {} render(); }; });
+    },
     html: `<div class="phw">${head}<div class="phcols"><div class="phpane"><h3>ピッチ <small>今の出場が長い順</small></h3>${pitchHTML}</div>
-      <div class="phpane"><h3>ベンチ <small>休みが長い順。左＝実際の時間　右の緑＝プレーイングタイム</small></h3>${benchHTML || '<p class="mu pad">ベンチの選手はまだ出場していません</p>'}</div></div></div>`,
+      <div class="phpane"><h3>ベンチ <small>${benchSort.startsWith('rest') ? '休み' : '合計出場（プレーイングタイム）'}が${SORTS[benchSort][1]}</small></h3>
+        <div class="phsort"><span class="phsortl">並べ方</span><span class="seg">${Object.entries(SORTS).filter(([k]) => k.startsWith('rest')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${a} ${b}</button>`).join('')}</span><span class="seg">${Object.entries(SORTS).filter(([k]) => k.startsWith('tot')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${a} ${b}</button>`).join('')}</span></div>${benchHTML || '<p class="mu pad">ベンチの選手はまだ出場していません</p>'}</div></div></div>`,
   };
 }

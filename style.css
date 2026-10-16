@@ -618,3 +618,10 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .phpane h3{margin:2px 2px 4px}
 .phgk{padding:6px 4px}
 .phgkn{font-size:19px;color:#18233A}
+/* フィジカルコーチ用：ベンチの並べ方 */
+.phsort{display:flex;align-items:center;gap:10px;margin:0 2px 0;flex-wrap:wrap}.phsortl{font-size:12px;font-weight:700;color:#5F6B80}
+.phsort .seg{display:inline-flex;border:1.5px solid #1F5FBF;border-radius:9px;overflow:hidden}
+.phsort .seg button{border:0;background:#fff;color:#1F5FBF;font-weight:700;font-size:13px;padding:5px 10px;white-space:nowrap}
+.phsort .seg button+button{border-left:1.5px solid #1F5FBF}.phsort .seg button.on{background:#1F5FBF;color:#fff}
+.phbh span.on{color:#1F5FBF!important;font-weight:800}
+.phbh{margin-top:0}.phbr{padding-top:3px;padding-bottom:3px}.phbr.phbh{padding-top:0}
