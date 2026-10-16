@@ -232,7 +232,8 @@ function bindReview(m) {
       render();
     });
     root.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => { runPref = b.dataset.mode === 'run'; try { localStorage.setItem(modeKey, b.dataset.mode); } catch {} render(); });
-    const pdf = root.querySelector('#rvPdf'); if (pdf) pdf.onclick = () => pdfChoice(m); // 印刷の画面で「PDFとして保存」（iPadは共有→「ファイルに保存」）
+    const pdf = root.querySelector('#rvPdf'); if (pdf) pdf.onclick = () => pdfChoice(m);
+    if (location.hash.endsWith('/pdf')) { history.replaceState(null, '', `#/m/${m.id}/review`); setTimeout(() => pdfChoice(m), 200); } // 印刷の画面で「PDFとして保存」（iPadは共有→「ファイルに保存」）
     const c = root.querySelector('#rvCompact'); if (c) c.onclick = () => { try { localStorage.setItem(compactKey, isCompact() ? '0' : '1'); } catch {} render(); };
     root.addEventListener('click', (e) => {
       const j = e.target.closest('[data-jump]'); if (!j) return;

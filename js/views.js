@@ -10,12 +10,13 @@ import { vFix } from './fix.js';
 import { vEvents, vSplit, openTodo } from './evinput.js';
 import { vStats } from './stats.js';
 import { vAnalysis } from './analysis.js';
+import { vSportscode } from './scview.js';
 import { vPhys, stopPhysTick } from './viewer.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js'];
 export function startApp(c) {
   ctx = c;
   try { const t = localStorage.getItem('fpt.team'); if (t) selectTeam(t); } catch {}
@@ -498,6 +499,7 @@ function vMatch(r) {
   if (r.sub === 'split') return vSplit(m);
   if (r.sub === 'stats') return vStats(m);
   if (r.sub === 'analysis') return vAnalysis(r, m);
+  if (r.sub === 'sportscode') return vSportscode(m);
   if (r.sub === 'physical') return vPhys(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
@@ -538,10 +540,17 @@ function vMatch(r) {
       ${btn('イベント入力', '映像を見ながら入力\n試合中に入れたものの確認も', `#/m/${m.id}/events`, { kind: 'rec' })}
       ${btn('記録の修正', '交代・スタメン・退場\nパワープレー・試合情報', `#/m/${m.id}/fix`, { kind: 'rec' })}
     </div>
-    <div class="grp">見る・書き出す（ハーフタイムでも、いつでも）</div>
+    <div class="grp">見る（ハーフタイムでも、いつでも）</div>
     <div class="acts acts2">
       ${btn('分析', 'この試合・大会全体\n選手ごとのスタッツ', `#/m/${m.id}/analysis`, { kind: 'see' })}
-      ${btn('書き出し', 'PDF：マッチスタッツ・マッチレポート\n　　 マッチレビュー\nExcel：データシート　XML：Sportscode', '', { soon: true, soonText: '⑥で入ります', kind: 'out' })}
+    </div>
+    <div class="grp">書き出す（ハーフタイムでも、その時点までの記録で）</div>
+    <div class="acts acts3">
+      ${btn('マッチスタッツ（PDF）', 'いつものシートの形\nA4縦1枚', `#/m/${m.id}/stats/print`, { kind: 'out' })}
+      ${btn('マッチレビュー（PDF）', '出場時間だけ（1〜4）\nまたは すべて（1〜8）', `#/m/${m.id}/review/pdf`, { kind: 'out' })}
+      ${btn('マッチレポート（PDF）', 'A4横・試合のすべて', '', { soon: true, soonText: '⑥の続きで入ります', kind: 'out' })}
+      ${btn('データシート（Excel）', 'イベント一覧・選手スタッツ\n数式で集計', '', { soon: true, soonText: '⑥の続きで入ります', kind: 'out' })}
+      ${btn('Sportscode（XML）', '出場の帯とイベント\n映像に合わせて', `#/m/${m.id}/sportscode`, { kind: 'out' })}
     </div>
     <p class="mu actnote">左の色：青＝記録する（記録が変わる）／緑＝見るだけ／紫＝書き出す</p>`,
   };

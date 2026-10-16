@@ -6,16 +6,34 @@ import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
 import { matchModel, periodSig } from './model.js';
 import { todoCount } from './events.js';
 import { teamStats } from './teamstats.js';
-import { esc, fmtDate } from './ui.js';
+import { esc, fmtDate, toast } from './ui.js';
 import { render } from './views.js';
 import { openTodo } from './evinput.js';
 
 let range = 'all';
+
 const mmssUp = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
-export function vStats(m) {
+// 書き出し（印刷）：選んだ試合のマッチスタッツを1試合1ページで出す（分析画面・試合ページから）
+export function printStats(ms) {
+  const pages = ms.map((m) => calc(m, 'all'));
+  if (pages.some((x) => !x)) { toast('記録を読み込んでいます。少し待ってからもう一度押してください'); ms.forEach((m) => { watchOps(m.id); watchEvents(m.id); }); return; }
+  printPages(pages.map((x) => `<div class="stw"><div class="stpage">${x.sheet}${x.foot}</div></div>`).join(''), 'prstats');
+}
+// 画面の内容とは別に、印刷用のページだけを出す
+export function printPages(html, cls) {
+  document.querySelector('#prArea')?.remove();
+  const d = document.createElement('div'); d.id = 'prArea'; d.className = cls; d.innerHTML = html; document.body.appendChild(d);
+  document.body.classList.add('printing');
+  const done = () => { document.body.classList.remove('printing'); d.remove(); removeEventListener('afterprint', done); };
+  addEventListener('afterprint', done);
+  setTimeout(() => window.print(), 60);
+}
+
+function calc(m, range0) {
+  let range = range0;
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
-  if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
+  if (!opsC.ready && !opsC.list.length) return null;
   const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 };
   const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
   const M = matchModel(st, Date.now(), m.fix);
@@ -35,6 +53,16 @@ export function vStats(m) {
   const now = new Date(); const hm = `${now.getHours()}時${String(now.getMinutes()).padStart(2, '0')}分`;
   const rangeLabel = range === 'all' ? '試合全体' : periodLabel(range);
 
+  const act = activityById(m.activityId);
+  const sheet = sheetHTML({ R, M, keys, own, opp, game: [act?.name, m.category].filter(Boolean).join(' '), place: m.venue || '', day: (m.date || '').replace(/-/g, '/'), possession: m.possession });
+  const foot = `<div class="stft">${esc(own)} vs ${esc(opp)}　${esc(fmtDate(m.date))}　${rangeLabel}・${asOf}。MATCH PLAYとイベント入力の記録から作成${M.fixed.length ? '（記録の修正を反映）' : ''}。グレーの「—」＝記録がない項目、「未入力 n」＝その数だけ項目が入っていないもの（内訳に数えていない）。時間帯は試合の時計（プレーイングタイム）</div>`;
+  return { M, R, evs, todo, asOf, hm, shownP, sheet, foot, range };
+}
+
+export function vStats(m) {
+  const x = calc(m, range);
+  if (!x) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
+  const { R, evs, todo, asOf, hm, shownP, sheet, foot } = x; range = x.range;
   const segs = [['all', '試合全体'], ...shownP.map((p) => [p.key, p.label])].map(([k, l]) => `<button class="${range === k ? 'on' : ''}" data-range="${k}">${l}</button>`).join('');
   const status = !R.hasEvents ? '<span class="ststat none">イベントがまだ入力されていません（数字はすべて「—」）</span>'
     : todo ? `<button class="ststat todo" id="stTodo">イベント ${evs.length}件・未入力あり ${todo}件 ›</button>` : `<span class="ststat ok">イベント ${evs.length}件・未入力なし</span>`;
@@ -42,15 +70,14 @@ export function vStats(m) {
     <div class="sthead noprint"><h1>マッチスタッツ</h1><span class="rvmode strange">${segs}</span><span class="stasof">${asOf}（${hm}に表示）</span>${status}<span class="sp"></span>
       <button class="btn" id="stPdf">PDFで書き出す</button><a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></div>`;
 
-  const act = activityById(m.activityId);
-  const sheet = sheetHTML({ R, M, keys, own, opp, game: [act?.name, m.category].filter(Boolean).join(' '), place: m.venue || '', day: (m.date || '').replace(/-/g, '/'), possession: m.possession });
-  const foot = `<div class="stft">${esc(own)} vs ${esc(opp)}　${esc(fmtDate(m.date))}　${rangeLabel}・${asOf}。MATCH PLAYとイベント入力の記録から作成${M.fixed.length ? '（記録の修正を反映）' : ''}。グレーの「—」＝記録がない項目、「未入力 n」＝その数だけ項目が入っていないもの（内訳に数えていない）。時間帯は試合の時計（プレーイングタイム）</div>`;
   return {
     active: 'acts',
     html: `<div class="stw">${head}<div class="stpage">${sheet}${foot}</div></div>`,
     bind: (root) => {
       root.querySelectorAll('[data-range]').forEach((b) => b.onclick = () => { range = b.dataset.range; render(); });
       root.querySelector('#stPdf').onclick = () => window.print();
+      // 試合ページの「マッチスタッツ（PDF）」から来たときは、すぐ印刷の画面を出す
+      if (location.hash.endsWith('/print')) { history.replaceState(null, '', `#/m/${m.id}/stats`); setTimeout(() => window.print(), 300); }
       const t = root.querySelector('#stTodo'); if (t) t.onclick = () => { openTodo(m.id); location.hash = `#/m/${m.id}/events`; };
     },
   };

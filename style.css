@@ -827,3 +827,15 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .rvset tr.ex td{font-size:14px;color:#5F6B80;font-weight:500}
 .rvs8 th.w{background:#1F5FBF}.rvs8 th.o{background:#C8312B}.rvs8 td.w{background:#F2F6FD;color:#1F5FBF;font-weight:700}.rvs8 td.o{background:#FDF3F2;color:#C8312B;font-weight:700}
 @media print{.rvs8{font-size:12px}.rvs8 th,.rvs8 td{padding:4px 5px!important}.rvs8 th{font-size:11px}}
+/* 書き出し（印刷用のページだけを出す） */
+#prArea{display:none}
+@media print{body.printing>*:not(#prArea){display:none!important}body.printing #prArea{display:block!important}.prstats .stw{break-after:page}.prstats .stw:last-child{break-after:auto}}
+.anrow .sp{flex:1}.anexp{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;font-weight:800;color:#6B4FA0}
+/* Sportscode（XML）の書き出し */
+.scw h1{margin-bottom:4px}.sccard h3{margin:0 0 8px;color:#0B2D6B}.sccard h3 small{font-size:12px;color:#6B7486;font-weight:500;margin-left:10px}
+.scrow{display:flex;gap:10px 16px;align-items:flex-end;flex-wrap:wrap}.scrow label{display:flex;flex-direction:column;font-size:12px;font-weight:700;color:#5F6B80;gap:3px}
+.scrow label.ck{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:#1B2433;font-weight:600}
+.scrow input:not([type]){font:inherit;font-size:16px;padding:6px 8px;width:130px;border-radius:8px;border:1.5px solid #C9D3E3}.scrow .sp{flex:1}
+.sctb{border-collapse:collapse;margin:10px 0 4px;font-size:14px}.sctb th,.sctb td{padding:5px 10px;border-bottom:1px solid #E6EAF1;text-align:left}.sctb th{font-size:12px;color:#5F6B80}
+.sctb td.w{color:#1F5FBF;font-weight:700}.sctb td.o{color:#C8312B;font-weight:700}.sctb input{width:70px;font:inherit;padding:3px 6px}
+.mu.sm{font-size:12px}
