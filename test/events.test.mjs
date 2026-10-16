@@ -1,6 +1,6 @@
 // Event rules (spec 6章・13章): 未入力の数え方、ピッチの5人（交代と同じ秒）、分類の初めの選択、要確認。
 // Run: node test/events.test.mjs
-import { cardsOf, recheckAll, isTodo, todoCount, missing, pitchAt, subAtSecond, autoCls, needsCheck, OPP_OG, NO_ASSIST, UNKNOWN, sortEvents, setEventTable } from '../js/events.js';
+import { cardsOf, recheckAll, isTodo, todoCount, missing, missingLv, pitchAt, subAtSecond, autoCls, needsCheck, OPP_OG, NO_ASSIST, UNKNOWN, sortEvents, setEventTable } from '../js/events.js';
 
 let pass = 0, fail = 0;
 const eq = (a, b, msg) => { const ok = JSON.stringify(a) === JSON.stringify(b); ok ? pass++ : (fail++, console.log('FAIL', msg, '\n  got', JSON.stringify(a), '\n  want', JSON.stringify(b))); };
@@ -48,27 +48,31 @@ eq(needsCheck(M, ev({ kind: 'goal', at: 150000, pid: OPP_OG, assist: NO_ASSIST }
 eq(needsCheck(M, ev({ kind: 'z4', at: 100000, side: 'after', method: 'pass', pid: 'e', pid2: 'b' })), false, 'after-sub player ok with side=after');
 eq(needsCheck(M, ev({ kind: 'z4', at: 100000, side: 'before', method: 'pass', pid: 'e', pid2: 'b' })), true, 'after-sub player not ok with side=before');
 
-// --- missing（● 資料に出る項目の空き）
+// --- missingLv（3段階：基本の空き＝未入力、詳細の空き＝詳細 n。任意は数えない）
 const gn = (id) => ({ og: 'OG', t1: '定位置' }[id] || '');
-eq(missing({ kind: 'shot' }, gn), 4, 'empty shot: pid,result,cls,n');
-eq(missing({ kind: 'szshot' }, gn), 3, 'empty SZ shot: n is optional');
-eq(missing({ kind: 'oshot' }, gn), 3, 'empty opp shot: result,cls,n');
-eq(missing({ kind: 'oszshot' }, gn), 2, 'empty opp SZ shot: result,cls');
-eq(missing({ kind: 'shot', pid: 'a', result: 'in', cls: 'pos', n: 0 }, gn), 0, '0人 counts as entered');
-eq(missing({ kind: 'z4' }, gn), 1, 'z4: cls only (method/player optional)');
-eq(missing({ kind: 'sz' }, gn), 0, 'sz: nothing required');
-eq(missing({ kind: 'osz' }, gn), 0, 'osz: nothing');
-eq(missing({ kind: 'goal' }, gn), 4, 'empty goal: scorer,assist,type,sz');
-eq(missing({ kind: 'goal', pid: 'a', assist: NO_ASSIST, gtype: 't1', sz: 'out' }, gn), 1, 'goal SZ外: people count needed');
-eq(missing({ kind: 'goal', pid: 'a', assist: NO_ASSIST, gtype: 't1', sz: 'in' }, gn), 0, 'goal SZ内: people optional');
-eq(missing({ kind: 'goal', pid: OPP_OG, assist: NO_ASSIST, gtype: 'og' }, gn), 0, 'opp OG goal complete');
-eq(missing({ kind: 'conc' }, gn), 2, 'empty conc: type, sz');
-eq(missing({ kind: 'conc', gtype: 'og' }, gn), 0, 'own OG: nothing else');
-eq(missing({ kind: 'conc', gtype: 't1' }, gn), 1, 'conc: sz');
-eq(missing({ kind: 'fspat' }, gn), 1, 'fsp: type');
-eq(missing({ kind: 'lost' }, gn), 1, 'lost: player (zone optional)');
-eq(missing({ kind: 'lost', pid: UNKNOWN }, gn), 0, '不明 counts as entered');
-eq(missing({ kind: 'foul', card: 'none' }, gn), 1, 'foul: player');
+const L = (ev) => { const r = missingLv(ev, gn); return [r.basic, r.detail]; };
+eq(L({ kind: 'shot' }), [1, 3], 'empty shot: result=基本, pid/cls/n=詳細');
+eq(L({ kind: 'szshot' }), [1, 2], 'empty SZ shot: n is 任意');
+eq(L({ kind: 'oshot' }), [1, 2], 'empty opp shot: result / cls,n');
+eq(L({ kind: 'oszshot' }), [1, 1], 'empty opp SZ shot: result / cls');
+eq(L({ kind: 'shot', pid: 'a', result: 'in', cls: 'pos', n: 0 }), [0, 0], '0人 counts as entered');
+eq(L({ kind: 'z4' }), [0, 2], 'z4: method, cls');
+eq(L({ kind: 'z4', method: 'pass', cls: 'pos' }), [0, 2], 'z4 pass: passer and receiver');
+eq(L({ kind: 'sz', method: 'dribble' }), [0, 1], 'sz dribble: player');
+eq(L({ kind: 'osz' }), [0, 0], 'osz: nothing');
+eq(L({ kind: 'goal' }), [1, 3], 'empty goal: scorer=基本, assist/type/sz=詳細');
+eq(L({ kind: 'goal', pid: 'a', assist: NO_ASSIST, gtype: 't1', sz: 'out' }), [0, 1], 'goal SZ外: people count');
+eq(L({ kind: 'goal', pid: 'a', assist: NO_ASSIST, gtype: 't1', sz: 'in' }), [0, 0], 'goal SZ内: people 任意');
+eq(L({ kind: 'goal', pid: OPP_OG, assist: NO_ASSIST, gtype: 'og' }), [0, 0], 'opp OG goal complete');
+eq(L({ kind: 'conc' }), [0, 2], 'empty conc: type, sz');
+eq(L({ kind: 'conc', gtype: 'og' }), [0, 1], 'own OG: OG player');
+eq(L({ kind: 'conc', gtype: 't1' }), [0, 1], 'conc: sz');
+eq(L({ kind: 'fspat' }), [0, 1], 'fsp: type');
+eq(L({ kind: 'lost' }), [0, 1], 'lost: player (zone 任意)');
+eq(L({ kind: 'lost', pid: UNKNOWN }), [0, 0], '不明 counts as entered');
+eq(L({ kind: 'foul', card: 'none' }), [0, 1], 'foul: player');
+eq(L({ kind: 'fouled', card: 'none' }), [0, 0], 'fouled: player is 任意');
+eq(missing({ kind: 'shot' }, gn), 1, 'missing = 基本 only');
 
 // --- order
 eq(sortEvents([{ id: 2, period: '2H', at: 1 }, { id: 3, period: '1H', at: 5, seq: 2 }, { id: 1, period: '1H', at: 5, seq: 1 }], ['1H', '2H']).map((x) => x.id), [1, 3, 2], 'time order, then input order');
@@ -117,10 +121,11 @@ eq(sortEvents([{ id: 2, period: '2H', at: 1 }, { id: 3, period: '1H', at: 5, seq
     { id: 'r1', kind: 'rec', period: '1H', at: 50000, pid: 'a' },              // a はピッチ：⚠なし
     { id: 'r2', kind: 'rec', period: '1H', at: 150000, pid: 'a', check: false }, // a はベンチ → ⚠ が付く
     { id: 'r3', kind: 'rec', period: '1H', at: 150000, pid: 'e', check: true },  // e はピッチ → ⚠ が外れる
-    { id: 'r4', kind: 'rec', period: '1H', at: 150000 },                          // 選手が未入力
+    { id: 'r4', kind: 'oshot', period: '1H', at: 150000 },                        // 結果（基本）が未入力
+    { id: 'r5', kind: 'rec', period: '1H', at: 150000 },                          // 選手（詳細）だけ空き → 未入力に数えない
   ];
   eq(recheckAll(M, evs).map((x) => [x.ev.id, x.check]), [['r2', true], ['r3', false]], 'recheckAll: only changed ones');
-  eq(evs.map((e) => isTodo(e, gn)), [false, false, true, true], 'isTodo: missing or check');
+  eq(evs.map((e) => isTodo(e, gn)), [false, false, true, true, false], 'isTodo: 基本の空き or check');
   eq(todoCount(evs, gn), 2, 'todoCount');
 }
 

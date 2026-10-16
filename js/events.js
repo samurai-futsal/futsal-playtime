@@ -62,29 +62,39 @@ export function clsOfGoalType(name) {
   return null;
 }
 
-// 空いている「●（資料に出る）」の数。goalName(id) は得点の種類の名前を返す
-export function missing(ev, goalName = (x) => x) {
+// 入力の3段階（2026-10-16 決定）：基本＝試合の概略に必要（空きは「未入力」）／詳細＝資料を充実させる（空きは「詳細 n」）／任意＝今は資料に使わない
+// 空いている数を段階ごとに返す。goalName(id) は得点の種類の名前を返す
+export function missingLv(ev, goalName = (x) => x) {
   const k = ev.kind; const e = (v) => (v == null || v === '' ? 1 : 0);
-  let n = 0;
+  let b = 0, d = 0;
   if (isShot(k)) {
-    if (KIND[k].team === 'own') n += e(ev.pid);
-    n += e(ev.result) + e(ev.cls);
-    if (!isSZ(k)) n += e(ev.n); // SZ内の人数は任意
-  } else if (k === 'z4' || k === 'oz4') n += e(ev.cls);
+    if (KIND[k].team === 'own') d += e(ev.pid);
+    b += e(ev.result); d += e(ev.cls);
+    if (!isSZ(k)) d += e(ev.n); // SZ内の人数は任意
+  } else if (k === 'z4' || k === 'sz') {
+    d += e(ev.method);
+    if (ev.method === 'pass') d += e(ev.pid) + e(ev.pid2);
+    else if (ev.method) d += e(ev.pid);
+    if (k === 'z4') d += e(ev.cls);
+  } else if (k === 'oz4') d += e(ev.cls);
   else if (k === 'goal') {
-    n += e(ev.pid);
+    b += e(ev.pid);
     if (ev.pid !== OPP_OG) {
-      n += e(ev.assist) + e(ev.gtype) + e(ev.sz);
-      if (ev.sz === 'out') n += e(ev.n);
+      d += e(ev.assist) + e(ev.gtype) + e(ev.sz);
+      if (ev.sz === 'out') d += e(ev.n);
     }
   } else if (k === 'conc') {
-    n += e(ev.gtype);
-    if (!isOG(goalName(ev.gtype))) { n += e(ev.sz); if (ev.sz === 'out') n += e(ev.n); }
-  } else if (isFsp(k)) n += e(ev.fsp);
-  else if (k === 'rec' || k === 'lost') n += e(ev.pid);
-  else if (k === 'foul' || k === 'fouled') n += e(ev.pid) + e(ev.card);
-  return n;
+    d += e(ev.gtype);
+    if (isOG(goalName(ev.gtype))) d += e(ev.og);
+    else { d += e(ev.sz); if (ev.sz === 'out') d += e(ev.n); }
+  } else if (isFsp(k)) d += e(ev.fsp);
+  else if (k === 'rec' || k === 'lost') d += e(ev.pid);
+  else if (k === 'foul') { d += e(ev.pid); b += e(ev.card); }
+  else if (k === 'fouled') b += e(ev.card); // 受けた選手は任意
+  return { basic: b, detail: d };
 }
+// 「未入力」＝基本の空きの数（試合の状態「未入力あり」に使う）
+export const missing = (ev, goalName) => missingLv(ev, goalName).basic;
 
 // ---------- ピッチの5人 ----------
 const isGK = (cfg, pid) => cfg.members?.[pid]?.pos === 'GK';

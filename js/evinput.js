@@ -1,6 +1,6 @@
 // イベント入力（spec 13章）。試合後に映像を見ながらでも、試合中のリアルタイム入力でも同じ画面。
 // 入力の順番：時刻 → イベント → 選手 → 結果。「記録する」を押した時点で記録になる（時刻は残る）。
-// 入れないと記録できないのは時刻とイベントだけ。● は資料に出る項目（空けた分は「未入力」の印）。
+// 入れないと記録できないのは時刻とイベントだけ。項目は ●基本／○詳細／△任意 の3段階（基本の空きだけが「未入力」）。
 import { S as D, watchOps, watchEvents, saveEvent, playerById, opts, teamSettings, put, teamPath, deviceId } from './store.js';
 import { replay, PERIODS, periodLabel } from './engine.js';
 import { matchModel, periodSig } from './model.js';
@@ -10,7 +10,7 @@ import { render } from './views.js';
 import { devName } from './matchplay.js';
 import {
   KIND, MAIN_OWN, MAIN_OPP, SUBS, RESULTS, CLS, SETP, FSP, METHODS, ZONES, CARDS, CARDS_OPP, cardsOf, UNKNOWN, OPP_OG, NO_ASSIST,
-  isShot, isSZ, isFsp, hasCls, isOG, missing, recheckAll, isTodo, pitchAt, subAtSecond, autoCls, needsCheck, liveEvents, sortEvents, summary,
+  isShot, isSZ, isFsp, hasCls, isOG, missing, missingLv, recheckAll, isTodo, pitchAt, subAtSecond, autoCls, needsCheck, liveEvents, sortEvents, summary,
 } from './events.js';
 
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.max(0, sec) % 60).padStart(2, '0')}`;
@@ -206,15 +206,18 @@ export function vEvents(m) {
   const counts = Object.fromEntries(periods.map((p) => [p.key, events.filter((e) => e.period === p.key).length]));
   if (!ui.listPer || !periods.some((p) => p.key === ui.listPer)) ui.listPer = ui.period;
   const cardMap = cardsOf(events, periods.map((p) => p.key));
-  const todoN = events.filter((e) => isTodo(e, goalName)).length;
+  // 絞り込み：todo＝未入力（基本）・要確認、detail＝詳細の空き
+  const isDet = (e) => missingLv(e, goalName).detail > 0;
+  const todoN = events.filter((e) => isTodo(e, goalName)).length, detN = events.filter(isDet).length;
   if (ui.todo && !todoN) ui.todo = false;
-  const rows = events.filter((e) => (ui.todo ? isTodo(e, goalName) : e.period === ui.listPer)).map((e) => {
+  if (ui.det && !detN) ui.det = false;
+  const rows = events.filter((e) => (ui.todo ? isTodo(e, goalName) : ui.det ? isDet(e) : e.period === ui.listPer)).map((e) => {
     const pl = periods.find((p) => p.key === e.period); const rem = Math.round((pl.len - e.at) / 1000);
-    const miss = missing(e, goalName);
+    const lv = missingLv(e, goalName); const miss = lv.basic;
     const dup = events.some((x) => x !== e && x.kind === e.kind && x.period === e.period && Math.abs(x.at - e.at) <= 3000 && x.dev && e.dev && x.dev !== e.dev);
     const by = (e.hist || [])[0]?.by;
-    return `<button class="evr ${ui.edit === e.id ? 'sel' : ''}" data-ev="${e.id}"><span class="t">${ui.todo ? `<small class="evper">${pl.label}</small>` : ''}${mmss(rem)}${e.role != null && sp.n > 1 ? `<span class="who r${e.role}" title="${esc(by || '')}">${e.role + 1}</span>` : ''}</span><span class="k ${KIND[e.kind].team === 'opp' ? 'opp' : ''}">${KIND[e.kind].label}</span>
-      <span class="d">${esc(cardMap.get(e.id) === 'y2' && e.card === 'yellow' ? summary(e, nm, goalName).replace('イエロー', 'イエロー2枚目（退場）') : summary(e, nm, goalName))}${miss ? ` <span class="miss">未入力 ${miss}</span>` : ''}${e.check ? ' <span class="evchk">⚠ 要確認</span>' : ''}${dup ? ' <span class="evdup">同じイベントが2回入っているかも</span>' : ''}${by ? ` <span class="evby">${esc(by)}</span>` : ''}</span></button>`;
+    return `<button class="evr ${ui.edit === e.id ? 'sel' : ''}" data-ev="${e.id}"><span class="t">${ui.todo ? `<small class="evper">${pl.label}</small>` : ui.det ? `<small class="evper">${pl.label}</small>` : ''}${mmss(rem)}${e.role != null && sp.n > 1 ? `<span class="who r${e.role}" title="${esc(by || '')}">${e.role + 1}</span>` : ''}</span><span class="k ${KIND[e.kind].team === 'opp' ? 'opp' : ''}">${KIND[e.kind].label}</span>
+      <span class="d">${esc(cardMap.get(e.id) === 'y2' && e.card === 'yellow' ? summary(e, nm, goalName).replace('イエロー', 'イエロー2枚目（退場）') : summary(e, nm, goalName))}${miss ? ` <span class="miss">未入力 ${miss}</span>` : ''}${lv.detail ? ` <span class="missd">詳細 ${lv.detail}</span>` : ''}${e.check ? ' <span class="evchk">⚠ 要確認</span>' : ''}${dup ? ' <span class="evdup">同じイベントが2回入っているかも</span>' : ''}${by ? ` <span class="evby">${esc(by)}</span>` : ''}</span></button>`;
   }).join('') || '<p class="mu" style="padding:8px 14px">まだありません</p>';
   const all = evC.list;
   const histRows = all.flatMap((e) => { const u = undoable(e); return (e.hist || []).map((h, i) => ({ e, h, i, last: i === e.hist.length - 1, can: i === u })); }).filter((x) => x.h.act !== 'add').sort((a, b) => b.h.t - a.h.t);
@@ -231,8 +234,8 @@ export function vEvents(m) {
   const ltabs = `<div class="ltabs"><button class="${ui.ltab !== 'hist' ? 'on' : ''}" data-ltab="ev">イベント</button><button class="${ui.ltab === 'hist' ? 'on' : ''}" data-ltab="hist">直した履歴</button></div>`;
   const list = ui.ltab === 'hist' ? `<div class="card evlist evhist">${ltabs}<h3>直した履歴（新しい順）</h3><div class="hrows">${histHTML}</div>
     <p class="mu" style="font-size:12px">取り消すと、そのイベントだけが前の状態に戻ります（ほかの人の入力はそのまま）。同じイベントは、新しい変更から順に取り消せます。</p></div>` : `<div class="card evlist">${ltabs}<h3>入力したイベント（時刻順）</h3>
-    <div class="perh">${periods.map((p) => `<button class="btn sm ${!ui.todo && p.key === ui.listPer ? 'pri' : ''}" data-lper="${p.key}">${p.label} ${counts[p.key]}件</button>`).join('')}${todoN ? `<button class="btn sm todo ${ui.todo ? 'on' : ''}" id="evTodo">未入力・要確認だけ ${todoN}件</button>` : ''}</div>
-    ${ui.todo ? '<div class="evtodo">未入力の項目か ⚠ 要確認が残っているイベントだけを並べています（前半・後半とも）。押すと直せます。埋め終わると一覧から消えます</div>' : ''}
+    <div class="perh">${periods.map((p) => `<button class="btn sm ${!ui.todo && !ui.det && p.key === ui.listPer ? 'pri' : ''}" data-lper="${p.key}">${p.label} ${counts[p.key]}件</button>`).join('')}${todoN ? `<button class="btn sm todo ${ui.todo ? 'on' : ''}" id="evTodo">未入力・要確認 ${todoN}件</button>` : ''}${detN ? `<button class="btn sm det ${ui.det ? 'on' : ''}" id="evDet">詳細の空き ${detN}件</button>` : ''}</div>
+    ${ui.todo ? '<div class="evtodo">●基本の項目が空いているか ⚠ 要確認が残っているイベントだけを並べています（前半・後半とも）。押すと直せます。埋め終わると一覧から消えます</div>' : ui.det ? '<div class="evtodo det">○詳細の項目が空いているイベントだけを並べています（前半・後半とも）。埋めると資料が充実します。空いていても「記録完了」にはなります</div>' : ''}
     <div class="evrows">${rows}</div></div>`;
 
   // ---------- 右：入力 ----------
@@ -252,7 +255,7 @@ export function vEvents(m) {
   const undoBtn = `<button class="btn evundo" id="evUndo" ${lm ? '' : 'disabled'}>↶ 1つ戻す${lm ? `（${ACT[lm.h.act]}：${esc(evDesc(lm.h.act === 'add' ? lm.ev : lm.h.prev || lm.ev))}）` : ''}</button>`;
   const foot = ui.edit
     ? `<div class="foot"><button class="btn dangerline" id="evDel">このイベントを削除</button><span class="sp"></span><button class="btn" id="evCancel">やめる</button><button class="btn pri" id="evSave" ${ui.kind ? '' : 'disabled'}>直す</button></div>`
-    : `<div class="foot">${undoBtn}<span class="mu">時刻とイベントだけで記録できます。● を空けた分は資料で「—」になり、あとで埋められます</span><button class="btn" id="evCancel" ${ui.kind ? '' : 'disabled'}>やめる</button><button class="btn pri" id="evSave" ${ui.kind ? '' : 'disabled'}>記録する（時刻はそのまま）</button></div>`;
+    : `<div class="foot">${undoBtn}<span class="mu">時刻とイベントだけで記録できます。空けた分は資料で「—」や「未入力 n」になり、あとで埋められます</span><button class="btn" id="evCancel" ${ui.kind ? '' : 'disabled'}>やめる</button><button class="btn pri" id="evSave" ${ui.kind ? '' : 'disabled'}>記録する（時刻はそのまま）</button></div>`;
   const ctx = { m, cfg, M, events, per, nm, all, sp, role };
   const form = `<div class="card evform">${ui.edit ? '<div class="evediting">入力したイベントを直しています</div>' : ''}${step1}${step2}<div id="evDyn">${dynHTML(ctx)}</div>${foot}</div>`;
 
@@ -268,8 +271,11 @@ export function vEvents(m) {
 }
 
 // ---------- ③④（イベントごとに変わる部分） ----------
-const OPT = '<span class="opt">任意</span>';
-const REQ = '<span class="req">●</span>';
+// 入力の3段階（2026-10-16 決定）：●基本＝試合の概略に必要／○詳細＝資料を充実させる／△任意＝今は資料に使わない
+const BAS = '<span class="lv b">●基本</span>';
+const DET = '<span class="lv d">○詳細</span>';
+const OPT = '<span class="lv o">△任意</span>';
+const LV_NOTE = '<div class="lvnote"><span class="lv b">●基本</span>試合の概略に必要（空きは「未入力」）<span class="lv d">○詳細</span>資料を充実させる<span class="lv o">△任意</span>今は資料に使わない</div>';
 function curEv(ctx) {
   const at = Math.max(0, ctx.per.len - ui.sec * 1000);
   return { ...ui.f, id: ui.edit, kind: ui.kind, period: ui.period, at, side: ui.f.side || (isFsp(ui.kind) ? 'after' : 'before') };
@@ -297,21 +303,21 @@ function dynHTML(ctx) {
   const step = (n, title, body) => `<div class="step"><span class="num">${n}</span><div><div class="st">${title}</div>${body}</div></div>`;
   const at5 = `<small>${mmss(ui.sec)} にピッチにいた5人</small>${sideSw}`;
   const nCount = (sz) => choice('n', [0, 1, 2, 3, 4, 5].map((x) => [x, `${x}人`]), { dis: sz ? [0] : [] });
-  const clsRow = () => row('分類', REQ, `${choice('cls', CLS)}${f.cls === 'set' ? `<div class="sp2"><span class="opt" style="margin:0 8px 0 0">セットプレーの種類（任意）</span>${choice('sp', SETP)}</div>` : ''}`,
+  const clsRow = () => row('分類', DET, `${choice('cls', CLS)}${f.cls === 'set' ? `<div class="sp2"><span style="margin:0 8px 0 0">セットプレーの種類 ${OPT}</span>${choice('sp', SETP)}</div>` : ''}`,
     ui.clsAutoNote || '');
   const gtList = goalTypes().filter((o) => !o.hidden || o.id === f.gtype).map((o) => [o.id, o.name]);
-  let html = '';
+  let html = k === 'osz' ? '' : LV_NOTE;
   if (isShot(k)) {
     const sz = isSZ(k);
-    html += own ? step(3, `打った選手 ${REQ}${at5}`, players('pid')) : step(3, '選手', `<div class="mu">相手チームのイベントなので、選手は選びません${sideSw ? '　' + sideSw : ''}</div>`);
-    html += step(4, '結果', row('結果', REQ, choice('result', RESULTS)) +
-      row('ゾーン内の人数', sz ? OPT : REQ, nCount(sz), sz ? 'SZ内は打った選手を1人目に数えるので0人は押せません（任意）' : 'シュートの瞬間にSZの中にいた攻撃側の人数（0人＝人無）') + clsRow());
+    html += own ? step(3, `打った選手 ${DET}${at5}`, players('pid')) : step(3, '選手', `<div class="mu">相手チームのイベントなので、選手は選びません${sideSw ? '　' + sideSw : ''}</div>`);
+    html += step(4, '結果', row('結果', BAS, choice('result', RESULTS)) +
+      row('ゾーン内の人数', sz ? OPT : DET, nCount(sz), sz ? 'SZ内は打った選手を1人目に数えるので0人は押せません' : 'シュートの瞬間にSZの中にいた攻撃側の人数（0人＝人無）') + clsRow());
   } else if (k === 'z4' || k === 'sz') {
-    const meth = row('方法', OPT, choice('method', METHODS));
+    const meth = row('方法', DET, choice('method', METHODS));
     const who = f.method === 'pass'
-      ? row('出し手', OPT, players('pid', { exclude: f.pid2 })) + row('受け手', OPT, players('pid2', { exclude: f.pid }))
-      : f.method ? row('進入した選手', OPT, players('pid')) : '<div class="hint">方法を選ぶと選手の欄が出ます（パス＝出し手と受け手、ドリブル・リバウンド＝1人）</div>';
-    html += step(3, `進入の方法と選手 ${OPT}${at5}`, meth + who);
+      ? row('出し手', DET, players('pid', { exclude: f.pid2 })) + row('受け手', DET, players('pid2', { exclude: f.pid }))
+      : f.method ? row('進入した選手', DET, players('pid')) : '<div class="hint">方法を選ぶと選手の欄が出ます（パス＝出し手と受け手、ドリブル・リバウンド＝1人）</div>';
+    html += step(3, `進入の方法と選手 ${at5}`, meth + who);
     if (k === 'z4') html += step(4, '結果', clsRow());
   } else if (k === 'oz4') {
     html += step(3, '選手', '<div class="mu">相手チームのイベントなので、選手も方法も記録しません</div>') + step(4, '結果', clsRow());
@@ -319,27 +325,27 @@ function dynHTML(ctx) {
     html += step(3, '選手', '<div class="mu">相手チームのSZ進入は、時刻だけを記録します（ほかに入れる項目はありません）</div>');
   } else if (k === 'goal') {
     const ogg = f.pid === OPP_OG;
-    html += step(3, `得点者とアシスト ${at5}`, row('得点者', REQ, players('pid', { oppOG: true })) +
-      (ogg ? '' : row('アシスト', REQ, `<div class="ch">${on.filter((p) => p !== f.pid).map((p) => `<button class="btn ${f.assist === p ? 'on' : ''}" data-set="assist" data-v="${p}">${esc(nm(p))}</button>`).join('')}<button class="btn ${f.assist === NO_ASSIST ? 'on' : ''}" data-set="assist" data-v="${NO_ASSIST}">なし</button><button class="btn ${f.assist == null ? 'on soft' : ''}" data-set="assist" data-v="">あとで</button></div>`)));
+    html += step(3, `得点者とアシスト ${at5}`, row('得点者', BAS, players('pid', { oppOG: true })) +
+      (ogg ? '' : row('アシスト', DET, `<div class="ch">${on.filter((p) => p !== f.pid).map((p) => `<button class="btn ${f.assist === p ? 'on' : ''}" data-set="assist" data-v="${p}">${esc(nm(p))}</button>`).join('')}<button class="btn ${f.assist === NO_ASSIST ? 'on' : ''}" data-set="assist" data-v="${NO_ASSIST}">なし</button><button class="btn ${f.assist == null ? 'on soft' : ''}" data-set="assist" data-v="">あとで</button></div>`)));
     html += step(4, '結果', ogg ? '<div class="mu">相手のオウンゴール：得点の種類は「OG」、アシストは「なし」が自動で入ります。シュートには数えません</div>'
-      : row('得点の種類', REQ, choice('gtype', gtList.filter(([, n]) => !isOG(n)))) + row('SZ内／SZ外', REQ, choice('sz', [['in', 'SZ内'], ['out', 'SZ外']])) +
-        (f.sz ? row('ゾーン内の人数', f.sz === 'in' ? OPT : REQ, nCount(f.sz === 'in'), f.sz === 'in' ? 'SZ内は任意' : '') : '') +
+      : row('得点の種類', DET, choice('gtype', gtList.filter(([, n]) => !isOG(n)))) + row('SZ内／SZ外', DET, choice('sz', [['in', 'SZ内'], ['out', 'SZ外']])) +
+        (f.sz ? row('ゾーン内の人数', f.sz === 'in' ? OPT : DET, nCount(f.sz === 'in')) : '') +
         '<div class="hint">得点は「枠内シュート」としても数えるので、同じ場面のシュートは入れません。分類は種類から自動で付きます</div>');
   } else if (k === 'conc') {
     const og = isOG(goalName(f.gtype));
-    html += step(3, `失点の種類 ${REQ}`, choice('gtype', gtList));
+    html += step(3, `失点の種類 ${DET}`, choice('gtype', gtList));
     html += step(4, og ? 'オウンゴール' : '結果', og
-      ? row('OGの選手', OPT, players('og', { unknown: true })) + '<div class="hint">OGのときは「SZ内／SZ外」と「ゾーン内の人数」は入れません。シュートにも数えません</div>'
-      : row('SZ内／SZ外', REQ, choice('sz', [['in', 'SZ内'], ['out', 'SZ外']])) + (f.sz ? row('ゾーン内の人数', f.sz === 'in' ? OPT : REQ, nCount(f.sz === 'in'), '相手の人数') : '') +
+      ? row('OGの選手', DET, players('og', { unknown: true })) + '<div class="hint">OGのときは「SZ内／SZ外」と「ゾーン内の人数」は入れません。シュートにも数えません</div>'
+      : row('SZ内／SZ外', DET, choice('sz', [['in', 'SZ内'], ['out', 'SZ外']])) + (f.sz ? row('ゾーン内の人数', f.sz === 'in' ? OPT : DET, nCount(f.sz === 'in'), '相手の人数') : '') +
         '<div class="hint">失点は「枠内の被シュート」としても数えるので、同じ場面の被シュートは入れません</div>');
   } else if (isFsp(k)) {
-    html += step(3, `種類 ${REQ}`, choice('fsp', FSP));
+    html += step(3, `種類 ${DET}`, choice('fsp', FSP));
   } else if (k === 'rec' || k === 'lost') {
-    html += step(3, `${k === 'rec' ? 'ボールを奪った選手' : 'ボールを失った選手'} ${REQ}${at5}`, players('pid'));
+    html += step(3, `${k === 'rec' ? 'ボールを奪った選手' : 'ボールを失った選手'} ${DET}${at5}`, players('pid'));
     html += step(4, '場所', row('ゾーン', OPT, `<div class="ch zch">${ZONES.map(([z, c]) => `<button class="btn ${f.zone === z ? 'on' : ''}" data-set="zone" data-v="${z}">${z}<span class="zcap">${c}</span></button>`).join('')}</div>`));
   } else if (k === 'foul' || k === 'fouled') {
-    html += step(3, `${k === 'foul' ? 'ファールをした選手' : 'ファールを受けた選手'} ${REQ}${at5}`, players('pid'));
-    html += step(4, 'カード', row('カード', REQ, choice('card', k === 'fouled' ? CARDS_OPP : CARDS), k === 'fouled' ? '相手選手へのカード' : '同じ選手の2枚目のイエローは、自動で「イエロー2枚目（退場）」として数えます'));
+    html += step(3, `${k === 'foul' ? 'ファールをした選手' : 'ファールを受けた選手'} ${k === 'foul' ? DET : OPT}${at5}`, players('pid'));
+    html += step(4, 'カード', row('カード', BAS, choice('card', k === 'fouled' ? CARDS_OPP : CARDS), k === 'fouled' ? '相手選手へのカード' : '同じ選手の2枚目のイエローは、自動で「イエロー2枚目（退場）」として数えます'));
   }
   return html;
 }
@@ -375,8 +381,9 @@ function bindEv(root, ctx) {
   root.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b || b.disabled) return;
     if (b.dataset.per) { ui.period = b.dataset.per; ui.listPer = b.dataset.per; applyAuto(ctx); return render(); }
-    if (b.dataset.lper) { ui.listPer = b.dataset.lper; ui.todo = false; return render(); }
-    if (b.id === 'evTodo') { ui.todo = !ui.todo; return render(); }
+    if (b.dataset.lper) { ui.listPer = b.dataset.lper; ui.todo = false; ui.det = false; return render(); }
+    if (b.id === 'evTodo') { ui.todo = !ui.todo; ui.det = false; return render(); }
+    if (b.id === 'evDet') { ui.det = !ui.det; ui.todo = false; return render(); }
     if (b.dataset.ltab) { ui.ltab = b.dataset.ltab; return render(); }
     if (b.id === 'evWho') return changeWho(m);
     if (b.id === 'evRoleChange') { setRole(m, null); return render(); }
