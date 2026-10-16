@@ -9,12 +9,13 @@ import { vReview, stopReviewTick } from './review.js';
 import { vFix } from './fix.js';
 import { vEvents, vSplit, openTodo } from './evinput.js';
 import { vStats } from './stats.js';
+import { vAnalysis } from './analysis.js';
 import { vPhys, stopPhysTick } from './viewer.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js'];
 export function startApp(c) {
   ctx = c;
   try { const t = localStorage.getItem('fpt.team'); if (t) selectTeam(t); } catch {}
@@ -70,7 +71,7 @@ function topbar(active) {
 
 const VIEWS = {
   home: vHome, teams: vTeams, players: vPlayers, acts: vActivities, a: vActivity, m: vMatch,
-  search: vSearch, settings: vSettings, analysis: vSoon, soon: vSoon,
+  search: vSearch, settings: vSettings, analysis: (r) => vAnalysis(r), soon: vSoon,
 };
 
 export function render() {
@@ -135,7 +136,7 @@ function vHome() {
     <div class="tiles">
       ${tile('#/players', '選手', `在籍 ${activePlayers}人`)}
       ${tile('#/acts', '活動と試合', `活動 ${S.activities.length}件・試合 ${ms.length}件`)}
-      ${tile('#/analysis', '分析', '次の版で入ります', true)}
+      ${tile('#/analysis', '分析', '出場時間・スタッツ')}
     </div>
     <h2 class="h">次の試合</h2>
     ${next ? `<a class="card nextm" href="#/m/${next.id}">
@@ -496,6 +497,7 @@ function vMatch(r) {
   if (r.sub === 'events') return vEvents(m);
   if (r.sub === 'split') return vSplit(m);
   if (r.sub === 'stats') return vStats(m);
+  if (r.sub === 'analysis') return vAnalysis(r, m);
   if (r.sub === 'physical') return vPhys(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
@@ -538,7 +540,7 @@ function vMatch(r) {
     </div>
     <div class="grp">見る・書き出す（ハーフタイムでも、いつでも）</div>
     <div class="acts acts2">
-      ${btn('分析', 'この試合・大会全体', '', { soon: true, soonText: '⑤で入ります', kind: 'see' })}
+      ${btn('分析', 'この試合・大会全体\n選手ごとのスタッツ', `#/m/${m.id}/analysis`, { kind: 'see' })}
       ${btn('書き出し', 'PDF：マッチスタッツ・マッチレポート\n　　 マッチレビュー\nExcel：データシート　XML：Sportscode', '', { soon: true, soonText: '⑥で入ります', kind: 'out' })}
     </div>
     <p class="mu actnote">左の色：青＝記録する（記録が変わる）／緑＝見るだけ／紫＝書き出す</p>`,

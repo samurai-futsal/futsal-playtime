@@ -1,7 +1,7 @@
 // チームと選手の集計（マッチレビュー 5・7・8、マッチスタッツ）。spec 7章・9章。
 // 画面を作らない純粋な計算。同じ記録から同じ計算で作るので、レビューとスタッツの数字は必ず一致する。
 // 得点・失点は専用の種類（goal / conc）で記録するが、シュートにも数える（得点＝枠内のシュート）。OGはシュートに数えない。
-import { OPP_OG, NO_ASSIST, UNKNOWN, isOG, clsOfGoalType, cardsOf, pitchAt } from './events.js';
+import { OPP_OG, NO_ASSIST, UNKNOWN, isOG, isFsp, clsOfGoalType, cardsOf, pitchAt } from './events.js';
 
 export const CLS_KEYS = ['pos', 'set', 'trans', 'gk', 'special'];
 const num = (v) => (v == null || v === '' ? null : +v);
@@ -26,8 +26,9 @@ export function shotsOf(events, goalName, own) {
 }
 
 // periods：M.periods（並び順と長さ）。keys：数える範囲のピリオド（null＝試合全体）
-export function teamStats(M, events, goalName, keys = null) {
-  const inR = (e) => !keys || keys.includes(e.period);
+export function teamStats(M, events, goalName, keys = null, win = null) {
+  // win(e)：数える時間帯か（分析の「5×4を除く」など）。null＝すべて
+  const inR = (e) => (!keys || keys.includes(e.period)) && (!win || win(e));
   const all = events.filter((e) => !e.deleted);
   const ev = all.filter(inR);
   const pOrder = M.periods.map((p) => p.key);
@@ -70,6 +71,7 @@ export function teamStats(M, events, goalName, keys = null) {
   const goals = [];
   for (const e of all.slice().sort((a, b) => pOrder.indexOf(a.period) - pOrder.indexOf(b.period) || a.at - b.at || (a.seq || 0) - (b.seq || 0))) {
     if (e.kind !== 'goal' && e.kind !== 'conc') continue;
+    if (win && !win(e)) continue;
     const own = e.kind === 'goal';
     if (score[own ? 'own' : 'opp'][e.period] == null) continue;
     score[own ? 'own' : 'opp'][e.period]++;
@@ -77,8 +79,8 @@ export function teamStats(M, events, goalName, keys = null) {
   }
   const sum = (o, ks) => (ks || Object.keys(o)).reduce((a, k) => a + (o[k] || 0), 0);
   const rangeScore = { own: sum(score.own, keys), opp: sum(score.opp, keys) };
-  const timeouts = { own: 0, opp: 0 }; for (const t of M.timeouts || []) if (!keys || keys.includes(t.period)) timeouts[t.team === 'opp' ? 'opp' : 'own']++;
-  const ejOwn = (M.ejections || []).filter((x) => !keys || keys.includes(x.period)).length;
+  const timeouts = { own: 0, opp: 0 }; for (const t of M.timeouts || []) if ((!keys || keys.includes(t.period)) && (!win || win(t))) timeouts[t.team === 'opp' ? 'opp' : 'own']++;
+  const ejOwn = (M.ejections || []).filter((x) => (!keys || keys.includes(x.period)) && (!win || win(x))).length;
   return {
     A, B, score, rangeScore, goals, timeouts, ejOwn, ejOpp: B.cards.y2 + B.cards.red,
     rec: ev.filter((e) => e.kind === 'rec').length, lost: ev.filter((e) => e.kind === 'lost').length,
@@ -110,4 +112,126 @@ export function playerStats(Mp, events, goalName, pids, T, keys = null) {
     };
   });
   return { rows, assistMiss, unknownShooter: sh.filter((s) => !s.pid || s.pid === UNKNOWN).length, noAssist: NO_ASSIST };
+}
+
+// ---------- 分析画面（spec 9章「集計画面の構成」）：選手ごとの直接関与・間接関与（出場中） ----------
+// 本人のプレー＝直接関与、ピッチにいる間にチームに起きたこと＝間接関与（本人のプレーも含む）。
+export const FSP_KEYS = ['CK', 'CK-KI', 'KI', 'FK', 'PK', '2PK'];
+export const ZONE_KEYS = ['Z1', 'Z2', 'Z3', 'Z4'];
+export function blankDetail() {
+  const z6 = () => [0, 0, 0, 0, 0, 0], z4 = () => [0, 0, 0, 0];
+  return {
+    time: 0, count: 0, games: 0, pOwn: 0, pOpp: 0,
+    shots: 0, sz: 0, in: 0, out: 0, block: 0, resMiss: 0, goals: 0, assists: 0,
+    ent: { z4: { dr: 0, pf: 0, pt: 0, rb: 0, inv: 0 }, sz: { dr: 0, pf: 0, pt: 0, rb: 0, inv: 0 } }, inv: 0, passFrom: 0, passTo: 0,
+    rec: 0, lost: 0, recZ: z4(), lostZ: z4(), foul: 0, fouled: 0, cY: 0, cY2: 0, cR: 0,
+    on: { shot: 0, oshot: 0, gf: 0, ga: 0, z4: 0, sz: 0, oz4: 0, osz: 0, rec: 0, lost: 0, foul: 0, ofoul: 0, at: z6(), df: z6() },
+  };
+}
+export function playerDetail(Mp, events, goalName, pids, T, keys = null, win = null) {
+  const all = events.filter((e) => !e.deleted);
+  const ev = all.filter((e) => (!keys || keys.includes(e.period)) && (!win || win(e)));
+  const cards = cardsOf(all, Mp.periods.map((p) => p.key));
+  const own = shotsOf(ev, goalName, true), opp = shotsOf(ev, goalName, false);
+  const onC = new Map();
+  const onOf = (e) => { if (!onC.has(e)) onC.set(e, new Set(pitchAt(Mp, e.period, e.at, e.side || (isFsp(e.kind) ? 'after' : 'before')))); return onC.get(e); };
+  const out = {};
+  for (const pid of pids) {
+    const d = (out[pid] = blankDetail());
+    const t = T[pid];
+    d.time = keys ? keys.reduce((a, k) => a + (t?.per?.[k]?.time || 0), 0) : (t?.total || 0);
+    d.count = keys ? keys.reduce((a, k) => a + (t?.per?.[k]?.count || 0), 0) : (t?.count || 0);
+    d.games = d.time > 0 ? 1 : 0;
+  }
+  const add = (pid, f) => { if (out[pid]) f(out[pid]); };
+  const onAll = (e, f) => { for (const pid of onOf(e)) add(pid, (d) => f(d.on)); };
+  for (const s of own) {
+    add(s.pid, (d) => { d.shots++; if (s.sz === true) d.sz++; if (s.result === 'in') d.in++; else if (s.result === 'out' || s.result === 'post') d.out++; else if (s.result === 'block') d.block++; else d.resMiss++; });
+    onAll(s.e, (o) => o.shot++);
+  }
+  for (const s of opp) onAll(s.e, (o) => o.oshot++);
+  for (const e of ev) {
+    const k = e.kind;
+    if (k === 'goal') { add(e.pid, (d) => d.goals++); if (e.assist && e.assist !== NO_ASSIST) add(e.assist, (d) => d.assists++); onAll(e, (o) => o.gf++); }
+    else if (k === 'conc') onAll(e, (o) => o.ga++);
+    else if (k === 'z4' || k === 'sz') {
+      const g = k;
+      const who = new Set([e.pid, e.pid2].filter((x) => x && x !== UNKNOWN));
+      for (const pid of who) add(pid, (d) => { d.ent[g].inv++; d.inv++; });
+      if (e.method === 'pass') { add(e.pid, (d) => { d.ent[g].pf++; d.passFrom++; }); add(e.pid2, (d) => { d.ent[g].pt++; d.passTo++; }); }
+      else if (e.method === 'dribble') add(e.pid, (d) => d.ent[g].dr++);
+      else if (e.method === 'rebound') add(e.pid, (d) => d.ent[g].rb++);
+      onAll(e, (o) => o[g]++);
+    } else if (k === 'oz4' || k === 'osz') onAll(e, (o) => o[k]++);
+    else if (k === 'rec' || k === 'lost') {
+      const zi = ZONE_KEYS.indexOf(e.zone);
+      add(e.pid, (d) => { d[k]++; if (zi >= 0) d[k + 'Z'][zi]++; });
+      onAll(e, (o) => o[k]++);
+    } else if (k === 'foul') {
+      const c = cards.get(e.id);
+      add(e.pid, (d) => { d.foul++; if (c === 'yellow') d.cY++; else if (c === 'y2') d.cY2++; else if (c === 'red') d.cR++; });
+      onAll(e, (o) => o.foul++);
+    } else if (k === 'fouled') { add(e.pid, (d) => d.fouled++); onAll(e, (o) => o.ofoul++); }
+    else if (k === 'fspat' || k === 'fspdf') { const i = FSP_KEYS.indexOf(e.fsp); onAll(e, (o) => { if (i >= 0) o[k === 'fspat' ? 'at' : 'df'][i]++; }); }
+  }
+  return out;
+}
+// 数字の入れ物を足し合わせる（試合をまたいだ合計）
+export function addInto(a, b) {
+  for (const k of Object.keys(b)) {
+    if (typeof b[k] === 'number') a[k] = (a[k] || 0) + b[k];
+    else if (Array.isArray(b[k])) { a[k] = a[k] || b[k].map(() => 0); b[k].forEach((v, i) => { a[k][i] += v; }); }
+    else if (b[k] && typeof b[k] === 'object') { a[k] = a[k] || {}; addInto(a[k], b[k]); }
+  }
+  return a;
+}
+
+// ---------- パワープレー（5×4）の時間帯で分ける（2026-10-16 決定） ----------
+// 自チームの5×4＝MATCH PLAY・記録の修正のパワープレー（自チーム）と、GKがピッチにいない区間。相手の5×4＝パワープレー（相手）。
+const mergeIv = (list) => { const a = list.filter((x) => x[1] > x[0]).sort((x, y) => x[0] - y[0]); const out = []; for (const x of a) { const l = out[out.length - 1]; if (l && x[0] <= l[1]) l[1] = Math.max(l[1], x[1]); else out.push([x[0], x[1]]); } return out; };
+export function ppWindows(M) {
+  const isGK = (pid) => M.cfg.members?.[pid]?.pos === 'GK';
+  const own = {}, opp = {};
+  for (const p of M.periods) {
+    if (p.status === 'none') { own[p.key] = []; opp[p.key] = []; continue; }
+    const end = p.elapsed;
+    const pp = (team) => (M.pp || []).filter((x) => x.period === p.key && x.team === team).map((x) => [x.from, Math.min(end, x.to ?? end)]);
+    const ss = M.stints.filter((x) => x.period === p.key);
+    const cuts = [...new Set([0, end, ...ss.flatMap((x) => [x.from, x.to])])].filter((c) => c >= 0 && c <= end).sort((a, b) => a - b);
+    const noGK = [];
+    for (let i = 0; i + 1 < cuts.length; i++) { const a = cuts[i], b = cuts[i + 1]; const on = ss.filter((x) => x.from <= a && x.to >= b); if (on.length && !on.some((x) => isGK(x.pid))) noGK.push([a, b]); }
+    own[p.key] = mergeIv([...pp('own'), ...noGK]); opp[p.key] = mergeIv(pp('opp'));
+  }
+  const hasOpp = (M.pp || []).some((x) => x.team === 'opp');
+  return { own, opp, hasOpp };
+}
+// mode：all / ex（5×4を除く）/ pp（5×4すべて）/ own（自チームの5×4）/ opp（相手の5×4）→ ピリオドごとの数える区間
+export function windowsOf(M, W, mode) {
+  if (mode === 'all') return null;
+  const out = {};
+  for (const p of M.periods) {
+    const both = mergeIv([...(W.own[p.key] || []), ...(W.opp[p.key] || [])]);
+    if (mode === 'own') out[p.key] = W.own[p.key] || [];
+    else if (mode === 'opp') out[p.key] = W.opp[p.key] || [];
+    else if (mode === 'pp') out[p.key] = both;
+    else { const c = []; let t = 0; for (const [a, b] of both) { if (a > t) c.push([t, a]); t = Math.max(t, b); } if (t < p.elapsed) c.push([t, p.elapsed]); out[p.key] = c; }
+  }
+  return out;
+}
+const ov = (a, b, iv) => iv.reduce((s, [x, y]) => s + Math.max(0, Math.min(b, y) - Math.max(a, x)), 0);
+// 出場（帯）を区間で切った試合の形。時間と回数はこの区間の中だけで数える
+export function clipModel(M, wins) {
+  if (!wins) return M;
+  const stints = []; const empties = [];
+  for (const s of M.stints) for (const [x, y] of wins[s.period] || []) { const a = Math.max(s.from, x), b = Math.min(s.to, y); if (b > a) stints.push({ ...s, from: a, to: b }); }
+  for (const s of M.empties) for (const [x, y] of wins[s.period] || []) { const a = Math.max(s.from, x), b = Math.min(s.to, y); if (b > a) empties.push({ ...s, from: a, to: b }); }
+  const periods = M.periods.map((p) => ({ ...p, elapsed: (wins[p.key] || []).reduce((t, [x, y]) => t + y - x, 0) }));
+  return { ...M, stints, empties, periods };
+}
+export const winTest = (wins) => (wins ? (e) => (wins[e.period] || []).some(([x, y]) => e.at >= x && e.at < y) : null);
+// 選手ごとの5×4の出場時間（攻撃＝自チームの5×4、守備＝相手の5×4）
+export function ppTime(M, W, pid) {
+  let own = 0, opp = 0;
+  for (const s of M.stints) if (s.pid === pid) { own += ov(s.from, s.to, W.own[s.period] || []); opp += ov(s.from, s.to, W.opp[s.period] || []); }
+  return { own, opp };
 }

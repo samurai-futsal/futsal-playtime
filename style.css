@@ -764,3 +764,49 @@ svg.pace{width:100%;height:auto;display:block}
 .missd{background:#EEF1F6;color:#6B7486;border-radius:5px;font-size:11px;font-weight:700;padding:0 4px}
 .perh .btn.det{border:1.5px solid #8FB3EC;color:#1F5FBF}.perh .btn.det.on{background:#1F5FBF;color:#fff}
 .evtodo.det{background:#EEF3FB;color:#24406E}
+/* 分析画面：画面いっぱい、表の中だけスクロール。見出しと「チーム合計」は固定 */
+.page:has(.anw){max-width:none;padding:10px 14px 0}
+.anw{display:flex;flex-direction:column;height:calc(100dvh - var(--barh,60px) - 12px)}
+.anhead{flex:0 0 auto}
+.anrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.antt{font-size:20px;color:var(--navy);margin-right:4px}
+.anseg{display:inline-flex;border:1.5px solid #C9D3E3;border-radius:9px;overflow:hidden;background:#fff}
+.anseg button{border:0;background:none;font:inherit;font-size:14px;font-weight:700;padding:6px 12px;color:#3A4558;cursor:pointer}.anseg button+button{border-left:1px solid #DCE3EE}
+.anseg button.on{background:#1F5FBF;color:#fff}
+.ansel{font:inherit;font-size:14px;padding:6px 8px;border-radius:8px;border:1.5px solid #C9D3E3;max-width:260px}
+.antodo{background:#FFF1DD;color:#B5600F;border:1px solid #F0A030;border-radius:6px;font-size:12px;font-weight:800;padding:2px 8px}
+.antabs{display:flex;gap:4px;margin:10px 0 0;border-bottom:2px solid #DCE3EE;flex-wrap:wrap}
+.antabs button{border:0;background:none;font:inherit;font-size:15px;font-weight:800;padding:8px 14px;color:#5F6B80;border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer}
+.antabs button.on{color:#0B2D6B;border-bottom-color:#1F5FBF}.antabs button.later{color:#AAB2C0}
+.anbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding-top:8px}
+.ansubs{display:flex;gap:6px;flex-wrap:wrap;flex:0 0 auto}
+.ansubs button{font:inherit;font-size:13px;font-weight:700;border:1.5px solid #C9D3E3;background:#fff;border-radius:16px;padding:4px 12px;cursor:pointer;color:#3A4558}.ansubs button.on{background:#0B2D6B;border-color:#0B2D6B;color:#fff}
+.anteam{display:flex;gap:6px 18px;flex-wrap:wrap;align-items:baseline;background:#EEF3FB;border-radius:10px;padding:7px 12px;margin:8px 0;flex:0 0 auto}
+.anteam span{display:inline-flex;gap:6px;align-items:baseline}.anteam em{font-style:normal;font-size:12px;color:#5F6B80;font-weight:700}.anteam b{font-size:17px;color:#0B2D6B}.anteam small{font-size:11px;font-weight:500}
+.anteam .mu{font-size:11px;margin-left:auto}
+.antbl{flex:1 1 auto;min-height:120px;overflow:auto;background:#fff;border-radius:10px;border:1px solid #E1E6EF}
+.antb{border-collapse:separate;border-spacing:0;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+.antb th,.antb td{padding:6px 8px;text-align:center;white-space:nowrap;border-bottom:1px solid #EEF1F6}
+.antb thead th{position:sticky;top:0;background:#0B2D6B;color:#fff;font-size:12.5px;line-height:1.2;z-index:2;cursor:pointer}
+.antb thead tr.grp th{top:0;background:#24406E;font-size:11.5px;cursor:default}.antb thead tr.grp th.g{border-left:2px solid #fff;border-right:2px solid #fff}
+.antb thead tr.grp+tr th{top:25px}
+.antb th i{font-style:normal;font-size:9px;margin-left:2px}.antb th.on{background:#1F5FBF}
+.antb td.apl,.antb th.apl{text-align:left;position:sticky;left:0;background:#fff;z-index:1}.antb thead th.apl{background:#0B2D6B;z-index:3}
+.antb tbody tr:nth-child(even) td{background:#F6F8FC}.antb tbody tr:nth-child(even) td.apl{background:#F6F8FC}
+.antb tr.zero td{color:#AAB2C0}.antb td.ref{color:#AAB2C0}.antb td.pmc{color:#24406E}
+.antb small{font-size:11px;color:#5F6B80}
+.antb tfoot td{position:sticky;bottom:0;background:#EEF3FB!important;font-weight:800;border-top:2px solid #0B2D6B;z-index:1}.antb tfoot td.apl{z-index:2}
+.anhint{flex:0 0 auto;font-size:11.5px;color:#6B7486;margin:6px 2px 8px}
+.antime{display:flex;flex-direction:column;min-height:0;flex:1}
+.anchart{flex:0 0 auto;background:#fff;border-radius:10px;border:1px solid #E1E6EF;padding:6px 10px;margin-bottom:8px}
+.anlg{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:#3A4558}.anlg .lg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}.anlg .sp{flex:1}
+.anok{color:#1E7A3C;font-weight:700}.anng{color:#C42A1F;font-weight:700}
+svg.anbar{width:100%;height:auto;max-height:30vh;display:block}
+.pkf{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;margin:8px 0}.pkf label{display:flex;flex-direction:column;font-size:12px;font-weight:700;color:#5F6B80;gap:3px}
+.pkf select,.pkf input{font:inherit;font-size:14px;padding:5px 7px}.pkd{display:flex;gap:6px;align-items:center}
+.pklist{max-height:46vh;overflow:auto;border:1px solid #E1E6EF;border-radius:8px;margin:8px 0}
+.pkrow{display:grid;grid-template-columns:24px 50px 1fr auto auto;gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid #EEF1F6;font-size:14px}
+.pkrow small{color:#6B7486;font-size:12px}.pkrow em{font-style:normal;font-size:11px;color:#5F6B80}
+.antb .no{min-width:26px;height:21px;font-size:12.5px;margin-right:4px}
+.anpp{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#3A4558}.anpp select{font:inherit;font-size:14px;padding:5px 7px;border-radius:8px;border:1.5px solid #C9D3E3}
+.antb .z{color:#C3C9D4}
+.anpp{white-space:nowrap}.anpp select{max-width:200px}
