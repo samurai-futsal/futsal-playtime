@@ -12,6 +12,7 @@ import { timelineHTML } from './review.js';
 import { esc, fmtShort, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 import { printStats } from './stats.js';
+import { downloadDatasheet } from './dsview.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const PCOL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
@@ -110,7 +111,7 @@ export function vAnalysis(r, mFrom = null) {
       ${A.scope === 'match' ? '' : seg('agg', [['sum', '合計'], ['avg', '1試合平均']])}${seg('per', [['all', '全体'], ['1H', '前半'], ['2H', '後半']])}
       <span class="anpp">パワープレー${seg('pp', PPM)}</span>
       ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4（こちらの4×5）の記録なし ${noOpp}試合</span>` : ''}
-      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span><span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" disabled title="⑥の続きで入ります">マッチレポート（PDF）</button><button class="btn sm" disabled title="⑥の続きで入ります">データシート（Excel）</button></span></div>
+      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span><span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" disabled title="⑥の続きで入ります">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span></div>
     <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} " data-tab="${v}">${l}</button>`).join('')}</div></div>`;
 
   let body;
@@ -279,6 +280,7 @@ function bindAnalysis(root) {
   });
   const sel = root.querySelector('#anMatch'); if (sel) sel.onchange = () => { A.matchId = sel.value; keep(); render(); };
   const pk = root.querySelector('#anPick'); if (pk) pk.onclick = pickModal;
+  const ds = root.querySelector('#anExpDs'); if (ds) ds.onclick = () => { const ms = selected(); if (ms.length) downloadDatasheet(ms); };
   const ex = root.querySelector('#anExpStats'); if (ex) ex.onclick = () => { const ms = selected(); if (ms.length) printStats(ms); };
   root.querySelectorAll('[data-tview]').forEach((b) => b.onclick = () => { A.tview = b.dataset.tview; keep(); render(); });
   root.querySelectorAll('[data-bin-set]').forEach((b) => b.onclick = () => { A.bin = +b.dataset.binSet; keep(); render(); });

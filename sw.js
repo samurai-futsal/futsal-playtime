@@ -6,7 +6,7 @@ const CACHE = 'fpt-' + VERSION;
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const SHELL = [
   './', './index.html', './style.css', './app.js', './manifest.webmanifest',
-  './js/store.js', './js/ui.js', './js/views.js', './js/engine.js', './js/matchplay.js', './js/model.js', './js/review.js', './js/keypad.js', './js/fix.js', './js/events.js', './js/evinput.js', './js/viewer.js', './js/teamstats.js', './js/stats.js', './js/review58.js', './js/analysis.js', './js/sportscode.js', './js/scview.js', './js/scimport.js', './js/scimportview.js',
+  './js/store.js', './js/ui.js', './js/views.js', './js/engine.js', './js/matchplay.js', './js/model.js', './js/review.js', './js/keypad.js', './js/fix.js', './js/events.js', './js/evinput.js', './js/viewer.js', './js/teamstats.js', './js/stats.js', './js/review58.js', './js/analysis.js', './js/sportscode.js', './js/scview.js', './js/scimport.js', './js/scimportview.js', './js/xlsx.js', './js/datasheet.js', './js/dsview.js',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
   FB + 'firebase-app.js', FB + 'firebase-auth.js', FB + 'firebase-firestore.js',
 ];
