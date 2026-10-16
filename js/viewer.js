@@ -71,7 +71,9 @@ export function vPhys(m) {
   const pitch = rows.filter((r) => r.on && !isGK(r.pid)).sort((a, b) => b.curRun - a.curRun || noOf(a.pid) - noOf(b.pid));
   const gks = rows.filter((r) => r.on && isGK(r.pid));
   const ejected = rows.filter((r) => st.ejected.has(r.pid)).sort((a, b) => noOf(a.pid) - noOf(b.pid));
+  // GKは並べ方にかかわらず、いつもベンチの一番下（GKどうしは選んだ並べ方で並べる）
   const bench = rows.filter((r) => !r.on && r.played && !st.ejected.has(r.pid)).sort((a, b) => {
+    if (isGK(a.pid) !== isGK(b.pid)) return isGK(a.pid) ? 1 : -1;
     const [k, d] = benchSort.split('-'); const va = k === 'rest' ? a.rest : a.totPlay, vb = k === 'rest' ? b.rest : b.totPlay;
     return (d === 'desc' ? vb - va : va - vb) || noOf(a.pid) - noOf(b.pid);
   });
