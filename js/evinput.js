@@ -86,10 +86,10 @@ export function vSplit(m) {
     <div class="card"><h3>① 入力の担当人数</h3><div class="seg spn">${[1, 2, 3, 4, 5].map((v) => `<button data-sn="${v}" class="${sp.n === v ? 'on' : ''}">${v === 1 ? '1人（全部）' : v + '人'}</button>`).join('')}</div>
 </div>
     ${sp.n > 1 ? `<div class="spgrid"><div><div class="card"><h3>② それぞれが入れるイベント（押した担当に移ります）</h3>
-      <table class="sptb"><tr><th style="text-align:left">イベント</th>${sp.names.map((nm, i) => `<th>担当${i + 1}<small>${esc(roleWho(m, i).join('・')) || '（未定）'}</small><small>${cnt(i)}個</small></th>`).join('')}</tr>
+      <table class="sptb"><tr><th style="text-align:left">イベント</th>${sp.names.map((nm, i) => `<th>担当${i + 1}<small>${esc(nm) || '&nbsp;'}</small><small>${cnt(i)}個</small></th>`).join('')}</tr>
       ${rowsOf(MAIN_OWN, 'own')}<tr class="sep"><td colspan="${sp.n + 1}"></td></tr>${rowsOf(MAIN_OPP, 'opp')}<tr class="sep"><td colspan="${sp.n + 1}"></td></tr>${rowsOf(SUBS, 'sub')}</table></div>
       <div class="card"><h3>③ 担当者を決める</h3><p class="mu">それぞれの担当を誰がするかを入れておくと、各端末で担当を選んだときに、その端末の担当者の名前も自動でその人になります（空けておくと、担当を選んだ端末の担当者の名前が出ます）。</p>
-        <div class="spnames">${sp.names.map((nm, i) => `<label>担当${i + 1}<input id="spName${i}" data-sname="${i}" value="${esc(nm)}" placeholder="例：谷本"></label>`).join('')}</div></div></div>
+        <div class="spnames">${sp.names.map((nm, i) => `<label>担当${i + 1}<input id="spName${i}" data-sname="${i}" value="${esc(nm)}" placeholder="担当者名を入力"></label>`).join('')}</div></div></div>
       <div><div class="card sppre"><h3>よく使う分け方（押すと②が切りかわる）</h3>
         ${PRESETS.map(([id, l]) => `<button data-sp="${id}"><b>${l}</b><small>${Array.from({ length: sp.n }, (_, i) => `担当${i + 1}＝${ALLK.filter((k) => presetAssign(id, sp.n)[k] === i).map(kindLabel).join('・')}`).join('　')}</small></button>`).join('')}
         <button data-sp="prev" ${prev ? '' : 'disabled'}><b>前の試合と同じ</b><small>${prev ? `vs ${esc(prev.opponent)}（${esc(prev.date || '')}）の分担をそのまま使う` : '分担を決めた前の試合がありません'}</small></button></div>

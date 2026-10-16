@@ -690,3 +690,11 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .evrole button.dev{margin-left:auto;border:1px solid #C9D1DE;background:#fff;border-radius:8px;padding:5px 10px;font-size:13px;color:#5F6B80}.evrole button.dev span{color:#1F5FBF;font-weight:700;margin-left:4px}
 .adjpad .btn.s{white-space:normal}.adjpad .btn .kl{display:inline-block;white-space:nowrap}.evw .evkp .adjpad .btn.s{font-size:11px;line-height:1.15;padding:0 2px}
 .evw .evkp .adjpad .btn.s{display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;line-height:1.2;padding:0}.evw .evkp .adjpad .btn.s .kl{display:block}
+/* イベント入力の時刻：上 1〜5・はじめから、下 6〜9・0・1つ消す（はじめから・1つ消すは同じ大きさで1行） */
+.evw .evkp .adjpad{grid-template-columns:repeat(5,46px) 92px!important;gap:6px}
+.evw .evkp .adjpad [data-k="1"]{grid-area:1/1}.evw .evkp .adjpad [data-k="2"]{grid-area:1/2}.evw .evkp .adjpad [data-k="3"]{grid-area:1/3}.evw .evkp .adjpad [data-k="4"]{grid-area:1/4}.evw .evkp .adjpad [data-k="5"]{grid-area:1/5}
+.evw .evkp .adjpad [data-clr]{grid-area:1/6}
+.evw .evkp .adjpad [data-k="6"]{grid-area:2/1}.evw .evkp .adjpad [data-k="7"]{grid-area:2/2}.evw .evkp .adjpad [data-k="8"]{grid-area:2/3}.evw .evkp .adjpad [data-k="9"]{grid-area:2/4}.evw .evkp .adjpad [data-k="0"]{grid-area:2/5}
+.evw .evkp .adjpad [data-bs]{grid-area:2/6}
+.evw .evkp .adjpad .btn.s{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:2px;font-size:13px;white-space:nowrap;padding:0 4px}
+.evw .evkp .adjpad .btn.s .kl{display:inline}
