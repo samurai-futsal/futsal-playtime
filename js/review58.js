@@ -27,7 +27,9 @@ export function stagger(items, w) {
 export function paceSection(c) {
   const { M0, order, mem, last, R, T0, own, opp } = c;
   const axis = M0.periods.filter((p) => !p.extra || p.status !== 'none');
-  const X0 = 112, MID = 100, RW = 86, TW = 780, rowH = 24;
+  // 名前の列は一番長い名前に合わせ、番号と名前を0:00のすぐ横にそろえる。右端は番号と合計を近づける
+  const nameW = Math.max(2, ...order.map((pid) => last(pid).length)) * 13.5;
+  const X0 = 40 + nameW, MID = 46 + nameW, RW = 8, TW = 840, rowH = 24; // 右端の合計は出さない（流れを見る項目なので。2026-10-16）
   const sumLen = axis.reduce((a, p) => a + p.len, 0);
   const HW = Object.fromEntries(axis.map((p) => [p.key, TW * p.len / sumLen]));
   const X = {}; let xx = X0; axis.forEach((p, i) => { if (i) xx += MID; X[p.key] = xx; xx += HW[p.key]; });
@@ -41,7 +43,7 @@ export function paceSection(c) {
   const groups = [['シュート', '（SZ内・得点を含む）', (e) => ['shot', 'szshot'].includes(e.kind) || (e.kind === 'goal' && e.pid !== OPP_OG), (e) => ['oshot', 'oszshot'].includes(e.kind) || e.kind === 'conc'],
     ['Z4・SZ進入', '（合計）', (e) => e.kind === 'z4' || e.kind === 'sz', (e) => e.kind === 'oz4' || e.kind === 'osz'],
     ['FINISH SET PLAY', '（AT／DF）', (e) => e.kind === 'fspat', (e) => e.kind === 'fspdf']];
-  const H = yEnd + 30 + groups.length * 128;
+  const H = yEnd + 30 + groups.length * 138;
   let s = `<svg class="pace" viewBox="0 0 ${PW} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Hiragino Sans, Noto Sans CJK JP, sans-serif">`;
   // 目盛り：ピリオドごとの経過時間（5分ごと）
   for (const p of axis) {
@@ -52,17 +54,15 @@ export function paceSection(c) {
       s += `<text x="${lx}" y="${top - 8}" font-size="10" text-anchor="${mn === 0 ? 'start' : mn * 60000 === p.len ? 'end' : 'middle'}" fill="#56607A">${mn}:00</text>`;
     }
   }
-  s += `<text x="${PW - 4}" y="${top - 8}" font-size="10" text-anchor="end" fill="#56607A">合計</text>`;
   // 得点・失点のラベル（目盛りの上の段）
-  for (const l of lanes) s += `<text x="${l.x}" y="${26 + l.row * 14}" font-size="10.5" font-weight="800" text-anchor="middle" fill="${l.own ? GREEN : RED}">${esc(l.label)}</text>`;
+  for (const l of lanes) s += `<text x="${l.x}" y="${26 + l.row * 14}" font-size="10.5" font-weight="800" text-anchor="${l.x > PW - 60 ? 'end' : l.x < X0 + 40 ? 'start' : 'middle'}" fill="${l.own ? GREEN : RED}">${esc(l.label)}</text>`;
   const who = (pid, x0, y) => `<rect x="${x0}" y="${y + 3}" width="24" height="${rowH - 6}" rx="3" fill="${mem(pid).pos === 'GK' ? '#C8312B' : '#1F5FBF'}"/><text x="${x0 + 12}" y="${y + rowH - 8}" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">${esc(mem(pid).no ?? '')}</text>`;
   order.forEach((pid, i) => {
     const y = top + i * rowH;
     if (i % 2 === 0) s += `<rect x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="#EAF0F9"/>`;
     for (const p of axis) s += `<rect x="${X[p.key]}" y="${y + 2}" width="${HW[p.key]}" height="${rowH - 4}" fill="#F3F5F9" opacity=".9"/>`;
     s += who(pid, 4, y) + `<text x="34" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`;
-    axis.slice(1).forEach((p) => { s += who(pid, X[p.key] - MID + 8, y) + `<text x="${X[p.key] - MID + 38}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`; });
-    s += who(pid, PW - RW + 6, y) + `<text x="${PW - 4}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433" text-anchor="end">${mmss(T0[pid]?.total || 0)}</text>`;
+    axis.slice(1).forEach((p) => { s += who(pid, X[p.key] - MID + 10, y) + `<text x="${X[p.key] - MID + 40}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`; });
     for (const z of (M0.zero || []).filter((q) => q.pid === pid && X[q.period] != null)) s += `<rect x="${x(z.period, z.from) - 1.5}" y="${y + 1}" width="3" height="${rowH - 2}" fill="#E0832B"/>`;
     for (const st of M0.stints.filter((q) => q.pid === pid && X[q.period] != null)) {
       const x1 = x(st.period, st.from), x2 = x(st.period, st.to);
@@ -73,8 +73,9 @@ export function paceSection(c) {
   // 下段：1分ごとの回数（上＝自チーム、下＝相手）
   let gy = yEnd + 30; const unit = 11;
   for (const [lab, sub, fo, fp] of groups) {
-    const mid = gy + 50;
-    s += `<text x="4" y="${mid - 14}" font-size="10.5" font-weight="700" fill="#0B2D6B">${lab}</text><text x="4" y="${mid - 2}" font-size="8.5" fill="#56607A">${sub}</text><text x="4" y="${mid + 12}" font-size="8.5" fill="#1F5FBF">上＝${esc(own)}</text><text x="4" y="${mid + 23}" font-size="8.5" fill="${RED}">下＝${esc(opp)}</text>`;
+    const mid = gy + 60;
+    // 見出しはグラフの上に1行で（左の名前の列は狭いので）
+    s += `<text x="4" y="${gy + 4}" font-size="11.5" font-weight="800" fill="#0B2D6B">${lab}<tspan font-size="9.5" font-weight="500" fill="#56607A">${sub}</tspan><tspan dx="10" font-size="10" fill="#1F5FBF">上＝${esc(own)}</tspan><tspan dx="6" font-size="10" fill="${RED}">下＝${esc(opp)}</tspan></text>`;
     for (const p of axis) {
       const nMin = Math.ceil(p.len / 60000);
       const bo = Array(nMin).fill(0), bp = Array(nMin).fill(0);
@@ -87,10 +88,10 @@ export function paceSection(c) {
         if (bp[i]) s += `<rect x="${bx}" y="${mid}" width="${bw}" height="${bp[i] * unit}" fill="#E04A3A"/><text x="${bx + bw / 2}" y="${mid + bp[i] * unit + 11}" font-size="10" text-anchor="middle" fill="#E04A3A">${bp[i]}</text>`;
       }
     }
-    gy += 128;
+    gy += 138;
   }
   s += '</svg>';
-  return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯（GKは赤。並び＝GK、先発のFP（背番号順）、そのあとは初めてピッチに入った順。ピリオドの間と右端にも背番号と名前、右端の数字＝合計）と得点（緑）・失点（赤）の線。線の上の文字＝経過時間と得点者。オレンジの細い線＝時計が止まっている間だけの出場（0:00）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）。時間はプレーイングタイム（ピリオドごとの経過時間）</span></div><div class="rvbox">${s}</div></section>`;
+  return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯（GKは赤。並び＝GK、先発のFP（背番号順）、そのあとは初めてピッチに入った順。ピリオドの間にも背番号と名前）と得点（緑）・失点（赤）の線。線の上の文字＝経過時間と得点者。オレンジの細い線＝時計が止まっている間だけの出場（0:00）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）。時間はプレーイングタイム（ピリオドごとの経過時間）</span></div><div class="rvbox">${s}</div></section>`;
 }
 
 // ---------- 7. スコアとチームスタッツ ----------

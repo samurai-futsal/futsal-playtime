@@ -749,3 +749,11 @@ svg.pace{width:100%;height:auto;display:block}
 .rvs8 .miss,.rvbox .miss{font-size:10px;color:#8A93A6;font-weight:500}
 .rvw .na{color:#AAB2C0}
 .tlgoal span.r{transform:translateX(-100%)}.tlgoal span.l{transform:none}
+.rvtl .tlend{grid-template-columns:30px 46px;justify-content:end}
+.rvjp.wait{opacity:.55}
+.rvwait .rvbox{padding:0}.rvwbox{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:2px dashed #C3CAD6;border-radius:12px;padding:22px 20px;background:#F7F9FC;color:#5F6B80}
+.rvwbox b{color:#0B2D6B;font-size:16px}.rvwbox span{font-size:13px;flex:1;min-width:240px}
+.pdfch{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}.pdfch button{text-align:left;border:2px solid #1F5FBF;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:14px}
+.pdfch b{font-size:17px;color:#1F5FBF}.pdfch span{font-size:12.5px;color:#3A4558}.pdfch button:disabled{opacity:.45;cursor:default;border-color:#C3CAD6}
+@media print{body.pr14 #rv5,body.pr14 #rv4b,body.pr14 #rv7,body.pr14 #rv8{display:none!important}.rvwait{display:none!important}}
+.rvsec.rvwait{min-height:0;padding-bottom:4px}.rvsec.rvwait+.rvsec.rvwait{border-top-width:2px}.rvwait .rvbox{flex:0 0 auto;min-height:0}

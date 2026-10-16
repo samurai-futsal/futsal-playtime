@@ -5,7 +5,7 @@ import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvent
 import { setEventTable } from './events.js';
 import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
 import { matchModel, toRunning, playerTable, setTable, playedTime, periodSig, entryOrder } from './model.js';
-import { esc, fmtShort, fmtDate } from './ui.js';
+import { esc, fmtShort, fmtDate, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge } from './review58.js';
 
@@ -72,12 +72,12 @@ export function vReview(m) {
   const others = matchesOf(m.activityId).filter((x) => x.status === 'playing' || x.status === 'done' || x.id === m.id);
   const sw = `<select id="rvMatch" class="rvsel">${others.map((x) => `<option value="${x.id}" ${x.id === m.id ? 'selected' : ''}>vs ${esc(x.opponent)}（${fmtShort(x.date)}）</option>`).join('')}</select>`;
   // 項目の番号は固定（1〜8）。出ていない項目は番号が飛ぶので、上部にその理由を書く
-  const jumps = [[1, '出場時間', 'rv1'], [2, '1回ごと', 'rv1b'], [3, 'タイムライン', 'rv2'], [4, 'セット', 'rv3'], ...(evs.length ? [[5, 'ペース', 'rv5'], [6, 'セット別', 'rv4b'], [7, 'スコア', 'rv7'], [8, 'スタッツ', 'rv8']] : [])].map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
+  const jumps = [[1, '出場時間', 'rv1'], [2, '1回ごと', 'rv1b'], [3, 'タイムライン', 'rv2'], [4, 'セット', 'rv3'], [5, 'ペース', 'rv5'], [6, 'セット別', 'rv4b'], [7, 'スコア', 'rv7'], [8, 'スタッツ', 'rv8']].map(([n, t, id]) => `<a class="rvjp ${n >= 5 && !evs.length ? 'wait' : ''}" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
         <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで書き出す</button></div>
-      <div class="rvjumps">${jumps}${evs.length ? '' : '<span class="rvnote">番号が飛んでいる項目：5 マッチ・ペース・6 セットごとのシュート・ゾーン進入・FINISH SET PLAY・7 スコアとチームスタッツ・8 スタッツまとめ（イベントを入力すると表示）</span>'}
+      <div class="rvjumps">${jumps}${evs.length ? '' : '<span class="rvnote">5〜8 はイベントを入力すると表示されます</span>'}
         ${M.fixed.length ? `<span class="rvfix">記録の修正を反映：${M.fixed.map((k) => periodLabel(k)).join('・')}</span>` : ''}
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
 
@@ -191,7 +191,9 @@ export function vReview(m) {
   const futureOf = (p) => (p.status === 'none' ? '<i class="tlfut" style="left:0%;width:100%"></i>'
     : (M.live && p.key === M.current ? `<i class="tlfut" style="left:${pp(p, p.elapsed)}%;width:${pp(p, p.len - p.elapsed)}%"></i>` : ''));
   const tlCols = (nm, mid, end) => `${nm}px ${axis.map((p, i) => (i ? `${mid}px ` : '') + `minmax(0,${p.len}fr)`).join(' ')} ${end}px`;
-  const tlStyle = `style="--tlc:${tlCols(140, 104, 96)};--tlcc:${tlCols(84, 30, 66)}"`;
+  // 名前の列は一番長い名前に合わせる（番号と名前を0:00のすぐ横にそろえる）。合計の列も番号と時間を近づける
+  const nameW = Math.max(2, ...order.map((pid) => last(pid).length)) * 15;
+  const tlStyle = `style="--tlc:${tlCols(40 + nameW, 51 + nameW, 82)};--tlcc:${tlCols(84, 30, 66)}"`;
   const who = (pid, cls) => `<span class="${cls}">${badge(pid)}<span class="tln">${esc(last(pid))}</span></span>`;
   const tlRows = gkLast(order).map((pid) => {
     const tracks = axis.map((p, i) => {
@@ -239,7 +241,7 @@ export function vReview(m) {
     <div class="rvbox"><table class="rvtb rvset2"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l}</th>`).join('')}</tr>${body}</table></div></section>`;
   }
 
-  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${evs.length ? paceSection(C) : ''}${s4b}${evs.length ? teamSection(C) + playerSection(C) : ''}</div></div>`, bind: bindReview(m) };
+  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${evs.length ? paceSection(C) + s4b + teamSection(C) + playerSection(C) : waitSections(m)}</div></div>`, bind: bindReview(m) };
 }
 
 function bindReview(m) {
@@ -256,7 +258,7 @@ function bindReview(m) {
       render();
     });
     root.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => { runPref = b.dataset.mode === 'run'; try { localStorage.setItem(modeKey, b.dataset.mode); } catch {} render(); });
-    const pdf = root.querySelector('#rvPdf'); if (pdf) pdf.onclick = () => window.print(); // 印刷の画面で「PDFとして保存」（iPadは共有→「ファイルに保存」）
+    const pdf = root.querySelector('#rvPdf'); if (pdf) pdf.onclick = () => pdfChoice(m); // 印刷の画面で「PDFとして保存」（iPadは共有→「ファイルに保存」）
     const c = root.querySelector('#rvCompact'); if (c) c.onclick = () => { try { localStorage.setItem(compactKey, isCompact() ? '0' : '1'); } catch {} render(); };
     root.addEventListener('click', (e) => {
       const j = e.target.closest('[data-jump]'); if (!j) return;
@@ -264,4 +266,27 @@ function bindReview(m) {
       if (el) scrollTo({ top: el.getBoundingClientRect().top + scrollY - (root.querySelector('.rvhead')?.offsetHeight || 0) - (document.querySelector('.bar')?.offsetHeight || 0) - 8, behavior: 'smooth' });
     });
   };
+}
+
+// 5〜8：イベントがまだないときも項目の枠は出して、何が入るかと「イベントを入力すると表示」を書く
+function waitSections(m) {
+  const box = (n, id, t, what) => `<section class="rvsec rvwait" id="${id}"><div class="rvtt"><b>${n}. ${t}</b></div>
+    <div class="rvbox"><div class="rvwbox"><b>イベントを入力すると、ここに表示されます</b><span>${what}</span><a class="btn sm" href="#/m/${m.id}/events">イベント入力 ›</a></div></div></section>`;
+  return box(5, 'rv5', 'マッチ・ペース', '出場の帯と得点・失点の線、1分ごとのシュート・ゾーン進入・FINISH SET PLAY')
+    + box(6, 'rv4b', 'セットごとのシュート・ゾーン進入・FINISH SET PLAY', 'FP4人のセットがピッチにいる間のシュート・被シュート・進入などの回数')
+    + box(7, 'rv7', 'スコアとチームスタッツ', '得点経過と、シュート・枠内・進入・FINISH SET PLAY・ファール・カード・タイムアウトの比較')
+    + box(8, 'rv8', 'スタッツまとめ', '選手ごとのシュート・得点・アシスト・進入関与・リカバリー・ロスト・ファール・得失点±');
+}
+// PDFの書き出し：出場時間（1〜4）だけ／すべて（1〜8）
+function pdfChoice(m) {
+  const has = watchEvents(m.id).list.some((e) => !e.deleted);
+  const md = openModal(`<h2>マッチレビューをPDFで書き出す</h2><p class="mu">書き出す項目を選んでください。印刷の画面で「PDFとして保存」を選びます（iPadは共有 → 「ファイルに保存」）。</p>
+    <div class="pdfch"><button class="card" data-pdf="14"><b>出場時間だけ（1〜4）</b><span>出場時間・1回ごと・タイムライン・セット</span></button>
+    <button class="card" data-pdf="all" ${has ? '' : 'disabled'}><b>すべて（1〜8）</b><span>${has ? '1〜4に、ペース・セット別・スコア・スタッツを加える' : 'イベントを入力すると選べます'}</span></button></div>
+    <div class="row end"><button class="btn" id="pdfX">やめる</button></div>`);
+  md.querySelector('#pdfX').onclick = closeModal;
+  md.querySelectorAll('[data-pdf]').forEach((b) => b.onclick = () => {
+    closeModal(); document.body.classList.toggle('pr14', b.dataset.pdf === '14');
+    setTimeout(() => { window.print(); document.body.classList.remove('pr14'); }, 50);
+  });
 }
