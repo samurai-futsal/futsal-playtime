@@ -825,3 +825,5 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .antl{padding:8px 10px}.antl .rvtl .tlr{cursor:pointer}
 .antl .tlr:not(.tlhead):nth-child(even){background:#EAF0F9;border-radius:6px}.antl .tlr.hl{background:#FFE9A8!important}
 .rvset tr.ex td{font-size:14px;color:#5F6B80;font-weight:500}
+.rvs8 th.w{background:#1F5FBF}.rvs8 th.o{background:#C8312B}.rvs8 td.w{background:#F2F6FD;color:#1F5FBF;font-weight:700}.rvs8 td.o{background:#FDF3F2;color:#C8312B;font-weight:700}
+@media print{.rvs8{font-size:12px}.rvs8 th,.rvs8 td{padding:4px 5px!important}.rvs8 th{font-size:11px}}

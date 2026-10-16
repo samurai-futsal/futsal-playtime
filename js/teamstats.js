@@ -96,6 +96,9 @@ export function playerStats(Mp, events, goalName, pids, T, keys = null) {
   const onAt = new Map(goalsAll.map((g) => [g.id, new Set(pitchAt(Mp, g.period, g.at, g.side || 'before'))]));
   const assistMiss = ev.filter((e) => e.kind === 'goal' && e.pid !== OPP_OG && (e.assist == null || e.assist === '')).length;
   const ent = ev.filter((e) => e.kind === 'z4' || e.kind === 'sz');
+  // シュート関与・被シュート関与：その選手がピッチにいる間に起きた自チームのシュート・相手のシュートの数（2026-10-17 決定）
+  const onOf = (e) => new Set(pitchAt(Mp, e.period, e.at, e.side || 'before'));
+  const ownOn = sh.map((s) => onOf(s.e)), oppOn = shotsOf(ev, goalName, false).map((s) => onOf(s.e));
   const rows = pids.map((pid) => {
     const t = keys ? (keys.reduce((a, k) => a + (T[pid]?.per?.[k]?.time || 0), 0)) : (T[pid]?.total || 0);
     const my = sh.filter((s) => s.pid === pid);
@@ -109,6 +112,7 @@ export function playerStats(Mp, events, goalName, pids, T, keys = null) {
       passTo: ent.filter((e) => e.method === 'pass' && e.pid2 === pid).length,
       rec: ev.filter((e) => e.kind === 'rec' && e.pid === pid).length, lost: ev.filter((e) => e.kind === 'lost' && e.pid === pid).length,
       foul: ev.filter((e) => e.kind === 'foul' && e.pid === pid).length, pm,
+      shotOn: ownOn.filter((x) => x.has(pid)).length, oshotOn: oppOn.filter((x) => x.has(pid)).length,
     };
   });
   return { rows, assistMiss, unknownShooter: sh.filter((s) => !s.pid || s.pid === UNKNOWN).length, noAssist: NO_ASSIST };

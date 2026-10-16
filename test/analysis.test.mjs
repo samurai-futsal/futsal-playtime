@@ -1,6 +1,6 @@
 // 分析画面の計算（spec 9章）：選手ごとの直接関与・間接関与、パワープレー（5×4）の時間帯で分ける集計。
 // Run: node test/analysis.test.mjs
-import { playerDetail, ppWindows, windowsOf, clipModel, winTest, ppTime, teamStats, addInto, blankDetail } from '../js/teamstats.js';
+import { playerStats, playerDetail, ppWindows, windowsOf, clipModel, winTest, ppTime, teamStats, addInto, blankDetail } from '../js/teamstats.js';
 import { playerTable } from '../js/model.js';
 
 let pass = 0, fail = 0;
@@ -44,6 +44,7 @@ const R = teamStats(M, ev, gn, null, win);
 eq([R.rangeScore.own, R.rangeScore.opp, R.A.shots, R.B.shots], [1, 0, 2, 1], 'team stats without 5x4');
 eq([ppTime(M, W, 'f'), ppTime(M, W, 'b')], [{ own: 60000, opp: 0 }, { own: 60000, opp: 100000 }], '5x4 time per player');
 eq(addInto(blankDetail(), D.a).on.shot, 2, 'addInto');
+{ const PS = playerStats(M, ev, gn, ['a', 'e', 'g1'], T).rows; eq(PS.map((r) => [r.pid, r.shotOn, r.oshotOn]), [['a', 2, 0], ['e', 0, 2], ['g1', 2, 2]], 'review 8: shots / opp shots while on pitch'); }
 // 区間の境目とピリオドの終わりの瞬間：どの時間帯にもちょうど1回だけ入る（5×4/4×5を除く＋5×4＋4×5＝合計）
 {
   const ev2 = [200000, 260000, 600000, 700000, 1200000, 0].map((at, i) => ({ id: 'b' + i, kind: 'oshot', period: '1H', at }));
