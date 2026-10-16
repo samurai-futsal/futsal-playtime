@@ -21,9 +21,11 @@ export function printStats(ms) {
   printPages(pages.map((x) => `<div class="stw"><div class="stpage">${x.sheet}${x.foot}</div></div>`).join(''), 'prstats');
 }
 // 画面の内容とは別に、印刷用のページだけを出す
-export function printPages(html, cls) {
+// prep(d)：印刷の前に、ページの大きさを測って整えるとき（マッチレポート）
+export function printPages(html, cls, prep = null) {
   document.querySelector('#prArea')?.remove();
   const d = document.createElement('div'); d.id = 'prArea'; d.className = cls; d.innerHTML = html; document.body.appendChild(d);
+  if (prep) { d.classList.add('measure'); prep(d); d.classList.remove('measure'); }
   document.body.classList.add('printing');
   const done = () => { document.body.classList.remove('printing'); d.remove(); removeEventListener('afterprint', done); };
   addEventListener('afterprint', done);

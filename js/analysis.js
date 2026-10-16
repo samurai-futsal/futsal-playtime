@@ -2,17 +2,18 @@
 // マッチレビューと同じ記録から同じ計算で作るので、数字は必ず一致する。
 // 画面全体はスクロールせず、選手の表の中だけをスクロールする（条件を切り替えて見比べる画面のため）。
 import { S, watchOps, watchEvents, opts, teamSettings, playerById, activityById, matchStatus } from './store.js';
-import { replay, periodLabel } from './engine.js';
+import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
 import { matchModel, playerTable, periodSig, setTable, entryOrder } from './model.js';
 import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppWindows, windowsOf, clipModel, winTest, ppTime } from './teamstats.js';
 import { missing, pitchAt, isFsp, OPP_OG, isOG } from './events.js';
 import { shotsOf, CLS_KEYS } from './teamstats.js';
-import { paceSection, goalMarks, PACE_ROWS } from './review58.js';
+import { paceSection, goalMarks, PACE_ROWS, teamSection } from './review58.js';
 import { timelineHTML } from './review.js';
 import { esc, fmtShort, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 import { printStats } from './stats.js';
 import { downloadDatasheet } from './dsview.js';
+import { printReport } from './report.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const PCOL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
@@ -68,14 +69,11 @@ function oneMatch(m, per) {
   const len = Mw.periods.filter((p) => p.status !== 'none' && (!keys || keys.includes(p.key))).reduce((a, p) => a + p.elapsed, 0);
   const empty = Mw.empties.filter((e) => !keys || keys.includes(e.period)).reduce((a, e) => a + e.to - e.from, 0);
   const todo = evs.filter((e) => missing(e, gn) > 0 || e.check).length;
-  return { m, M, Mw, T, R, D, keys, len, empty, hasEv: evs.length > 0, todo, ready: evC.ready, hasOpp: W.hasOpp, evs, gn, W, win, wins };
+  return { m, st, M, Mw, T, R, D, keys, len, empty, hasEv: evs.length > 0, todo, ready: evC.ready, hasOpp: W.hasOpp, evs, gn, W, win, wins };
 }
 
-export function vAnalysis(r, mFrom = null) {
-  // 試合ページから開いたときは「この試合」で始める（開いたあとは自由に切り替えられる）
-  if (mFrom && fromHash !== location.hash) { A.scope = 'match'; A.matchId = mFrom.id; keep(); }
-  fromHash = mFrom ? location.hash : null;
-  const ms = selected();
+// 選んだ試合の計算と、選手ごと・チームの合計（画面とマッチレポートで使う）
+export function buildCtx(ms) {
   const per = A.per;
   const res = ms.map((m) => oneMatch(m, per));
   const loading = res.some((x) => !x);
@@ -99,6 +97,16 @@ export function vAnalysis(r, mFrom = null) {
   const hasEv = ok.some((x) => x.hasEv);
   const pids = Object.keys(P).sort((a, b) => (pos[a] === 'GK') - (pos[b] === 'GK') || (parseInt(no[a], 10) || 999) - (parseInt(no[b], 10) || 999));
   const ctx = { ok, P, team, no, pos, pids, hasEv, ms };
+  return { ctx, loading };
+}
+
+export function vAnalysis(r, mFrom = null) {
+  // 試合ページから開いたときは「この試合」で始める（開いたあとは自由に切り替えられる）
+  if (mFrom && fromHash !== location.hash) { A.scope = 'match'; A.matchId = mFrom.id; keep(); }
+  fromHash = mFrom ? location.hash : null;
+  const ms = selected();
+  const { ctx, loading } = buildCtx(ms);
+  const { ok } = ctx;
 
   // ---------- 上：対象・切り替え ----------
   const cand = candidates();
@@ -111,7 +119,7 @@ export function vAnalysis(r, mFrom = null) {
       ${A.scope === 'match' ? '' : seg('agg', [['sum', '合計'], ['avg', '1試合平均']])}${seg('per', [['all', '全体'], ['1H', '前半'], ['2H', '後半']])}
       <span class="anpp">パワープレー${seg('pp', PPM)}</span>
       ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4（こちらの4×5）の記録なし ${noOpp}試合</span>` : ''}
-      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span><span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" disabled title="⑥の続きで入ります">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span></div>
+      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span><span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span></div>
     <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} " data-tab="${v}">${l}</button>`).join('')}</div></div>`;
 
   let body;
@@ -153,7 +161,7 @@ function table(ctx, cols, { note = '' } = {}) {
   }).join('');
   const tot = `<tr class="tot"><td class="apl">チーム合計</td>${cols.map((c) => `<td class="${c.cls || ''}">${c.tot ? c.tot(ctx.team) : ''}</td>`).join('')}</tr>`;
   return `<div class="antbl"><table class="antb"><thead>${hasGrp ? `<tr class="grp"><th></th>${groups.map((g) => `<th colspan="${g.n}" class="${g.g ? 'g' : ''}">${g.g}</th>`).join('')}</tr>` : ''}<tr><th class="srt apl ${A.sort.col ? '' : 'on'}" data-sort="">選手</th>${th}</tr></thead><tbody>${rows}</tbody><tfoot>${tot}</tfoot></table></div>
-    <p class="anhint">${note}${note ? '　' : ''}薄い数字＝出場時間が${mmss(ref())}未満で、1分あたりは参考値。見出しを押すと並べ替え（多い順 → 少ない順）、GKはいつも一番下。</p>`;
+    <p class="anhint">${note}${note ? '　' : ''}薄い数字＝出場時間が${mmss(ref())}未満で、1分あたりは参考値。${A.print ? 'GKは一番下。' : '見出しを押すと並べ替え（多い順 → 少ない順）、GKはいつも一番下。'}</p>`;
 }
 
 // ---------- 出場時間 ----------
@@ -194,8 +202,8 @@ function timeTab(ctx) {
   const expect = team.len * 5 - team.empty;
   const chk = `<span class="${Math.abs(sum - expect) < 1000 * ok.length * 5 ? 'anok' : 'anng'}">全員の合計 ${mmss(sum)} ＝ 試合時間 ${mmss(team.len)} × 5人${team.empty ? ` − 退場による空席 ${mmss(team.empty)}` : ''}${Math.abs(sum - expect) < 1000 * ok.length * 5 ? ' ✓' : `（${mmss(expect)} と合いません）`}</span>`;
   const tv = `<div class="ansubs"><button class="${A.tview !== 'tl' ? 'on' : ''}" data-tview="list">一覧</button><button class="${A.tview === 'tl' ? 'on' : ''}" data-tview="tl">タイムライン</button></div>`;
-  if (A.tview === 'tl') return tv + tlView(ctx);
-  return `${tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ' : 'ピリオドを積み上げ'}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間（${mmss(team.len)}）に対して。「タイムライン」は1試合を選んだときに見られます` })}</div>`;
+  if (A.tview === 'tl' && !A.print) return tv + tlView(ctx);
+  return `${A.print ? '' : tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ' : 'ピリオドを積み上げ'}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間（${mmss(team.len)}）に対して${A.print ? '' : '。「タイムライン」は1試合を選んだときに見られます'}` })}</div>`;
 }
 
 // ---------- スタッツ ----------
@@ -264,7 +272,7 @@ function statsTab(ctx) {
       note = 'FINISH SET PLAY はその瞬間（交代と同じ秒なら交代後）にピッチにいた選手に数える。'; break; }
     default: cols = base;
   }
-  return `${subs}${bar}${table(ctx, cols, { note })}`;
+  return `${A.print ? '' : subs}${bar}${table(ctx, cols, { note })}`;
 }
 
 // ---------- 操作 ----------
@@ -281,6 +289,7 @@ function bindAnalysis(root) {
   const sel = root.querySelector('#anMatch'); if (sel) sel.onchange = () => { A.matchId = sel.value; keep(); render(); };
   const pk = root.querySelector('#anPick'); if (pk) pk.onclick = pickModal;
   const ds = root.querySelector('#anExpDs'); if (ds) ds.onclick = () => { const ms = selected(); if (ms.length) downloadDatasheet(ms); };
+  const rp = root.querySelector('#anExpRep'); if (rp) rp.onclick = () => { const ms = selected(); if (ms.length) printReport(ms, A.scope === 'match' ? 'sum' : A.agg); };
   const ex = root.querySelector('#anExpStats'); if (ex) ex.onclick = () => { const ms = selected(); if (ms.length) printStats(ms); };
   root.querySelectorAll('[data-tview]').forEach((b) => b.onclick = () => { A.tview = b.dataset.tview; keep(); render(); });
   root.querySelectorAll('[data-bin-set]').forEach((b) => b.onclick = () => { A.bin = +b.dataset.binSet; keep(); render(); });
@@ -459,4 +468,87 @@ function paceTab(ctx) {
   if (!x.hasEv) return `${ctl}<div class="antbl anscroll">${paceSection(c, { bin: A.bin, rows: [], svgOnly: true, tap: true })}</div><p class="anhint">イベントが入力されていないので、下段のグラフはありません</p>`;
   return `${ctl}<div class="antbl anscroll">${paceSection(c, { bin: A.bin, rows: A.rows, svgOnly: true, tap: true })}</div>
     <p class="anhint">棒の区切りを押すと、その時間帯にピッチにいた選手を黄色にします。選手の名前を押すと、その選手が出ていた区切りを黄色にします。時間はプレーイングタイム（ピリオドごとの経過時間）。パワープレーと前半／後半の切り替えに関係なく、試合全体を出します</p>`;
+}
+
+// ---------- マッチレポート（PDF、⑥-4）：分析画面と同じ計算・同じ表を、A4横のページに並べる ----------
+// ms：試合の配列。agg：複数試合の合計ページを「合計」「1試合平均」のどちらで出すか。
+// 返り値：ページの配列 [{ title, who, html }]（読み込み中なら null）
+export function reportPages(ms, agg = 'sum') {
+  const save = { ...A, sort: { ...A.sort }, rows: [...A.rows] };
+  try {
+    Object.assign(A, { per: 'all', pp: 'all', agg, sort: { col: '', dir: 'desc' }, tview: 'list', print: true, scope: ms.length > 1 ? 'all' : 'match' });
+    const all = buildCtx(ms); if (all.loading) return null;
+    const pages = [];
+    const multi = ms.length > 1;
+    const vs = (m) => `${fmtShort(m.date)} vs ${esc(m.opponent || '')}`;
+    if (multi) {
+      const who = `${ms.length}試合の${agg === 'avg' ? '1試合平均' : '合計'}`;
+      pages.push({ title: '試合ごとの結果と合計・1試合平均', who: `${ms.length}試合`, html: summaryPage(all.ctx) });
+      pushCommon(pages, all.ctx, who);
+    }
+    for (const m of ms) {
+      A.scope = 'match'; A.agg = 'sum';
+      const one = buildCtx([m]); const x = one.ctx.ok[0]; const c = oneCtx(x);
+      const who = vs(m) + `<small>${esc(asOfX(x))}</small>`;
+      pages.push({ title: '試合情報・スコア・チームスタッツ', who, html: `<div class="rpinfo">${infoLine(x)}</div><div class="rp1">${teamSection(c, { plain: true })}</div>` });
+      pages.push({ title: '出場時間と出場回数', who, html: timeTab(one.ctx) });
+      pages.push({ title: '出場タイムライン', who, html: tlView(one.ctx) });
+      pages.push({ title: 'マッチ・ペース', who, html: `<div class="antbl anscroll">${paceSection(c, { bin: 60000, rows: x.hasEv ? ['shot', 'ent', 'fsp', 'rl'] : [], svgOnly: true })}</div><p class="anhint">1分ごと。時間はプレーイングタイム（ピリオドごとの経過時間）。緑の線＝得点、赤の線＝失点</p>` });
+      pushCommon(pages, one.ctx, vs(m));
+    }
+    return pages;
+  } finally { Object.assign(A, save); delete A.print; }
+}
+// 合計のページにも、試合ごとのページにも入るもの
+function pushCommon(pages, ctx, who) {
+  const add = (title, html) => pages.push({ title, who, html });
+  if (ctx.ok.length > 1) add('出場時間と出場回数', timeTab(ctx));
+  if (!ctx.hasEv) { add('スタッツ', '<div class="card empty">イベントが入力されていないので、スタッツ・セット・パワープレー・種類別などのページはありません。</div>'); return; }
+  const sub = (k) => { A.sub = k; return statsTab(ctx); };
+  add('スタッツ（まとめ）', sub('sum'));
+  add('セットの集計', setTab(ctx));
+  add('パワープレー', ppTab(ctx));
+  add('種類別（得点・失点の種類、分類ごとのシュート）', typeTab(ctx));
+  add('進入（Z4・SZ進入の方法、パスの出し手・受け手）', sub('ent'));
+  add('リカバリーとロスト（ゾーン別）', sub('rl'));
+  add('FINISH SET PLAY の内訳', sub('fsp'));
+  add('ファールとカード', sub('foul'));
+}
+const mmssUp = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+function asOfX(x) {
+  const st = x.st; const cfg = { times: x.m.times || {} };
+  const pDone = (k) => st.periods[k]?.status === 'done';
+  return st.matchOver ? '試合終了時点' : x.M.live ? `${periodLabel(st.current)} 残り ${mmssUp(periodLen(cfg, st.current) - nowElapsed(st))} 時点`
+    : (pDone('1H') && !pDone('2H')) ? '前半終了時点' : pDone('2H') ? '後半終了時点' : '';
+}
+function infoLine(x) {
+  const m = x.m; const act = activityById(m.activityId);
+  return [fmtShort(m.date) + (m.kickoff ? ` ${esc(m.kickoff)}キックオフ` : ''), esc(act?.name || ''), esc(m.category || ''), esc(m.venue || '')].filter(Boolean).map((t) => `<span>${t}</span>`).join('');
+}
+// 複数試合：試合ごとの結果一覧と、チームの合計・1試合平均
+function summaryPage(ctx) {
+  const { ok } = ctx; const n = ok.length;
+  const own = esc(S.team?.name || '自チーム');
+  const rows = ok.map((x) => {
+    const R = x.R, a = R.A, b = R.B; const sc = R.rangeScore;
+    const per = x.M.periods.filter((p) => p.status !== 'none').map((p) => `${R.score.own[p.key]}−${R.score.opp[p.key]}`).join(' / ');
+    const res = sc.own > sc.opp ? '<b class="w">勝</b>' : sc.own < sc.opp ? '<b class="o">負</b>' : '<b>分</b>';
+    return `<tr><td class="apl">${fmtShort(x.m.date)}</td><td class="apl">vs ${esc(x.m.opponent || '')}</td><td class="apl"><small>${esc(activityById(x.m.activityId)?.name || '')}</small></td><td>${res}</td><td><b>${sc.own}−${sc.opp}</b><small>（${per}）</small></td>
+      <td class="w">${a.shots}<small>（${a.sz}）</small></td><td class="o">${b.shots}<small>（${b.sz}）</small></td><td class="w">${a.z4 + a.szE}</td><td class="o">${b.z4 + b.szE}</td><td class="w">${a.fsp}</td><td class="o">${b.fsp}</td><td>${R.rec}</td><td>${R.lost}</td><td class="w">${a.foul}</td><td class="o">${b.foul}</td>${x.todo ? '<td class="o"><small>未入力あり</small></td>' : '<td></td>'}</tr>`;
+  }).join('');
+  const T = ctx.team, a = T.A || {}, b = T.B || {};
+  const w = ok.filter((x) => x.R.rangeScore.own > x.R.rangeScore.opp).length, l = ok.filter((x) => x.R.rangeScore.own < x.R.rangeScore.opp).length;
+  const av = (v) => (n ? (v / n).toFixed(1) : '—');
+  const tot = (f, avg) => (avg ? av : String)(f);
+  const line = (label, avg) => `<tr class="tot"><td class="apl" colspan="3">${label}</td><td>${avg ? '' : `${w}勝${l}敗${n - w - l}分`}</td><td><b>${tot(T.score.own, avg)}−${tot(T.score.opp, avg)}</b></td>
+    <td class="w">${tot(a.shots, avg)}<small>（${tot(a.sz, avg)}）</small></td><td class="o">${tot(b.shots, avg)}<small>（${tot(b.sz, avg)}）</small></td><td class="w">${tot(a.z4 + a.szE, avg)}</td><td class="o">${tot(b.z4 + b.szE, avg)}</td><td class="w">${tot(a.fsp, avg)}</td><td class="o">${tot(b.fsp, avg)}</td><td>${tot(T.rec, avg)}</td><td>${tot(T.lost, avg)}</td><td class="w">${tot(a.foul, avg)}</td><td class="o">${tot(b.foul, avg)}</td><td></td></tr>`;
+  const list = `<table class="antb rpsum"><thead><tr><th class="apl">日付</th><th class="apl">相手</th><th class="apl">活動</th><th>結果</th><th>スコア<small>（ピリオドごと）</small></th><th class="w">シュート<small>（SZ内）</small></th><th class="o">被シュート<small>（SZ内）</small></th><th class="w">Z4・SZ<br>進入</th><th class="o">被Z4・SZ<br>進入</th><th class="w">FSP<br>AT</th><th class="o">FSP<br>DF</th><th>リカバ<br>リー</th><th>ロスト</th><th class="w">ファール</th><th class="o">被ファール</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot>${line('合計', false)}${line('1試合平均', true)}</tfoot></table>`;
+  // チームの比較（合計と1試合平均）。SZ内シュート・FINISH SET PLAY・カードの内訳は数字の下に
+  const fspSub = (s) => `CK ${s.fspT[0]}・CK-KI ${s.fspT[1]}・KI ${s.fspT[2]}・FK ${s.fspT[3]}`;
+  const cardSub = (s) => `イエロー${s.cards.yellow}・2枚目${s.cards.y2}・レッド${s.cards.red}`;
+  const cmp = (label, x, y, sub) => `<tr><td class="cl">${label}</td><td class="cv w">${x}${sub ? `<small>${sub[0]}</small>` : ''}</td><td class="cv w">${av(x)}</td><td class="cv o">${y}${sub ? `<small>${sub[1]}</small>` : ''}</td><td class="cv o">${av(y)}</td></tr>`;
+  const cm = `<table class="rpcmp"><thead><tr><th></th><th class="w">${own}<br><small>合計</small></th><th class="w"><small>1試合平均</small></th><th class="o">相手<br><small>合計</small></th><th class="o"><small>1試合平均</small></th></tr></thead><tbody>
+    ${cmp('得点', T.score.own, T.score.opp)}${cmp('シュート', a.shots, b.shots, [`SZ内 ${a.sz}`, `SZ内 ${b.sz}`])}${cmp('枠内', a.in, b.in)}${cmp('Z4進入', a.z4, b.z4)}${cmp('SZ進入', a.szE, b.szE)}${cmp('FINISH SET PLAY', a.fsp, b.fsp, [fspSub(a), fspSub(b)])}${cmp('ファール', a.foul, b.foul)}${cmp('カード', a.cards.yellow + a.cards.y2 + a.cards.red, b.cards.yellow + b.cards.y2 + b.cards.red, [cardSub(a), cardSub(b)])}${cmp('タイムアウト', T.timeouts.own, T.timeouts.opp)}
+    <tr><td class="cl">リカバリー／ロスト</td><td class="cv" colspan="2">${T.rec} / ${T.lost}<small>1試合平均 ${av(T.rec)} / ${av(T.lost)}</small></td><td colspan="2"></td></tr></tbody></table>`;
+  return `<h3 class="anh3">試合ごとの結果</h3>${list}<h3 class="anh3">チームの合計と1試合平均</h3>${cm}<p class="anhint">シュートは得点を含む（OGは除く）。相手のファール・カード＝自チームの被ファールで記録したもの。このあとに${n}試合の合計のページ、そのあとに試合ごとのページが続きます</p>`;
 }

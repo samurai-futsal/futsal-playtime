@@ -848,3 +848,30 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .siwarn{background:#FFF6E8;border:1px solid #F0A030;border-radius:8px;padding:8px 12px;margin:10px 0;color:#7A4A0A;font-size:13px;display:grid;gap:4px}
 .sirow select{width:auto;min-width:120px}.sirow>b{align-self:center}
 .dsl{margin:12px 0 4px;padding-left:20px;font-size:14px;line-height:1.7;color:#3A4558}
+/* マッチレポート（PDF、A4横）：分析画面の表をそのまま使い、1ページずつに分ける。
+   1ページは幅1400pxで組み、書き出す前に高さを測って、A4横に収まるように縮める（report.js） */
+#prArea.measure{display:block!important;position:absolute;left:-30000px;top:0}
+@media print{.prrep .rpw{break-after:page}.prrep .rpw:last-child{break-after:auto}}
+.prrep{background:#fff}
+.prrep .rpw{width:1062px;height:728px;overflow:hidden;break-inside:avoid;position:relative;color:#18233A}
+.prrep .rpin{width:1400px;transform-origin:0 0}
+.prrep .rphd{display:flex;align-items:baseline;gap:14px;border-bottom:3px solid #0B2D6B;padding-bottom:4px;margin-bottom:8px}
+.prrep .rpt{font-size:15px;color:#6B4FA0;font-weight:900}.prrep .rpwho{font-size:20px;font-weight:900;color:#0B2D6B}.prrep .rpwho small{font-size:13px;color:#56607A;margin-left:10px;font-weight:700}
+.prrep .rpttl{font-size:20px;font-weight:800;color:#18233A;flex:1}.prrep .rpno{font-size:12px;color:#6B7486}
+.prrep .rpft{font-size:11px;color:#6B7486;margin-top:6px;border-top:1px solid #E1E6EF;padding-top:3px}
+.prrep .antbl{overflow:visible;border:none;min-height:0;border-radius:0}.prrep .antime{display:block}
+.prrep .antb thead th{position:static}.prrep .antb tfoot td{position:static}
+.prrep svg.anbar{max-height:none}
+.prrep .anchart{border:none;padding:0}
+.prrep .anscroll{padding:0}
+.prrep .ansubs{display:none}
+.prrep .rpinfo{display:flex;gap:18px;font-size:15px;color:#3A4558;margin-bottom:6px}
+.prrep .rp1{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 28px;align-items:start}
+.prrep .rp1 .rvscore7{grid-column:1/-1;margin:0 0 4px}.prrep .rp1 .rvrl,.prrep .rp1 .rvhint{grid-column:1/-1}
+.prrep .rp1 .rvflow{grid-column:1;grid-row:2}.prrep .rp1 .rvcmp{grid-column:2;grid-row:2;margin:0}
+.prrep .rp1 .rvcmp .cv{width:150px}.prrep .rp1 .rvcmp .xb{width:150px}
+.prrep .rvhint{font-size:12px;color:#6B7486}
+.rpsum td small,.rpsum th small{display:block;font-size:10.5px;color:#56607A;font-weight:500}
+.rpsum td.w,.rpcmp .w{color:#1F5FBF}.rpsum td.o,.rpcmp .o{color:#C8312B}
+.rpcmp{border-collapse:collapse;margin:4px 0}.rpcmp th{font-size:13px;padding:3px 10px}.rpcmp td{padding:4px 10px;border-bottom:1px solid #E6EAF1}
+.rpcmp .cl{font-weight:700;background:#F3F5F9;white-space:nowrap}.rpcmp .cv{font-size:17px;font-weight:800;text-align:center;min-width:110px}.rpcmp .cv small{display:block;font-size:10.5px;font-weight:500;color:#56607A}

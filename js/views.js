@@ -12,13 +12,14 @@ import { vStats } from './stats.js';
 import { vAnalysis } from './analysis.js';
 import { vSportscode } from './scview.js';
 import { vScImport } from './scimportview.js';
+import { vReport } from './report.js';
 import { vDatasheet } from './dsview.js';
 import { vPhys, stopPhysTick } from './viewer.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js'];
 export function startApp(c) {
   ctx = c;
   try { const t = localStorage.getItem('fpt.team'); if (t) selectTeam(t); } catch {}
@@ -504,6 +505,7 @@ function vMatch(r) {
   if (r.sub === 'sportscode') return vSportscode(m);
   if (r.sub === 'scimport') return vScImport(m);
   if (r.sub === 'datasheet') return vDatasheet(m);
+  if (r.sub === 'report') return vReport(m);
   if (r.sub === 'physical') return vPhys(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
@@ -553,7 +555,7 @@ function vMatch(r) {
     <div class="acts acts3">
       ${btn('マッチスタッツ（PDF）', 'いつものシートの形\nA4縦1枚', `#/m/${m.id}/stats/print`, { kind: 'out' })}
       ${btn('マッチレビュー（PDF）', '出場時間だけ（1〜4）\nまたは すべて（1〜8）', `#/m/${m.id}/review/pdf`, { kind: 'out' })}
-      ${btn('マッチレポート（PDF）', 'A4横・試合のすべて', '', { soon: true, soonText: '⑥の続きで入ります', kind: 'out' })}
+      ${btn('マッチレポート（PDF）', 'A4横・試合のすべて', `#/m/${m.id}/report`, { kind: 'out' })}
       ${btn('データシート（Excel）', 'イベント一覧・選手スタッツ\n数式で集計', `#/m/${m.id}/datasheet`, { kind: 'out' })}
       ${btn('Sportscode（XML・CSV）', '出場の帯とイベント\nSportscode・Excel用', `#/m/${m.id}/sportscode`, { kind: 'out' })}
     </div>
