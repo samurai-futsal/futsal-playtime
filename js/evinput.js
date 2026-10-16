@@ -62,10 +62,10 @@ export function vSplit(m) {
   const cell = (k, i) => `<td class="${sp.assign[k] === i ? 'on' : ''}"><button class="spc" data-sk="${k}" data-si="${i}" aria-label="${kindLabel(k)}を担当${i + 1}に">${sp.assign[k] === i ? '✓' : ''}</button></td>`;
   const rowsOf = (ks, cls) => ks.map((k) => `<tr><td class="ev ${cls}">${kindLabel(k)}</td>${Array.from({ length: sp.n }, (_, i) => cell(k, i)).join('')}</tr>`).join('');
   const cnt = (i) => kindsOf(sp, i).length;
-  const html = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › <a href="#/m/${m.id}/events">イベント入力</a> › 入力の分担</div>
-    <div class="row between"><h1 style="margin:0">イベント入力の分担</h1><a class="btn pri" href="#/m/${m.id}/events">イベント入力へ ›</a></div>
+  const html = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › <a href="#/m/${m.id}/events">イベント入力</a> › 入力担当の設定</div>
+    <div class="row between"><h1 style="margin:0">入力担当の設定</h1><a class="btn pri" href="#/m/${m.id}/events">イベント入力へ ›</a></div>
     <p class="mu">何人で入力するかと、それぞれが入れるイベントを決めます。どのイベントも必ず1人だけが担当します（押した担当に移ります）。この試合のすべての端末に同じ分担が出て、試合中でも変えられます。</p>
-    <div class="card"><h3>① 何人で入力しますか</h3><div class="seg spn">${[1, 2, 3, 4, 5].map((v) => `<button data-sn="${v}" class="${sp.n === v ? 'on' : ''}">${v === 1 ? '1人（全部）' : v + '人'}</button>`).join('')}</div>
+    <div class="card"><h3>① 入力の担当人数</h3><div class="seg spn">${[1, 2, 3, 4, 5].map((v) => `<button data-sn="${v}" class="${sp.n === v ? 'on' : ''}">${v === 1 ? '1人（全部）' : v + '人'}</button>`).join('')}</div>
       ${sp.n > 1 ? `<div class="spnames">${sp.names.map((nm, i) => `<label>担当${i + 1}の名前（任意）<input id="spName${i}" data-sname="${i}" value="${esc(nm)}" placeholder="例：谷本"></label>`).join('')}</div>` : ''}</div>
     ${sp.n > 1 ? `<div class="spgrid"><div class="card"><h3>② それぞれが入れるイベント（押した担当に移ります）</h3>
       <table class="sptb"><tr><th style="text-align:left">イベント</th>${sp.names.map((nm, i) => `<th>担当${i + 1}<small>${esc(nm) || '&nbsp;'}</small><small>${cnt(i)}個</small></th>`).join('')}</tr>
@@ -165,9 +165,9 @@ export function vEvents(m) {
   // 分担しているのに、この端末の担当がまだ決まっていない → まず担当を選ぶ
   if (sp.n > 1 && role == null) {
     return { active: 'acts', html: `${crumbE}<h1>イベント入力：どの担当ですか？</h1>
-      <p class="mu">この試合は ${sp.n}人で分けて入力します。この端末で入力する担当を押してください（あとから変えられます）。入力する人：<b>${esc(devName())}</b>（名前は「設定」の「この端末で使う名前」で変えられます）</p>
+      <p class="mu">この試合は ${sp.n}人で分けて入力します。この端末で入力する担当を押してください（あとから変えられます）。担当者：<b>${esc(devName())}</b>（名前は「設定」の「担当者の名前（この端末）」で変えられます）</p>
       <div class="rolepick">${Array.from({ length: sp.n }, (_, i) => `<button class="card" data-role="${i}"><b>${roleName(sp, i)}</b><span>${kindsOf(sp, i).map(kindLabel).join('・')}</span></button>`).join('')}</div>
-      <p><a class="btn" href="#/m/${m.id}/split">分担を見る・変える</a></p>`,
+      <p><a class="btn" href="#/m/${m.id}/split">入力担当の設定</a></p>`,
       bind: (root) => root.querySelectorAll('[data-role]').forEach((b) => { b.onclick = () => { setRole(m, +b.dataset.role); render(); }; }) };
   }
   const mine = sp.n > 1 ? kindsOf(sp, role) : ALLK;
@@ -226,8 +226,8 @@ export function vEvents(m) {
     active: 'acts',
     html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › イベント入力</div>
       <div class="row between"><h1 style="margin:0">イベント入力</h1><span class="mu">記録した時点で試合の記録になり、マッチレビューにすぐ反映されます</span></div>
-      <div class="evrole"><span class="rl">この端末の担当</span>${sp.n > 1 ? `<b>${roleName(sp, role)}</b><span class="mu">${mine.map(kindLabel).join('・')}</span><button class="btn sm" id="evRoleChange">担当を変える</button>` : '<b>1人で全部</b>'}
-        <a class="btn sm" href="#/m/${m.id}/split">分担を決める・変える</a><span class="dev">入力する人：<b>${esc(devName())}</b></span></div>
+      <div class="evrole"><span class="rl">入力の担当人数</span><b>${sp.n}人</b>${sp.n > 1 ? `<span class="rl">この端末</span><b>${roleName(sp, role)}</b><span class="mu">${mine.map(kindLabel).join('・')}</span><button class="btn sm" id="evRoleChange">担当を変える</button>` : '<span class="mu">（1人で全部のイベントを入力）</span>'}
+        <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><span class="dev">担当者：<b>${esc(devName())}</b></span></div>
       <div class="evw mt">${list}${form}</div>`,
     bind: (root) => bindEv(root, ctx),
   };

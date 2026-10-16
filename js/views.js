@@ -680,8 +680,8 @@ function vSettings() {
     <div class="card"><h3>ログインと同期</h3>
       <p>ログイン中：${esc(ctx.user.email)}　<button class="btn sm" id="btnOut">ログアウト</button></p>
       <p class="mu">同期の状態：${!navigator.onLine ? 'オフライン（記録は端末に保存され、つながったときに送られます）' : S.pending ? '同期待ち（送っている途中です）' : '同期済み'}</p></div>
-    <div class="card"><h3>この端末で使う名前</h3>
-      <p class="mu">イベント入力の印・直した履歴・MATCH PLAYの記録中の表示・記録の修正の履歴に出る名前です。担当者の名前でも端末の名前でも、自由に付けられます（この端末だけに保存）。</p>
+    <div class="card"><h3>担当者の名前（この端末）</h3>
+      <p class="mu">この端末を使う人の名前です。イベント入力の「担当者」・入力したイベントの印・直した履歴・MATCH PLAYの記録中の表示・記録の修正の履歴に出ます。人の名前でも端末の名前でも、自由に付けられます（この端末だけに保存）。</p>
       <div class="row"><input id="devNameIn" value="${esc((() => { try { return localStorage.getItem('fpt.deviceName') || ''; } catch { return ''; } })())}" placeholder="例：谷本、記録用iPad、分析PC"><button class="btn sm pri" id="btnDevName">保存</button></div></div>
     <div class="card"><h3>バックアップ</h3>
       <p class="mu">全チームの記録をファイルに書き出します。最後に書き出した日時：${lb ? new Date(lb).toLocaleString('ja-JP') : 'まだありません'}</p>
@@ -707,7 +707,7 @@ function vSettings() {
     bind(root) {
       $('#btnOut').onclick = async () => { if (await confirmBox({ title: 'ログアウトしますか？', body: '<p>もう一度ログインするにはネットが必要です。試合の前にはログアウトしないでください。</p>', ok: 'ログアウト' })) ctx.signOut(); };
       $('#btnBk').onclick = exportBackup;
-      $('#btnDevName').onclick = () => { const v = $('#devNameIn').value.trim(); try { if (v) localStorage.setItem('fpt.deviceName', v); else localStorage.removeItem('fpt.deviceName'); } catch {} toast(v ? `この端末の名前を「${v}」にしました` : '名前を消しました（「iPad」か「PC」と出ます）'); render(); };
+      $('#btnDevName').onclick = () => { const v = $('#devNameIn').value.trim(); try { if (v) localStorage.setItem('fpt.deviceName', v); else localStorage.removeItem('fpt.deviceName'); } catch {} toast(v ? `担当者の名前を「${v}」にしました` : '名前を消しました（「iPad」か「PC」と出ます）'); render(); };
       $('#btnUpd').onclick = async () => {
         const msg = (t) => { $('#updMsg').textContent = t; };
         msg('確認中…'); $('#updForce').hidden = true;
