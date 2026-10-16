@@ -47,12 +47,15 @@ export function splitOf(m) {
 }
 const roleKey = (m) => `fpt.evRole.${m.id}`;
 // 担当者の名前をその場で変える（端末を別の人に渡したとき）
-function changeWho() {
+function changeWho(m) {
   const md = openModal(`<h2>担当者の名前</h2><p class="mu">この端末で入力する人の名前です。端末を別の人に渡したときは、ここで変えてください（このあとの入力と履歴がその名前になります）。</p>
     <input id="whoIn" value="${esc((() => { try { return localStorage.getItem('fpt.deviceName') || ''; } catch { return ''; } })())}" placeholder="例：谷本" style="width:100%;font-size:18px">
     <div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-ok>決める</button></div>`);
   md.querySelector('[data-c]').onclick = closeModal;
-  md.querySelector('[data-ok]').onclick = () => { const v = md.querySelector('#whoIn').value.trim(); try { if (v) localStorage.setItem('fpt.deviceName', v); else localStorage.removeItem('fpt.deviceName'); } catch {} closeModal(); toast(v ? `担当者を「${v}」にしました` : '名前を消しました'); render(); };
+  md.querySelector('[data-ok]').onclick = () => { const v = md.querySelector('#whoIn').value.trim(); try { if (v) localStorage.setItem('fpt.deviceName', v); else localStorage.removeItem('fpt.deviceName'); } catch {}
+    // 担当者を決めてある担当なら、その名前も替える（端末を別の人に渡した＝その担当を別の人がする）
+    if (m) { const sp = splitOf(m); const r = roleOf(m, sp.n); if (sp.n > 1 && r != null && (m.evSplit?.names || [])[r]) { const names = sp.names.slice(); names[r] = v; put(teamPath('matches', m.id), { evSplit: { n: sp.n, names, assign: sp.assign } }); } }
+    closeModal(); toast(v ? `担当者を「${v}」にしました` : '名前を消しました'); render(); };
   setTimeout(() => md.querySelector('#whoIn')?.focus(), 50);
 }
 function roleOf(m, n) {
@@ -64,7 +67,8 @@ function setRole(m, v) {
   put(teamPath('matches', m.id), { evRoles: { [deviceId()]: { role: v == null ? null : v, name: devName(), t: Date.now() } } });
 }
 // 担当の名前＝その担当を選んだ端末の担当者の名前（設定の「担当者の名前」）。12時間より前に選んだものは出さない
-const roleWho = (m, i) => [...new Set(Object.values(m.evRoles || {}).filter((x) => x && x.role === i && Date.now() - (x.t || 0) < 12 * 3600e3).map((x) => x.name || '?'))];
+// 担当の名前：入力担当の設定③で決めた担当者を優先。決めていなければ、その担当を選んだ端末の担当者の名前
+const roleWho = (m, i) => { const plan = (m.evSplit?.names || [])[i]; if (plan) return [plan]; return [...new Set(Object.values(m.evRoles || {}).filter((x) => x && x.role === i && Date.now() - (x.t || 0) < 12 * 3600e3).map((x) => x.name || '?'))]; };
 const roleName = (m, i) => { const w = roleWho(m, i); return `担当${i + 1}${w.length ? `（${esc(w.join('・'))}）` : ''}`; };
 const kindsOf = (sp, i) => ALLK.filter((k) => sp.assign[k] === i);
 const kindLabel = (k) => KIND[k].label;
@@ -80,14 +84,16 @@ export function vSplit(m) {
     <div class="row between"><h1 style="margin:0">入力担当の設定</h1><a class="btn pri" href="#/m/${m.id}/events">イベント入力へ ›</a></div>
     <p class="mu">何人で入力するかと、それぞれが入れるイベントを決めます。どのイベントも必ず1人だけが担当します（押した担当に移ります）。この試合のすべての端末に同じ分担が出て、試合中でも変えられます。</p>
     <div class="card"><h3>① 入力の担当人数</h3><div class="seg spn">${[1, 2, 3, 4, 5].map((v) => `<button data-sn="${v}" class="${sp.n === v ? 'on' : ''}">${v === 1 ? '1人（全部）' : v + '人'}</button>`).join('')}</div>
-      ${sp.n > 1 ? '<p class="mu" style="margin:8px 0 0">担当の横の名前は、イベント入力でその担当を選んだ端末の担当者の名前が自動で出ます（「設定」の「担当者の名前（この端末）」）。</p>' : ''}</div>
-    ${sp.n > 1 ? `<div class="spgrid"><div class="card"><h3>② それぞれが入れるイベント（押した担当に移ります）</h3>
+</div>
+    ${sp.n > 1 ? `<div class="spgrid"><div><div class="card"><h3>② それぞれが入れるイベント（押した担当に移ります）</h3>
       <table class="sptb"><tr><th style="text-align:left">イベント</th>${sp.names.map((nm, i) => `<th>担当${i + 1}<small>${esc(roleWho(m, i).join('・')) || '（未定）'}</small><small>${cnt(i)}個</small></th>`).join('')}</tr>
       ${rowsOf(MAIN_OWN, 'own')}<tr class="sep"><td colspan="${sp.n + 1}"></td></tr>${rowsOf(MAIN_OPP, 'opp')}<tr class="sep"><td colspan="${sp.n + 1}"></td></tr>${rowsOf(SUBS, 'sub')}</table></div>
+      <div class="card"><h3>③ 担当者を決める</h3><p class="mu">それぞれの担当を誰がするかを入れておくと、各端末で担当を選んだときに、その端末の担当者の名前も自動でその人になります（空けておくと、担当を選んだ端末の担当者の名前が出ます）。</p>
+        <div class="spnames">${sp.names.map((nm, i) => `<label>担当${i + 1}<input id="spName${i}" data-sname="${i}" value="${esc(nm)}" placeholder="例：谷本"></label>`).join('')}</div></div></div>
       <div><div class="card sppre"><h3>よく使う分け方（押すと②が切りかわる）</h3>
         ${PRESETS.map(([id, l]) => `<button data-sp="${id}"><b>${l}</b><small>${Array.from({ length: sp.n }, (_, i) => `担当${i + 1}＝${ALLK.filter((k) => presetAssign(id, sp.n)[k] === i).map(kindLabel).join('・')}`).join('　')}</small></button>`).join('')}
         <button data-sp="prev" ${prev ? '' : 'disabled'}><b>前の試合と同じ</b><small>${prev ? `vs ${esc(prev.opponent)}（${esc(prev.date || '')}）の分担をそのまま使う` : '分担を決めた前の試合がありません'}</small></button></div>
-        <div class="card"><h3>各端末では</h3><p class="mu" style="margin:0">イベント入力を開くと「どの担当ですか？」と聞かれ、担当を押すだけ。その担当のイベントだけが大きく出ます。ほかのイベントも「＋ほかのイベントも出す」で入れられます。</p></div></div></div>`
+        <div class="card"><h3>各端末では</h3><p class="mu" style="margin:0">イベント入力を開くと「どの担当ですか？」と聞かれ、担当を押すだけ。その担当のイベントだけが大きく出ます（担当以外のイベントは出ません）。③で担当者を決めてあれば、その端末の担当者の名前も自動でその人になります。</p></div></div></div>`
     : '<div class="card"><p class="mu" style="margin:0">1人で全部のイベントを入力します（今までと同じ）。何人かで分ける時は、上で人数を選んでください。</p></div>'}`;
   return {
     active: 'acts', html,
@@ -100,6 +106,7 @@ export function vSplit(m) {
         if (b.dataset.sp === 'prev' && prev) { const ps = splitOf(prev); return write({ n: ps.n, names: ps.names, assign: ps.assign }); }
         if (b.dataset.sp) return write({ n: sp.n, names: sp.names, assign: presetAssign(b.dataset.sp, sp.n) });
       });
+      root.querySelectorAll('[data-sname]').forEach((inp) => { inp.onchange = () => { const names = sp.names.slice(); names[+inp.dataset.sname] = inp.value.trim(); write({ n: sp.n, names, assign: sp.assign }); }; });
     },
   };
 }
@@ -181,7 +188,10 @@ export function vEvents(m) {
       <p class="mu">この試合は ${sp.n}人で分けて入力します。この端末で入力する担当を押してください（あとから変えられます）。担当者：<b>${esc(devName())}</b> <button class="btn xs" id="evWho">変える</button></p>
       <div class="rolepick">${Array.from({ length: sp.n }, (_, i) => `<button class="card" data-role="${i}"><b>${roleName(m, i)}</b><span>${kindsOf(sp, i).map(kindLabel).join('・')}</span></button>`).join('')}</div>
       <p><a class="btn" href="#/m/${m.id}/split">入力担当の設定</a></p>`,
-      bind: (root) => { root.querySelectorAll('[data-role]').forEach((b) => { b.onclick = () => { setRole(m, +b.dataset.role); render(); }; }); const w = root.querySelector('#evWho'); if (w) w.onclick = changeWho; } };
+      bind: (root) => { root.querySelectorAll('[data-role]').forEach((b) => { b.onclick = () => {
+        const i = +b.dataset.role; const plan = (m.evSplit?.names || [])[i];
+        if (plan && plan !== devName()) { try { localStorage.setItem('fpt.deviceName', plan); } catch {} toast(`担当者を「${plan}」にしました`); }
+        setRole(m, i); render(); }; }); const w = root.querySelector('#evWho'); if (w) w.onclick = () => changeWho(m); } };
   }
   const mine = sp.n > 1 ? kindsOf(sp, role) : ALLK;
   { const me = (m.evRoles || {})[deviceId()]; if (sp.n > 1 && role != null && (!me || me.role !== role || me.name !== devName())) setRole(m, role); }
@@ -357,7 +367,7 @@ function bindEv(root, ctx) {
     if (b.dataset.per) { ui.period = b.dataset.per; ui.listPer = b.dataset.per; applyAuto(ctx); return render(); }
     if (b.dataset.lper) { ui.listPer = b.dataset.lper; return render(); }
     if (b.dataset.ltab) { ui.ltab = b.dataset.ltab; return render(); }
-    if (b.id === 'evWho') return changeWho();
+    if (b.id === 'evWho') return changeWho(m);
     if (b.id === 'evRoleChange') { setRole(m, null); return render(); }
     if (b.dataset.rv) { const ev = ctx.all.find((x) => x.id === b.dataset.rv); if (ev && revertLast(m, ev)) toast('取り消しました'); return render(); }
     if (b.id === 'evUndo') { const lm = lastMine(ctx.all); if (lm && revertLast(m, lm.ev)) toast(`1つ戻しました（${ACT[lm.h.act]}を取り消し）`); resetForm(); return render(); }

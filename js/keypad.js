@@ -9,7 +9,7 @@ export function keypadHTML({ steps = [-10, -1, 1, 10], id = 'kp' } = {}) {
     <div class="adjdisp"><span class="dg kpM"></span><span class="col">:</span><span class="dg kpS"></span></div>
     <div class="adjnow kpNote"></div>
     <div class="adjpm">${steps.map((d) => `<button type="button" class="btn" data-d="${d}">${lab(d)}</button>`).join('')}</div>
-    <div class="adjpad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" class="btn" data-k="${n}">${n}</button>`).join('')}<button type="button" class="btn s" data-clr>はじめから</button><button type="button" class="btn" data-k="0">0</button><button type="button" class="btn s" data-bs>⌫ 1つ消す</button></div>
+    <div class="adjpad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" class="btn" data-k="${n}">${n}</button>`).join('')}<button type="button" class="btn s" data-clr><span class="kl">はじめ</span><span class="kl">から</span></button><button type="button" class="btn" data-k="0">0</button><button type="button" class="btn s" data-bs><span class="kl">⌫</span><span class="kl">1つ消す</span></button></div>
   </div>`;
 }
 
