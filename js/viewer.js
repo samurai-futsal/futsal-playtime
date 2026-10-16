@@ -116,6 +116,6 @@ export function vPhys(m) {
     },
     html: `<div class="phw">${head}<div class="phcols"><div class="phpane"><h3>ピッチ <small>今の出場が長い順</small></h3>${pitchHTML}</div>
       <div class="phpane"><h3>ベンチ <small>${benchSort.startsWith('rest') ? '休み' : '合計出場（プレーイングタイム）'}が${SORTS[benchSort][1]}</small></h3>
-        <div class="phsort"><span class="phsortl">並べ方</span><span class="seg">${Object.entries(SORTS).filter(([k]) => k.startsWith('rest')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${a} ${b}</button>`).join('')}</span><span class="seg">${Object.entries(SORTS).filter(([k]) => k.startsWith('tot')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${a} ${b}</button>`).join('')}</span></div>${benchHTML || '<p class="mu pad">ベンチの選手はまだ出場していません</p>'}</div></div></div>`,
+        <div class="phsort"><span class="phsortl">並べ方</span><span class="seg sr">${Object.entries(SORTS).filter(([k]) => k.startsWith('rest')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${b}</button>`).join('')}</span><span class="seg st">${Object.entries(SORTS).filter(([k]) => k.startsWith('tot')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${b}</button>`).join('')}</span></div>${benchHTML || '<p class="mu pad">ベンチの選手はまだ出場していません</p>'}</div></div></div>`,
   };
 }
