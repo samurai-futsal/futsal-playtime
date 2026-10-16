@@ -661,3 +661,29 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .fxinfo{background:#E8F3EC;border:1px solid #7CC596;color:#14532D;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:14px}.fxinfo ul{margin:4px 0 4px 18px;padding:0}.fxinfo small{color:#3C6B4C}
 .crumb .mpback{margin-right:10px;font-weight:800}.rvrow .mpback{font-weight:800}@media print{.mpback{display:none!important}}
 .crumb:has(.mpback){display:flex;align-items:center;flex-wrap:wrap;gap:2px}
+/* イベント入力：担当・分担・直した履歴・1つ戻す */
+.evrole{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border-radius:12px;padding:8px 12px;margin-top:10px}
+.evrole .rl{font-weight:800;color:var(--navy)}.evrole .mu{font-size:12px}.evrole .dev{margin-left:auto;font-size:13px;color:#5F6B80}
+.rolepick{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin:12px 0}
+.rolepick button{text-align:left;border:2px solid #1F5FBF;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:14px}.rolepick b{font-size:20px;color:#1F5FBF}.rolepick span{font-size:13px;color:#3A4558}
+.bigrow{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))!important}.bigrow .btn{min-height:62px;font-size:16px}
+.moreev{margin:6px 0 4px;border-style:dashed}
+.evundo{border:1.5px solid #1F5FBF;color:#1F5FBF;font-weight:800;margin-right:auto}
+.who{display:inline-grid;place-items:center;min-width:18px;height:17px;border-radius:4px;font-size:10px;font-weight:800;color:#fff;margin-left:4px;vertical-align:middle}
+.who.r0{background:#1F5FBF}.who.r1{background:#C8312B}.who.r2{background:#2E8B57}.who.r3{background:#8A5AC8}.who.r4{background:#D9820F}
+.evdup{background:#FFF1DD;color:#B5600F;border:1px solid #F0A030;border-radius:5px;font-size:11px;font-weight:800;padding:0 4px}
+.evby{font-size:11px;color:#8A94A6}
+.ltabs{display:flex;gap:6px;margin-bottom:4px}.ltabs button{border:1px solid #C9D1DE;background:#fff;border-radius:8px;padding:5px 10px;font-size:13px;font-weight:700}.ltabs button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.evhist .hr{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:6px;align-items:center;padding:7px 2px;border-bottom:1px solid #EEF1F6;font-size:13px}
+.evhist .hr .tm{color:#5F6B80;font-variant-numeric:tabular-nums}.evhist .hr.undone{opacity:.55}.evhist .hdel{color:#C42A1F;font-weight:800}
+.hrows{max-height:520px;overflow:auto}
+/* 分担を決める画面 */
+.seg.spn{display:inline-flex;border:1.5px solid #1F5FBF;border-radius:10px;overflow:hidden}.seg.spn button{border:0;border-left:1.5px solid #1F5FBF;background:#fff;color:#1F5FBF;font-weight:700;font-size:15px;padding:9px 16px}.seg.spn button:first-child{border-left:0}.seg.spn button.on{background:#1F5FBF;color:#fff}
+.spnames{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.spnames label{font-size:11px;color:#5F6B80;display:flex;flex-direction:column;gap:2px;flex:1;min-width:140px}
+.spgrid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px}@media (max-width:900px){.spgrid{grid-template-columns:1fr}}
+.sptb{border-collapse:collapse;width:100%;font-size:14px}.sptb th{background:var(--navy);color:#fff;padding:6px;font-weight:700}.sptb th small{display:block;font-weight:500;font-size:11px;color:#C9D6EE}
+.sptb td{border-bottom:1px solid #EEF1F6;padding:0;text-align:center}.sptb td.ev{text-align:left;font-weight:700;padding:6px}.sptb td.ev.opp{color:#B0261B}.sptb td.ev.sub{color:#3A4558}
+.sptb td.on{background:#E3EDFB}.spc{width:100%;height:36px;border:0;background:transparent;font-size:18px;font-weight:900;color:#1F5FBF;cursor:pointer}.sptb tr.sep td{padding:2px;background:#F6F8FB;border:0}
+.sppre button{display:block;width:100%;text-align:left;border:1px solid #C9D1DE;border-radius:9px;padding:8px 10px;margin-bottom:6px;background:#F6F8FB}.sppre button small{display:block;color:#5F6B80;font-size:11px;margin-top:2px}
+.evform .mainev.bigrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px}.evform .mainev.bigrow .btn{min-height:66px;font-size:17px;font-weight:800}
+.evw .evform .mainev.bigrow .btn{min-height:66px;font-size:17px;font-weight:800}

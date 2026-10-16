@@ -7,7 +7,7 @@ import {
 import { vPlay, unmountPlay } from './matchplay.js';
 import { vReview, stopReviewTick } from './review.js';
 import { vFix } from './fix.js';
-import { vEvents } from './evinput.js';
+import { vEvents, vSplit } from './evinput.js';
 import { vPhys, stopPhysTick } from './viewer.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
@@ -485,6 +485,7 @@ function vMatch(r) {
   if (r.sub === 'review') return vReview(m);
   if (r.sub === 'fix') return vFix(m);
   if (r.sub === 'events') return vEvents(m);
+  if (r.sub === 'split') return vSplit(m);
   if (r.sub === 'physical') return vPhys(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
@@ -679,6 +680,9 @@ function vSettings() {
     <div class="card"><h3>ログインと同期</h3>
       <p>ログイン中：${esc(ctx.user.email)}　<button class="btn sm" id="btnOut">ログアウト</button></p>
       <p class="mu">同期の状態：${!navigator.onLine ? 'オフライン（記録は端末に保存され、つながったときに送られます）' : S.pending ? '同期待ち（送っている途中です）' : '同期済み'}</p></div>
+    <div class="card"><h3>この端末で使う名前</h3>
+      <p class="mu">イベント入力の印・直した履歴・MATCH PLAYの記録中の表示・記録の修正の履歴に出る名前です。担当者の名前でも端末の名前でも、自由に付けられます（この端末だけに保存）。</p>
+      <div class="row"><input id="devNameIn" value="${esc((() => { try { return localStorage.getItem('fpt.deviceName') || ''; } catch { return ''; } })())}" placeholder="例：谷本、記録用iPad、分析PC"><button class="btn sm pri" id="btnDevName">保存</button></div></div>
     <div class="card"><h3>バックアップ</h3>
       <p class="mu">全チームの記録をファイルに書き出します。最後に書き出した日時：${lb ? new Date(lb).toLocaleString('ja-JP') : 'まだありません'}</p>
       <div class="row"><button class="btn pri" id="btnBk">バックアップを書き出す</button><button class="btn" disabled>ファイルから戻す（次の版で入ります）</button></div></div>
@@ -703,6 +707,7 @@ function vSettings() {
     bind(root) {
       $('#btnOut').onclick = async () => { if (await confirmBox({ title: 'ログアウトしますか？', body: '<p>もう一度ログインするにはネットが必要です。試合の前にはログアウトしないでください。</p>', ok: 'ログアウト' })) ctx.signOut(); };
       $('#btnBk').onclick = exportBackup;
+      $('#btnDevName').onclick = () => { const v = $('#devNameIn').value.trim(); try { if (v) localStorage.setItem('fpt.deviceName', v); else localStorage.removeItem('fpt.deviceName'); } catch {} toast(v ? `この端末の名前を「${v}」にしました` : '名前を消しました（「iPad」か「PC」と出ます）'); render(); };
       $('#btnUpd').onclick = async () => {
         const msg = (t) => { $('#updMsg').textContent = t; };
         msg('確認中…'); $('#updForce').hidden = true;
