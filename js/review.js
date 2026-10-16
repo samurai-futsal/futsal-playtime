@@ -178,10 +178,8 @@ export function vReview(m) {
   // ピリオドごとに帯を分けて並べ、2つ目以降のピリオドの前に背番号と名前の列をもう一度置く（右の方の帯も誰か分かるように）
   const axis = M.periods.filter((p) => !p.extra || p.status !== 'none' || st.askExtra || cfg.times?.extra);
   const pp = (p, v) => (v / p.len * 100).toFixed(3);
-  // プレーイングタイムは残り時間（20:00 → 0:00）、ランニングタイムはキックオフからの時間（0:00 → 35:56）
-  const ticksOf = (p) => (runMode
-    ? `<span style="left:0%">${p.label} 0:00</span><span style="left:50%">${mmss(p.len / 2)}</span><span class="r" style="left:100%">${mmss(p.len)}</span>`
-    : `<span style="left:0%">${p.label} ${mmss(p.len)}</span><span style="left:50%">${mmss(p.len / 2)}</span><span class="r" style="left:100%">0:00</span>`);
+    // 目盛りは経過時間（0:00→）。プレーイングタイムもランニングタイムも同じ向き（2026-10-16 決定）
+  const ticksOf = (p) => `<span style="left:0%">${p.label} 0:00</span><span style="left:50%">${mmss(p.len / 2)}</span><span class="r" style="left:100%">${mmss(p.len)}</span>`;
   const futureOf = (p) => (p.status === 'none' ? '<i class="tlfut" style="left:0%;width:100%"></i>'
     : (M.live && p.key === M.current ? `<i class="tlfut" style="left:${pp(p, p.elapsed)}%;width:${pp(p, p.len - p.elapsed)}%"></i>` : ''));
   const tlCols = (nm, mid, end) => `${nm}px ${axis.map((p, i) => (i ? `${mid}px ` : '') + `minmax(0,${p.len}fr)`).join(' ')} ${end}px`;
@@ -201,7 +199,7 @@ export function vReview(m) {
     return `<div class="tlr ${tlHl.has(pid) ? 'hl' : ''}" data-tl="${pid}" ${tlStyle}>${who(pid, 'tlnm')}${tracks}<b class="tlend">${badge(pid)}<span class="tlsum">${mmss(T[pid]?.total || 0)}</span></b></div>`;
   }).join('');
   const tlHead = `<div class="tlr tlhead" ${tlStyle}><span></span>${axis.map((p, i) => (i ? '<span></span>' : '') + `<div class="tlax">${ticksOf(p)}</div>`).join('')}<span>合計</span></div>`;
-  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝先発のFP（背番号順）、そのあとは初めてピッチに入った順、GKは一番下。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : ''}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計${(M.zero || []).length ? '。オレンジの線と「0:00」＝時計が止まっている間だけの出場（セットプレーの守備などで入れ替えたとき。実際の時間に合わせるなら「記録の修正」で時刻を直す）' : ''}</span></div>
+  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝先発のFP（背番号順）、そのあとは初めてピッチに入った順、GKは一番下。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : '（目盛りは試合の時計の経過時間）'}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計${(M.zero || []).length ? '。オレンジの線と「0:00」＝時計が止まっている間だけの出場（セットプレーの守備などで入れ替えたとき。実際の時間に合わせるなら「記録の修正」で時刻を直す）' : ''}</span></div>
     <div class="rvbox rvtl">${tlHead}${tlRows}</div></section>`;
 
   // ---------- 4. セットの出場時間 ----------
