@@ -13,11 +13,12 @@ const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${M
 const PCOL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const MCOL = ['#1F5FBF', '#E0832B', '#2E8B57', '#8A5AC8', '#C8312B', '#0E8A9E', '#B5600F', '#5F6B80'];
 const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '種類別'], ['pace', 'マッチ・ペース']];
-const PPM = [['all', 'すべて'], ['ex', '5×4を除く'], ['pp', '5×4だけ（攻撃＋守備）'], ['own', '5×4の攻撃だけ'], ['opp', '5×4の守備だけ']];
+const PPM = [['all', 'すべて'], ['ex', '5×4/4×5を除く']]; // 2026-10-16：この2つだけ
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
 const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
 let fromHash = null;
+if (!['all', 'ex'].includes(A.pp)) A.pp = 'all';
 const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub })); } catch {} };
 
 // 分析できる試合（試合中・終わった試合）
@@ -102,8 +103,8 @@ export function vAnalysis(r, mFrom = null) {
   const head = `<div class="anhead">
     <div class="anrow"><b class="antt">分析</b>${seg('scope', [['match', 'この試合'], ['all', '全試合'], ['pick', '選んだ試合']])}${one}${multi}
       ${A.scope === 'match' ? '' : seg('agg', [['sum', '合計'], ['avg', '1試合平均']])}${seg('per', [['all', '全体'], ['1H', '前半'], ['2H', '後半']])}
-      <label class="anpp">パワープレー<select id="anPP">${PPM.map(([v, l]) => `<option value="${v}" ${A.pp === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4の記録なし ${noOpp}試合</span>` : ''}
+      <span class="anpp">パワープレー${seg('pp', PPM)}</span>
+      ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4（こちらの4×5）の記録なし ${noOpp}試合</span>` : ''}
       ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}</div>
     <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} ${['set', 'pp', 'type', 'pace'].includes(v) ? 'later' : ''}" data-tab="${v}">${l}</button>`).join('')}</div></div>`;
 
@@ -178,7 +179,7 @@ function timeTab(ctx) {
     { k: 'total', grp: '合計', h: '時間', v: (d) => d.time, f: (v, d) => `<b>${t(v, d)}</b>`, tot: (tm) => `<b>${mmss(tm.len)}</b>` },
     { k: 'count', grp: '合計', h: '回数', v: (d) => d.count, f: (v, d) => (avg && d.games ? (v / d.games).toFixed(1) : v) },
     { k: 'rate', grp: '合計', h: '出場率', v: (d) => d.time, f: (v) => (team.len ? Math.round(v / team.len * 100) + '%' : '—') },
-    ...(A.pp === 'all' ? [{ k: 'pown', grp: 'うち5×4', h: '攻撃', v: (d) => d.pOwn, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }, { k: 'popp', grp: 'うち5×4', h: '守備', v: (d) => d.pOpp, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }] : []),
+    ...(A.pp === 'all' ? [{ k: 'pown', grp: 'うちパワープレー', h: '5×4<br><small>攻撃</small>', v: (d) => d.pOwn, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }, { k: 'popp', grp: 'うちパワープレー', h: '4×5<br><small>守備</small>', v: (d) => d.pOpp, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }] : []),
   ];
   const sum = pids.reduce((a, p) => a + P[p].time, 0);
   const expect = team.len * 5 - team.empty;
@@ -267,7 +268,6 @@ function bindAnalysis(root) {
   });
   const sel = root.querySelector('#anMatch'); if (sel) sel.onchange = () => { A.matchId = sel.value; keep(); render(); };
   const pk = root.querySelector('#anPick'); if (pk) pk.onclick = pickModal;
-  const pp = root.querySelector('#anPP'); if (pp) pp.onchange = () => { A.pp = pp.value; keep(); render(); };
 }
 function pickModal() {
   const f = A.f; const acts = S.activities.filter((a) => !a.deleted);

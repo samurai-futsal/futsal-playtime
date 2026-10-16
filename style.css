@@ -809,4 +809,5 @@ svg.anbar{width:100%;height:auto;max-height:30vh;display:block}
 .antb .no{min-width:26px;height:21px;font-size:12.5px;margin-right:4px}
 .anpp{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#3A4558}.anpp select{font:inherit;font-size:14px;padding:5px 7px;border-radius:8px;border:1.5px solid #C9D3E3}
 .antb .z{color:#C3C9D4}
-.anpp{white-space:nowrap}.anpp select{max-width:200px}
+.anpp{white-space:nowrap}
+.antb thead small{color:#C9D6EE}
