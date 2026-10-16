@@ -658,3 +658,6 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .rvw.compact .rvtl .no{width:22px;min-width:22px;height:16px;font-size:10px}
 .rvw.compact .rvtl .tlsum{font-size:12px}
 .rvw.compact .rvtl .tlr[style]{gap:0 5px}
+.fxinfo{background:#E8F3EC;border:1px solid #7CC596;color:#14532D;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:14px}.fxinfo ul{margin:4px 0 4px 18px;padding:0}.fxinfo small{color:#3C6B4C}
+.crumb .mpback{margin-right:10px;font-weight:800}.rvrow .mpback{font-weight:800}@media print{.mpback{display:none!important}}
+.crumb:has(.mpback){display:flex;align-items:center;flex-wrap:wrap;gap:2px}

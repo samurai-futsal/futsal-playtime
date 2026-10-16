@@ -540,7 +540,7 @@ function vMatchSetup(m) {
   const ct = m.colorTimer || { orange: teamSettings().colorOrange, red: teamSettings().colorRed };
   return {
     active: 'acts',
-    html: `<div class="crumb"><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 事前設定</div><h1>事前設定</h1>
+    html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 事前設定</div><h1>事前設定</h1>
     <div class="card"><div class="grid2" id="setupForm">
       <div><label for="sDate">日付</label><input id="sDate" name="date" type="date" value="${esc(m.date || '')}"></div>
       <div><label for="sOpp">対戦相手</label><input id="sOpp" name="opponent" value="${esc(m.opponent || '')}"></div>
@@ -589,7 +589,7 @@ function vMatchMembers(m) {
   };
   return {
     active: 'acts',
-    html: `<div class="crumb"><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 試合メンバー</div>
+    html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 試合メンバー</div>
     <div class="row between"><h1 class="inl">試合メンバー <span class="cnt ${n > 25 ? 'ng' : ''}">${n} / 25人</span></h1>
       ${prev ? `<button class="btn" id="btnCopy">前の試合のメンバーをコピー</button>` : ''}</div>
     <p class="mu">招集メンバーから、この試合に出る選手を押して選びます（最大25人）。選んだFPの「PP」を押すと、パワープレー可能な選手になります（MATCH PLAYで番号が黄色になります）。選んだ時点の背番号とポジションが、この試合の記録として残ります。</p>

@@ -72,7 +72,7 @@ export function vEvents(m) {
 
   return {
     active: 'acts',
-    html: `<div class="crumb"><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › イベント入力</div>
+    html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › イベント入力</div>
       <div class="row between"><h1 style="margin:0">イベント入力</h1><span class="mu">記録した時点で試合の記録になり、マッチレビューにすぐ反映されます</span></div>
       <div class="evw mt">${list}${form}</div>`,
     bind: (root) => bindEv(root, ctx),

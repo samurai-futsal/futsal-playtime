@@ -4,7 +4,7 @@
 // the review and analysis use the saved correction instead of the MATCH PLAY record for that period.
 import { S as D, playerById, opts, put, teamPath, watchOps, watchFixLog, addFixLog, updFixLog, teamSettings } from './store.js';
 import { replay, periodLen, PERIODS, periodLabel } from './engine.js';
-import { replayToFix, seatWalk, fixData, checkFix, periodSig, basisOk, newEvId, matchModel, whyNot } from './model.js';
+import { replayToFix, seatWalk, fixData, checkFix, periodSig, basisOk, newEvId, matchModel, whyNot, toRunning } from './model.js';
 import { $, esc, openModal, closeModal, confirmBox, toast, optionTags } from './ui.js';
 import { keypadHTML, bindKeypad } from './keypad.js';
 import { render, setLeaveGuard } from './views.js';
@@ -55,6 +55,18 @@ function writeState(m, state, origin = false, infoKeys = INFO_KEYS) {
 }
 
 // ---------- view ----------
+// 交代の修正に合わせて時計の記録も直したとき（2026-10-16 決定）、何を直したかを上に出す
+const hms = (w) => { const d = new Date(w); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`; };
+function clockNote(m, st, sig, k) {
+  if (!m.fix?.periods?.[k]) return '';
+  st.sig = sig;
+  let c; try { const M = matchModel(st, Date.now(), m.fix); c = toRunning(M, st).clock?.[k]; } catch (e) { return ''; }
+  if (!c?.changed) return '';
+  const len = periodLen(cfgOf(m), k); const rem = (el) => mmss(len - el);
+  const lines = [...c.added.map((a) => `<li>残り ${rem(a.el0)}〜${rem(a.el1)}（${mmss(a.t1 - a.t0)}）：実際には <b>${hms(a.t0)}〜${hms(a.t1)}</b> に時計が動いていたとしました</li>`),
+    ...c.removed.map((a) => `<li>記録では ${hms(a.t0)}〜${hms(a.t1)} に時計が動いていましたが、この間は<b>止まっていた</b>としました</li>`)];
+  return `<div class="fxinfo"><b>時計の記録も、交代の修正に合わせて直しています（${periodLabel(k)}）</b><ul>${lines.join('')}</ul><small>交代を押した実際の時刻は正しいとして、時計が動いた・止まった時刻の方を直しています。ランニングタイム・Sportscode の帯・フィジカルコーチの数字は、直した時計で数えます。間に交代がないので、時計を足す・削る位置で誰の時間も変わりません。</small></div>`;
+}
 export function vFix(m) {
   const opsC = watchOps(m.id);
   if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
@@ -66,7 +78,7 @@ export function vFix(m) {
   ctx = { origin: baseline({ ...m, fix: null }, st, sig) };
   const keys = PERIODS.map((p) => p.key).filter((k) => d.periods[k]);
   const live = PERIODS.find((p) => st.periods[p.key].status === 'live');
-  const crumb = `<div class="crumb"><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 記録の修正</div>`;
+  const crumb = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 記録の修正</div>`;
   if (!keys.length) {
     return { active: 'acts', html: `${crumb}<h1>記録の修正</h1><div class="card empty">終わったピリオドがまだありません。${live ? `${periodLabel(live.key)}が終わると直せるようになります（ハーフタイムに前半を直すこともできます）。` : 'MATCH PLAYで記録したピリオドが終わると、ここで直せます。'}</div>` };
   }
@@ -81,6 +93,7 @@ export function vFix(m) {
       ${live ? `<span class="mu">${periodLabel(live.key)}は試合中のため、終わってから直せます</span>` : ''}</div>
     <div class="fxsave"><button class="btn" id="fxUndo" ${canUndo ? '' : 'disabled'}>↶ 1つ戻す</button><button class="btn dangerline" data-goto="origin" ${activeSteps(m).length || legacyInEffect(m) ? '' : 'disabled'}>MATCH PLAYの記録に戻す</button></div></div>
     ${stale.length ? `<div class="fxwarn">MATCH PLAYの記録があとから変わったため（リセットなど）、${stale.join('・')}の修正は使われていません。もう一度直してください。</div>` : ''}
+    ${clockNote(m, st, sig, k)}
     ${errs.length ? `<div class="fxerr"><b>記録に矛盾があります</b><ul>${errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
     <div class="fxtabs">${TABS.map(([t, l]) => `<button class="fxtab ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${l}</button>`).join('')}${LATER.map(([, l]) => `<span class="fxtab off">${l}<small>④で</small></span>`).join('')}</div>`;
 

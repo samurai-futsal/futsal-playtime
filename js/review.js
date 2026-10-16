@@ -67,7 +67,7 @@ export function vReview(m) {
   // 項目の番号は固定（1〜8）。出ていない項目は番号が飛ぶので、上部にその理由を書く
   const jumps = [[1, '出場時間', 'rv1'], [2, '1回ごと', 'rv1b'], [3, 'タイムライン', 'rv2'], [4, 'セット', 'rv3'], ...(evs.length ? [[6, 'セット別', 'rv4b']] : [])].map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
-      <div class="rvrow"><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
+      <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
         <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで書き出す</button></div>
       <div class="rvjumps">${jumps}<span class="rvnote">番号が飛んでいる項目：${evs.length ? '' : '6 セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントを入力すると表示）、'}5 マッチ・ペース・7 スコアとチームスタッツ・8 スタッツまとめ（まだアプリにない項目。今後の版で表示）</span>

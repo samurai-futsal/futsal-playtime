@@ -49,6 +49,26 @@ const ops3 = [op(0, { type: 'kickoff', lineup: ['G', 'A', 'B', 'C', 'D'] }), op(
 const st3 = replay(ops3, cfg); const R3 = toRunning(matchModel(st3, T0 + 40000), st3, T0 + 40000);
 eq([R3.periods[0].elapsed, time(R3, 'A')], [40000, 40], '試合中は今の時刻まで');
 
+// ---- 2026-10-16：交代の修正に合わせて時計の記録も直す ----
+{ // 時計が止まっている間（記録上）に E が入って出た。実際は E がいる間に時計が5秒動いていた（ペルー戦 前半 3:34〜3:29 と同じ形）
+  n = 0;
+  const ops = [op(0, { type: 'kickoff', lineup: ['G', 'A', 'B', 'C', 'D'] }), op(20, { type: 'stop' }),
+    op(30, { type: 'out', pid: 'A' }), op(30.5, { type: 'in', pid: 'E' }), op(40, { type: 'out', pid: 'E' }), op(40.5, { type: 'in', pid: 'A' }),
+    op(50, { type: 'start' }), op(90, { type: 'stop' }), op(95, { type: 'periodEnd' })];
+  const st = replay(ops, cfg); st.sig = periodSig(ops);
+  const fp = replayToFix(st, '1H');
+  fp.ev.filter((e) => e.in === 'E').forEach((e) => { e.at = 15000; }); // E が入ったのは時計の15秒（記録では20秒）
+  const M = matchModel(st, T0 + 200000, { periods: { '1H': { ...fp, basis: st.sig['1H'] } } });
+  const R = toRunning(M, st, T0 + 200000);
+  const c = R.clock['1H'];
+  eq([c.changed, c.removed.length, c.added.length], [true, 1, 1], '時計：15〜20秒の5秒を削り、Eがいる間に5秒足す');
+  eq([Math.round(c.removed[0].t0 - T0) / 1000, Math.round(c.removed[0].t1 - T0) / 1000], [15, 20], '削るのは記録で15〜20秒に動いていた分');
+  eq(c.added[0].t0 >= T0 + 30500 && c.added[0].t1 <= T0 + 40000, true, '足すのはEが入ってから出るまでの間');
+  eq([time(M, 'E'), time(R, 'E')], [5, 10], 'Eはプレーイングタイム5秒、ランニングタイムは押した実際の時刻のまま（30〜40秒）');
+  const ct = checkTotal(R); eq(ct.players, ct.expected, '時計を直しても合計＝5×ランニングタイム');
+  eq(c.runs.reduce((s2, r) => s2 + r.t1 - r.t0, 0), 60000, '直した時計の合計＝ピリオドの長さ');
+}
+
 // ---- 0.5.9 で直した不具合 ----
 const mk = (list) => { n = 0; return list.map(([s, o, per]) => op(s, o, per)); };
 const KO = { type: 'kickoff', lineup: ['G', 'A', 'B', 'C', 'D'] };

@@ -62,32 +62,109 @@ export function matchModel(st, now = Date.now(), fix = null) {
 function runningFixed(st, key, fp, c) {
   const stints = [], empties = [];
   const walk = seatWalk(fp);
-  for (const { seat, segs } of walk) {
+  // 1回目：元の記録と対応する区切りの実際の時刻を決める。
+  //  元の時刻を時計で動かした分だけずらし、それが時計の記録と合えばその時刻（OUTを押すのが遅れた・早かった）。
+  //  合わなければ、交代は押した実際の時刻のまま正しいとみなし、時計の記録の方を直す（2026-10-16 決定）。
+  const plan = walk.map(({ seat, segs }) => {
     const fb = segs.slice(1).map((g) => g.from);
     const bounds = (withSq) => [...st.stints, ...(withSq ? st.squeezed || [] : []), ...st.empties]
       .filter((x) => x.period === key && x.seat === seat && x.wf != null)
       .sort((a, b) => a.wf - b.wf || a.from - b.from).slice(1).map((x) => ({ c: R(x.from), w: x.wf }));
     // 時計を戻して消えた出場も含めて数が合えばそれを、合わなければ含めずに対応させる
     let ob = bounds(true); if (ob.length !== fb.length) ob = bounds(false);
-    const used = new Set(); const W = [];
-    fb.forEach((cl, i) => {
-      let w;
-      if (ob.length === fb.length) w = ob[i].w + (cl - ob[i].c);
-      else { const j = ob.findIndex((o, oi) => !used.has(oi) && o.c === cl); if (j >= 0) { used.add(j); w = ob[j].w; } else w = c.wallOf(cl); }
-      W.push(Math.min(c.E, Math.max(c.K, i ? W[i - 1] : c.K, w)));
+    const used = new Set();
+    const W = fb.map((cl, i) => {
+      if (ob.length === fb.length) {
+        const w1 = ob[i].w + (cl - ob[i].c);
+        if (cl === ob[i].c || Math.abs(c.elOf(w1) - cl) <= 1000) return { w: w1, cl, anchor: true };
+        return { w: ob[i].w, w1, cl, anchor: true, kept: true };
+      }
+      const j = ob.findIndex((o, oi) => !used.has(oi) && o.c === cl);
+      if (j >= 0) { used.add(j); return { w: ob[j].w, cl, anchor: true }; }
+      return { w: null, cl }; // 足した交代：押した時刻がないので、時計の記録から求める
     });
+    return { seat, segs, W };
+  });
+  const anchorsOf = () => plan.flatMap((x) => x.W.filter((b) => b.anchor && b.w != null && b.w >= c.K && b.w <= c.E));
+  let clock = correctClock(c.runs, anchorsOf(), c.K, c.E, fp.elapsed);
+  // 時計を直しても合わない（実際の時間より長く時計が動くことになる）ときは、今までどおり交代の実際の時刻の方をずらす
+  if (clock.errors.length) {
+    for (const x of plan) for (const b of x.W) if (b.kept) { b.w = b.w1; b.kept = false; }
+    clock = correctClock(c.runs, anchorsOf(), c.K, c.E, fp.elapsed);
+  }
+  const wallOf = clock.changed ? (el) => wallOfRuns(clock.runs, el, c.K, c.E) : c.wallOf;
+  // 2回目：足した交代の時刻を（直した）時計から求め、場所ごとに帯を作る
+  for (const { seat, segs, W } of plan) {
+    const ws = [];
+    W.forEach((b, i) => ws.push(Math.min(c.E, Math.max(c.K, i ? ws[i - 1] : c.K, b.w ?? wallOf(b.cl)))));
     segs.forEach((g, i) => {
-      const wf = i ? W[i - 1] : c.K, wt = i < W.length ? W[i] : c.E;
+      const wf = i ? ws[i - 1] : c.K, wt = i < ws.length ? ws[i] : c.E;
       const x = { period: key, seat, from: c.rel(wf), to: c.rel(wt) };
       if (g.pid) stints.push({ ...x, pid: g.pid });
       else if (g.startEv) empties.push({ ...x, pid: g.ejected });
     });
   }
-  return { stints, empties };
+  return { stints, empties, clock, wallOf };
+}
+
+// ---------- 時計の記録（時計が動いていた区間）----------
+// runs：[{t0, t1}]（実際の時刻）。el＝その時刻までに時計が動いた合計
+function elOfRuns(runs, w) { let el = 0; for (const r of runs) { if (w <= r.t0) break; el += Math.min(w, r.t1) - r.t0; } return el; }
+function wallOfRuns(runs, el, K, E) {
+  let acc = 0;
+  for (const r of runs) { const d = r.t1 - r.t0; if (el <= acc + d && (el > acc || (el === acc && acc === 0))) return r.t0 + (el - acc); acc += d; }
+  return el <= 0 ? K : E;
+}
+// 交代の区切り（実際の時刻・その時の時計）に合うように時計の記録を直す。
+// 2つの区切りの間で時計が動いた合計を、区切りの時計の差に合わせる：多ければ後ろから削り、少なければ止まっていた間（一番長いところの真ん中）に足す。
+// 区切りの間に交代はないので、足す・削る位置で誰の時間も変わらない。実際の時間より長く時計が動くことになる区切りは直さずに知らせる。
+export function correctClock(runs0, anchors, K, E, len) {
+  const runs = runs0.map((r) => ({ t0: r.t0, t1: r.t1 ?? E })).filter((r) => r.t1 > r.t0);
+  const pts = [{ w: K, cl: 0 }, ...anchors.map((a) => ({ w: a.w, cl: a.cl })).sort((a, b) => a.w - b.w || a.cl - b.cl), { w: E, cl: len }];
+  const out = [], errors = [];
+  let changed = false;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const A = pts[i], B = pts[i + 1];
+    let segs = runs.map((r) => ({ t0: Math.max(r.t0, A.w), t1: Math.min(r.t1, B.w) })).filter((r) => r.t1 > r.t0);
+    const have = segs.reduce((s, r) => s + r.t1 - r.t0, 0), need = B.cl - A.cl;
+    const diff = need - have;
+    if (Math.abs(diff) > 1000) {
+      if (need < 0 || need > B.w - A.w + 500) errors.push({ w0: A.w, w1: B.w, need, room: B.w - A.w });
+      else {
+        changed = true;
+        if (diff < 0) { // 多い分を後ろから削る
+          let cut = -diff;
+          for (let j = segs.length - 1; j >= 0 && cut > 0; j--) { const d = segs[j].t1 - segs[j].t0; const c = Math.min(d, cut); segs[j] = { t0: segs[j].t0, t1: segs[j].t1 - c }; cut -= c; }
+          segs = segs.filter((r) => r.t1 > r.t0);
+        } else { // 足りない分を、止まっていた間の長いところの真ん中に足す
+          let add = diff;
+          const gaps = []; let x = A.w;
+          for (const r of segs) { if (r.t0 > x) gaps.push({ t0: x, t1: r.t0 }); x = Math.max(x, r.t1); }
+          if (B.w > x) gaps.push({ t0: x, t1: B.w });
+          gaps.sort((a, b) => (b.t1 - b.t0) - (a.t1 - a.t0));
+          for (const g of gaps) { if (add <= 0) break; const d = Math.min(add, g.t1 - g.t0); const m = g.t0 + (g.t1 - g.t0 - d) / 2; segs.push({ t0: Math.round(m), t1: Math.round(m) + d }); add -= d; }
+          segs.sort((a, b) => a.t0 - b.t0);
+        }
+      }
+    }
+    out.push(...segs);
+  }
+  // つながっている区間はまとめる
+  const merged = [];
+  for (const r of out.sort((a, b) => a.t0 - b.t0)) { const l = merged[merged.length - 1]; if (l && r.t0 <= l.t1) l.t1 = Math.max(l.t1, r.t1); else merged.push({ ...r }); }
+  // 何を直したか（実際の時刻と、その時の時計）
+  const diffList = (a, b) => { // a にあって b にない区間
+    const res = [];
+    for (const r of a) { let parts = [{ ...r }]; for (const q of b) parts = parts.flatMap((p) => (q.t1 <= p.t0 || q.t0 >= p.t1 ? [p] : [{ t0: p.t0, t1: q.t0 }, { t0: q.t1, t1: p.t1 }].filter((z) => z.t1 - z.t0 >= 500))); res.push(...parts); }
+    return res;
+  };
+  const added = changed ? diffList(merged, runs).map((r) => ({ ...r, el0: elOfRuns(merged, r.t0), el1: elOfRuns(merged, r.t1) })) : [];
+  const removed = changed ? diffList(runs, merged).map((r) => ({ ...r, el0: elOfRuns(runs, r.t0), el1: elOfRuns(runs, r.t1) })) : [];
+  return { runs: changed ? merged : runs, changed: changed && (added.length + removed.length > 0), added, removed, errors };
 }
 
 export function toRunning(M, st, now = Date.now()) {
-  const out = { ...M, running: true, periods: [], stints: [], zero: [], empties: [], pp: [], ejections: [], timeouts: [] };
+  const out = { ...M, running: true, periods: [], stints: [], zero: [], empties: [], pp: [], ejections: [], timeouts: [], clock: {} };
   const conv = {};
   for (const p of M.periods) {
     const ps = st.periods[p.key];
@@ -111,7 +188,9 @@ export function toRunning(M, st, now = Date.now()) {
     };
     const fixed = M.fixed.includes(p.key);
     const rel = (w) => R(Math.max(0, Math.min(run, w - K)));
-    conv[p.key] = { rel, wallOf, fixed, E, K };
+    const cruns = runs.map((r) => ({ t0: r.t0, t1: r.t1 ?? E }));
+    const elOf = (w) => elOfRuns(cruns, w);
+    conv[p.key] = { rel, wallOf, elOf, runs: cruns, fixed, E, K };
     out.periods.push({ ...p, elapsed: R(run), len: p.status === 'done' ? R(run) : Math.max(R(run), len), playing: p.elapsed });
   }
   const C = (k) => conv[k];
@@ -132,8 +211,9 @@ export function toRunning(M, st, now = Date.now()) {
   // 記録の修正を使うピリオド：場所（5つのキュー）ごとに、区切りの実際の時刻を元の記録から引き継ぐ
   for (const [k, c] of Object.entries(conv)) {
     if (!c.fixed || !M.fixP?.[k]) continue;
-    const { stints, empties } = runningFixed(st, k, M.fixP[k], c);
+    const { stints, empties, clock, wallOf } = runningFixed(st, k, M.fixP[k], c);
     out.stints.push(...stints.filter((x) => x.to > x.from)); out.empties.push(...empties.filter((x) => x.to > x.from));
+    c.wallOf = wallOf; out.clock[k] = clock; // 交代の修正に合わせて直した時計の記録（パワープレー・退場・タイムアウトの時刻もこれで求める）
   }
   const src = (list, ownList) => [...own(ownList), ...list.filter((x) => C(x.period)?.fixed)];
   for (const x of src(M.pp, st.pp)) {
