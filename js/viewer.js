@@ -84,12 +84,12 @@ export function vPhys(m) {
   const runEl = R.periods.find((p) => p.key === st.current)?.elapsed || 0;
   let state;
   if (st.matchOver) state = '<span class="phst">試合終了</span><span class="phrt">試合終了時点の数字（止まっています）</span>';
-  else if (live) state = `<span class="phper">${periodLabel(st.current)}</span><span class="phclk">残り <b>${mmssUp(len - el)}</b></span><span class="phrun ${running ? 'on' : ''}">● ${running ? '時計が動いています' : '時計が止まっています'}</span><span class="phrt">${periodLabel(st.current)}の実際の経過 <b>${mmss(runEl)}</b></span>`;
+  else if (live) state = `<span class="phper">${periodLabel(st.current)}</span><span class="phclk">残り <b>${mmssUp(len - el)}</b></span><span class="phrun ${running ? 'on' : ''}">● ${running ? '時計が動いています' : '時計が止まっています'}</span><span class="phrt">実際の経過 <b>${mmss(runEl)}</b></span>`;
   else if (lastEnd) state = `<span class="phst">${st.periods['1H']?.status === 'done' && st.periods['2H']?.status !== 'done' ? 'ハーフタイム' : 'ピリオドの間'}</span><span class="phrt">${[...PERIODS].reverse().find((p) => st.periods[p.key].status === 'done')?.label || ''}終了時点の数字（止まっています）</span>`;
   else state = '<span class="phst">試合前</span>';
   const ss = syncState(opsC);
   if (!live && ss.cls === 'wait') setTimeout(() => { if (physMatch() === m.id) render(); }, 10500 - (Date.now() - (opsC.checkAt || opsC.cacheAt || 0)));
-  const head = `<div class="phtop">${state}<span class="sp"></span><span class="phright"><span class="phvs">vs ${esc(m.opponent || '')}</span><span class="phsy ${ss.cls}">● ${ss.txt}</span><button class="btn sm phsyb" id="phSync">⟳ 同期</button><span class="phro">閲覧専用</span><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></span></div>
+  const head = `<div class="phtop">${state}<span class="sp"></span><span class="phright"><span class="phvs">vs ${esc(m.opponent || '')}</span><span class="phsy ${ss.cls}">● ${ss.txt}</span><button class="btn sm phsyb" id="phSync">⟳ 同期</button><span class="phro">閲覧専用</span><a class="btn sm phrv" href="#/m/${m.id}/review">マッチレビュー ›</a><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></span></div>
     <div class="phlg"><span class="lgrun">0:00</span> 枠の中の黒い数字＝<b>実際の時間（ランニングタイム）</b>　<span class="ptv s">0:00</span> 緑の数字＝<b>プレーイングタイム（試合の時計）</b>　枠の色：<i class="org"></i>${mmss(OR)}〜 <i class="red"></i>${mmss(RD)}〜（設定で変えられる）</div>`;
 
   const bar = (ms) => `<div class="phbar"><i class="${col(ms)}" style="width:${Math.min(100, ms / MAX * 100).toFixed(1)}%"></i><b style="left:${(OR / MAX * 100).toFixed(1)}%"></b><b style="left:${(RD / MAX * 100).toFixed(1)}%"></b></div>

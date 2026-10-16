@@ -629,3 +629,5 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .phsort{display:grid;grid-template-columns:104px 112px minmax(0,1fr) minmax(0,1fr);gap:6px;padding:0 4px;margin:0 0 2px}
 .phsort .phsortl{grid-column:1}.phsort .seg.sr{grid-column:2/4;justify-self:start}.phsort .seg.st{grid-column:4;justify-self:start}
 .phsort .seg button{padding:5px 9px}
+.phtop .btn.phrv{font-weight:800;white-space:nowrap}
+.phtop{gap:10px 12px}.phright{gap:8px}
