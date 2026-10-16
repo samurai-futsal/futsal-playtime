@@ -38,7 +38,11 @@ export function paceSection(c, o = {}) {
   const axis = M0.periods.filter((p) => !p.extra || p.status !== 'none');
   // 名前の列は一番長い名前に合わせ、番号と名前を0:00のすぐ横にそろえる。右端は番号と合計を近づける
   const nameW = Math.max(2, ...order.map((pid) => last(pid).length)) * 13.5;
-  const X0 = 40 + nameW, MID = 46 + nameW, RW = 8, TW = o.tw || 840, rowH = o.rowH || 24, GH = o.gh || 138; // 右端の合計は出さない（流れを見る項目なので。2026-10-16）
+  // 下のグラフの見出しは、グラフの左の列に（グラフとは重ならない）。列の幅は見出しとチーム名の長さに合わせる
+  const tw = (t, fs) => [...String(t)].reduce((a, ch) => a + (ch.charCodeAt(0) < 0x2000 ? 0.6 : 1) * fs, 0);
+  const groups0 = (o.rows || ['shot', 'ent', 'fsp']).map((k) => PACE_ROWS[k]).filter(Boolean);
+  const labW = groups0.length ? Math.max(...groups0.flatMap(([lab, sub, , , upL, dnL]) => [tw(lab, 13), tw(sub, 10.5), tw('上＝' + (upL === 'own' ? own : upL), 11.5), tw('下＝' + (dnL === 'opp' ? opp : dnL), 11.5)])) + 16 : 0;
+  const X0 = Math.max(40 + nameW, Math.min(230, labW)), MID = 46 + nameW, RW = 8, TW = o.tw || 840, rowH = o.rowH || 24, GH = o.gh || 138; // 右端の合計は出さない（流れを見る項目なので。2026-10-16）
   const sumLen = axis.reduce((a, p) => a + p.len, 0);
   const HW = Object.fromEntries(axis.map((p) => [p.key, TW * p.len / sumLen]));
   const X = {}; let xx = X0; axis.forEach((p, i) => { if (i) xx += MID; X[p.key] = xx; xx += HW[p.key]; });
@@ -50,7 +54,7 @@ export function paceSection(c, o = {}) {
   const top = 44 + nLane * 14;
   const yEnd = top + order.length * rowH;
   const groups = rowKeys.map((k) => PACE_ROWS[k]).filter(Boolean);
-  const H = yEnd + 30 + groups.length * GH;
+  const H = yEnd + 16 + groups.length * GH;
   let s = `<svg class="pace" viewBox="0 0 ${PW} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Hiragino Sans, Noto Sans CJK JP, sans-serif">`;
   // 目盛り：ピリオドごとの経過時間（5分ごと）
   for (const p of axis) {
@@ -69,7 +73,7 @@ export function paceSection(c, o = {}) {
     if (o.tap) s += `<g class="prow" data-prow="${pid}"><rect class="phl" x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="${i % 2 === 0 ? '#EAF0F9' : 'transparent'}"/>`;
     else if (i % 2 === 0) s += `<rect x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="#EAF0F9"/>`;
     for (const p of axis) s += `<rect x="${X[p.key]}" y="${y + 2}" width="${HW[p.key]}" height="${rowH - 4}" fill="#F3F5F9" opacity=".9"/>`;
-    s += who(pid, 4, y) + `<text x="34" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`;
+    s += who(pid, X0 - 36 - nameW, y) + `<text x="${X0 - 6 - nameW}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`;
     axis.slice(1).forEach((p) => { s += who(pid, X[p.key] - MID + 10, y) + `<text x="${X[p.key] - MID + 40}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`; });
     for (const z of (M0.zero || []).filter((q) => q.pid === pid && X[q.period] != null)) s += `<rect x="${x(z.period, z.from) - 1.5}" y="${y + 1}" width="3" height="${rowH - 2}" fill="#E0832B"/>`;
     for (const st of M0.stints.filter((q) => q.pid === pid && X[q.period] != null)) {
@@ -80,22 +84,21 @@ export function paceSection(c, o = {}) {
   });
   for (const g of marks) { if (X[g.period] == null) continue; const gx = x(g.period, g.at); s += `<line x1="${gx}" x2="${gx}" y1="${top - 2}" y2="${yEnd}" stroke="${g.own ? GREEN : RED}" stroke-width="2"/>`; }
   // 下段：区切りごとの回数（上＝自チーム、下＝相手）
-  let gy = yEnd + 30;
+  let gy = yEnd + 10;
   const lowTop = gy;
   for (const [lab, sub, fo, fp, upL, dnL] of groups) {
-    // 見出しは、グラフの上の帯（グラフとは重ならない）に1行で。色の四角で上・下のチームを示す
-    const TH = 18;
-    s += `<rect x="0" y="${gy - 13}" width="${PW}" height="${TH}" rx="3" fill="#EEF2F8"/>`;
-    s += `<text x="6" y="${gy}" font-size="12" font-weight="800" fill="#0B2D6B">${lab}<tspan font-size="10" font-weight="500" fill="#56607A">${sub}</tspan>`
-      + `<tspan dx="18" font-size="10.5" font-weight="700" fill="#1F5FBF">■ ${esc(upL === 'own' ? own : upL)}（上）</tspan><tspan dx="12" font-size="10.5" font-weight="700" fill="${RED}">■ ${esc(dnL === 'opp' ? opp : dnL)}（下）</tspan></text>`;
-    // 区切りごとの回数を先に数え、一番多い数でも帯にかからない高さにする
+    // 区切りごとの回数を先に数え、一番多い数でも隣のグラフにかからない高さにする
     const bins = axis.map((p) => {
       const nMin = Math.ceil(p.len / BIN);
       const bo = Array(nMin).fill(0), bp = Array(nMin).fill(0);
       for (const e of c.evs) { if (e.period !== p.key) continue; const b = Math.min(nMin - 1, Math.floor(e.at / BIN)); if (fo(e)) bo[b]++; if (fp(e)) bp[b]++; }
       return { p, nMin, bo, bp };
     });
-    const half = (GH - TH - 8) / 2, mid = gy + TH - 13 + 4 + half;
+    const half = (GH - 10) / 2, mid = gy + 5 + half;
+    if (gy > lowTop) s += `<line x1="0" x2="${PW}" y1="${gy}" y2="${gy}" stroke="#D5DCE8" stroke-dasharray="3 3"/>`;
+    // 左の列：見出し・説明・上下のチーム（上の段は線より上、下の段は線より下に置いて、位置でもわかるように）
+    s += `<text x="6" y="${mid - 31}" font-size="13" font-weight="800" fill="#0B2D6B">${lab}</text><text x="6" y="${mid - 17}" font-size="10.5" fill="#56607A">${sub}</text>`
+      + `<text x="6" y="${mid - 3}" font-size="11.5" font-weight="700" fill="#1F5FBF">上＝${esc(upL === 'own' ? own : upL)}</text><text x="6" y="${mid + 14}" font-size="11.5" font-weight="700" fill="${RED}">下＝${esc(dnL === 'opp' ? opp : dnL)}</text>`;
     const mxUp = Math.max(1, ...bins.flatMap((b) => b.bo)), mxDn = Math.max(1, ...bins.flatMap((b) => b.bp));
     const unitU = Math.min(BIN < 60000 ? 9 : 11, (half - 13) / mxUp), unitD = Math.min(BIN < 60000 ? 9 : 11, (half - 13) / mxDn);
     for (const { p, nMin, bo, bp } of bins) {
