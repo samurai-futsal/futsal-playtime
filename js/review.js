@@ -152,8 +152,8 @@ export function vReview(m) {
     <p class="rvhint">初めは合計の長い順。見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）、「選手」を押すと背番号順。グラフも同じ順に並びます</p></div></section>`;
 
   // ---------- 2. 1回ごとの出場時間 ----------
-  // ピリオドごとに、選手の1回目・2回目…の出場時間。小さい数字＝入った〜出た（プレーイングタイムは残り時間、ランニングタイムはキックオフからの時間）
-  const clk = (p, v) => (runMode ? mmss(v) : mmss(p.len - v));
+  // ピリオドごとに、選手の1回目・2回目…の出場時間。小さい数字＝入った〜出た（経過時間。ランニングタイムはキックオフからの実際の時間）
+  const clk = (p, v) => mmss(v); // 経過時間（2026-10-16 決定。タイムラインと同じ向き）
   const onNow = new Set(M.live ? st.seats.filter(Boolean) : []);
   const perTables = M.periods.filter((p) => p.status !== 'none').map((p) => {
     const lists = Object.fromEntries(byNo.map((pid) => [pid, M.stints.filter((x) => x.period === p.key && x.pid === pid).sort((a, b) => a.from - b.from)]));
@@ -171,7 +171,7 @@ export function vReview(m) {
     }).join('');
     return `<div class="rvst2"><b>${p.label}</b><span>（${mmss(p.elapsed)}）</span></div><table class="rvtb rvper"><tr><th>選手</th>${hd}<th>合計</th><th>回数</th></tr>${body}</table>`;
   }).join('');
-  const s1b = `<section class="rvsec" id="rv1b"><div class="rvtt"><b>2. 1回ごとの出場時間</b><span>ピッチに入ってから出るまでの1回ごとの時間（${TT}）。大きい数字＝その回の時間、小さい数字＝入った〜出た（${runMode ? 'キックオフからの時間' : '時計の残り時間'}）。オレンジ＝1分未満。合計・回数は「1. 出場時間」と同じ</span></div>
+  const s1b = `<section class="rvsec" id="rv1b"><div class="rvtt"><b>2. 1回ごとの出場時間</b><span>ピッチに入ってから出るまでの1回ごとの時間（${TT}）。大きい数字＝その回の時間、小さい数字＝入った〜出た（${runMode ? 'キックオフからの実際の時間' : '試合の時計の経過時間'}）。オレンジ＝1分未満。合計・回数は「1. 出場時間」と同じ</span></div>
     <div class="rvbox">${perTables}</div></section>`;
 
   // ---------- 3. 出場タイムライン ----------
