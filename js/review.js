@@ -13,6 +13,7 @@ const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${M
 const mmssUp = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 let tick = null;
 const SORT0 = { col: 'total', dir: 'desc' }; // 初めは合計の長い順
+const tlHl = new Set(); // タイムラインでタップして強調している選手（もう一度タップで戻す）
 let sortState = { ...SORT0 }; // 出場時間の表とグラフの並べ替え
 const compactKey = 'fpt.reviewCompact';
 const isCompact = () => { try { return localStorage.getItem(compactKey) === '1'; } catch { return false; } };
@@ -174,29 +175,34 @@ export function vReview(m) {
     <div class="rvbox">${perTables}</div></section>`;
 
   // ---------- 3. 出場タイムライン ----------
+  // ピリオドごとに帯を分けて並べ、2つ目以降のピリオドの前に背番号と名前の列をもう一度置く（右の方の帯も誰か分かるように）
   const axis = M.periods.filter((p) => !p.extra || p.status !== 'none' || st.askExtra || cfg.times?.extra);
-  const total = axis.reduce((s, p) => s + p.len, 0);
-  const off = {}; let acc = 0; for (const p of axis) { off[p.key] = acc; acc += p.len; }
-  const pct = (v) => (v / total * 100).toFixed(3);
+  const pp = (p, v) => (v / p.len * 100).toFixed(3);
   // プレーイングタイムは残り時間（20:00 → 0:00）、ランニングタイムはキックオフからの時間（0:00 → 35:56）
-  const ticks = runMode
-    ? axis.map((p) => `<span style="left:${pct(off[p.key])}%">${p.label} 0:00</span><span style="left:${pct(off[p.key] + p.len / 2)}%">${mmss(p.len / 2)}</span>`).join('') + `<span style="left:100%">${mmss(axis[axis.length - 1]?.len || 0)}</span>`
-    : axis.map((p) => `<span style="left:${pct(off[p.key])}%">${p.label} ${mmss(p.len)}</span><span style="left:${pct(off[p.key] + p.len / 2)}%">${mmss(p.len / 2)}</span>`).join('') + '<span style="left:100%">0:00</span>';
-  const seps = axis.slice(1).map((p) => `<i class="tlsep" style="left:${pct(off[p.key])}%"></i>`).join('');
-  const future = axis.filter((p) => p.status === 'none').map((p) => `<i class="tlfut" style="left:${pct(off[p.key])}%;width:${pct(p.len)}%"></i>`).join('')
-    + (M.live ? `<i class="tlfut" style="left:${pct(off[M.current] + (M.periods.find((p) => p.key === M.current).elapsed))}%;width:${pct(M.periods.find((p) => p.key === M.current).len - M.periods.find((p) => p.key === M.current).elapsed)}%"></i>` : '');
+  const ticksOf = (p) => (runMode
+    ? `<span style="left:0%">${p.label} 0:00</span><span style="left:50%">${mmss(p.len / 2)}</span><span class="r" style="left:100%">${mmss(p.len)}</span>`
+    : `<span style="left:0%">${p.label} ${mmss(p.len)}</span><span style="left:50%">${mmss(p.len / 2)}</span><span class="r" style="left:100%">0:00</span>`);
+  const futureOf = (p) => (p.status === 'none' ? '<i class="tlfut" style="left:0%;width:100%"></i>'
+    : (M.live && p.key === M.current ? `<i class="tlfut" style="left:${pp(p, p.elapsed)}%;width:${pp(p, p.len - p.elapsed)}%"></i>` : ''));
+  const tlCols = (nm, mid, end) => `${nm}px ${axis.map((p, i) => (i ? `${mid}px ` : '') + `minmax(0,${p.len}fr)`).join(' ')} ${end}px`;
+  const tlStyle = `style="--tlc:${tlCols(140, 104, 96)};--tlcc:${tlCols(84, 30, 66)}"`;
+  const who = (pid, cls) => `<span class="${cls}">${badge(pid)}<span class="tln">${esc(last(pid))}</span></span>`;
   const tlRows = gkLast(order).map((pid) => {
-    const bands = M.stints.filter((s) => s.pid === pid && off[s.period] != null).map((s) => {
-      const d = s.to - s.from, l = pct(off[s.period] + s.from), w = pct(d);
-      const small = d / total < 0.045;
-      return `<span class="tlb ${mem(pid).pos === 'GK' ? 'gk' : ''}" style="left:${l}%;width:${w}%">${small ? '' : mmss(d)}</span>${small ? `<span class="tls" style="left:${(+l + +w / 2).toFixed(3)}%">${mmss(d)}</span>` : ''}`;
+    const tracks = axis.map((p, i) => {
+      const bands = M.stints.filter((s) => s.pid === pid && s.period === p.key).map((s) => {
+        const d = s.to - s.from, l = pp(p, s.from), w = pp(p, d);
+        const small = d / p.len < (isCompact() ? 0.16 : 0.09);
+        return `<span class="tlb ${mem(pid).pos === 'GK' ? 'gk' : ''}" style="left:${l}%;width:${w}%">${small ? '' : mmss(d)}</span>${small ? `<span class="tls" style="left:${(+l + +w / 2).toFixed(3)}%">${mmss(d)}</span>` : ''}`;
+      }).join('');
+      const zeros = (M.zero || []).filter((s) => s.pid === pid && s.period === p.key)
+        .map((s) => `<i class="tlz" style="left:${pp(p, s.from)}%" title="時計が止まっている間だけの出場"></i><span class="tlzl" style="left:${pp(p, s.from)}%">0:00</span>`).join('');
+      return (i ? who(pid, 'tlmid') : '') + `<div class="tlt">${futureOf(p)}${bands}${zeros}</div>`;
     }).join('');
-    const zeros = (M.zero || []).filter((s) => s.pid === pid && off[s.period] != null)
-      .map((s) => `<i class="tlz" style="left:${pct(off[s.period] + s.from)}%" title="時計が止まっている間だけの出場"></i><span class="tlzl" style="left:${pct(off[s.period] + s.from)}%">0:00</span>`).join('');
-    return `<div class="tlr"><span>${badge(pid)} ${esc(last(pid))}</span><div class="tlt">${seps}${future}${bands}${zeros}</div><b>${mmss(T[pid]?.total || 0)}</b></div>`;
+    return `<div class="tlr ${tlHl.has(pid) ? 'hl' : ''}" data-tl="${pid}" ${tlStyle}>${who(pid, 'tlnm')}${tracks}<b class="tlend">${badge(pid)}<span class="tlsum">${mmss(T[pid]?.total || 0)}</span></b></div>`;
   }).join('');
+  const tlHead = `<div class="tlr tlhead" ${tlStyle}><span></span>${axis.map((p, i) => (i ? '<span></span>' : '') + `<div class="tlax">${ticksOf(p)}</div>`).join('')}<span>合計</span></div>`;
   const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝先発のFP（背番号順）、そのあとは初めてピッチに入った順、GKは一番下。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : ''}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計${(M.zero || []).length ? '。オレンジの線と「0:00」＝時計が止まっている間だけの出場（セットプレーの守備などで入れ替えたとき。実際の時間に合わせるなら「記録の修正」で時刻を直す）' : ''}</span></div>
-    <div class="rvbox"><div class="tlr tlhead"><span></span><div class="tlax">${ticks}</div><span>合計</span></div>${tlRows}</div></section>`;
+    <div class="rvbox rvtl">${tlHead}${tlRows}</div></section>`;
 
   // ---------- 4. セットの出場時間 ----------
   const sets = setTable(M);
@@ -228,6 +234,7 @@ function bindReview(m) {
   return (root) => {
     const bar = document.querySelector('.bar'); if (bar) document.documentElement.style.setProperty('--barh', bar.offsetHeight + 'px');
     const sel = root.querySelector('#rvMatch'); if (sel) sel.onchange = () => { location.hash = `#/m/${sel.value}/review`; };
+    root.querySelectorAll('[data-tl]').forEach((r) => r.onclick = () => { const id = r.dataset.tl; if (tlHl.has(id)) tlHl.delete(id); else tlHl.add(id); r.classList.toggle('hl', tlHl.has(id)); });
     root.querySelectorAll('[data-sort]').forEach((th) => th.onclick = () => {
       const col = th.dataset.sort;
       if (!col) sortState = { col: '', dir: 'desc' };

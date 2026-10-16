@@ -631,3 +631,30 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .phsort .seg button{padding:5px 9px}
 .phtop .btn.phrv{font-weight:800;white-space:nowrap}
 .phtop{gap:10px 12px}.phright{gap:8px}
+/* 出場タイムライン：ピリオドごとに分け、間に背番号と名前。縞模様・タップで強調 */
+.rvtl .tlr[style]{grid-template-columns:var(--tlc);gap:0 8px}
+.rvw.compact .rvtl .tlr[style]{grid-template-columns:var(--tlcc)}
+.rvtl .tlr:not(.tlhead){border-radius:6px;padding:2px 4px;cursor:pointer}
+.rvtl .tlr:not(.tlhead):nth-child(even){background:#EAF0F9}
+.rvtl .tlr.hl{background:#FFE9A8!important;box-shadow:0 0 0 2px #F0A030 inset}
+.rvtl .tlnm,.rvtl .tlmid{display:flex;align-items:center;white-space:nowrap;overflow:hidden;align-self:end;height:20px}
+.rvtl .tlmid{font-size:13px;padding-left:8px;border-left:3px solid #C3CAD6;height:34px;align-self:stretch}
+.rvtl .tlmid .no{min-width:24px;height:20px;font-size:12px;margin-right:4px}
+.rvtl .tlax span.r{transform:translateX(-100%)}
+.tlend{display:inline-flex;align-items:center;justify-content:flex-end;gap:2px}.tlend .no{min-width:24px;height:20px;font-size:12px}
+.rvw.compact .rvtl .tlmid{font-size:11px;height:28px}
+.rvtl .tlnm{height:34px;align-self:stretch}
+/* 番号・名前・合計をそれぞれ縦にそろえる */
+.rvtl .tlnm,.rvtl .tlmid,.rvtl .tlend{display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:6px;align-items:center;font-size:14px;font-weight:700}
+.rvtl .tlnm .no,.rvtl .tlmid .no,.rvtl .tlend .no{width:28px;min-width:28px;height:20px;font-size:12px;margin:0;justify-self:center}
+.rvtl .tln{overflow:hidden;text-overflow:clip;white-space:nowrap}
+.rvtl .tlend{justify-content:stretch}.rvtl .tlsum{text-align:right;font-variant-numeric:tabular-nums;font-size:15px}
+.rvtl .tlmid{padding-left:8px}
+.rvtl .tlhead > span:last-child{text-align:right}
+/* 縮小表示：真ん中の列は番号だけにして帯の幅を確保 */
+.rvw.compact .rvtl .tlnm,.rvw.compact .rvtl .tlend{grid-template-columns:22px minmax(0,1fr);column-gap:4px;font-size:12px}
+.rvw.compact .rvtl .tlmid{grid-template-columns:22px;padding-left:4px;border-left-width:2px}
+.rvw.compact .rvtl .tlmid .tln{display:none}
+.rvw.compact .rvtl .no{width:22px;min-width:22px;height:16px;font-size:10px}
+.rvw.compact .rvtl .tlsum{font-size:12px}
+.rvw.compact .rvtl .tlr[style]{gap:0 5px}
