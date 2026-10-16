@@ -839,3 +839,4 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .sctb{border-collapse:collapse;margin:10px 0 4px;font-size:14px}.sctb th,.sctb td{padding:5px 10px;border-bottom:1px solid #E6EAF1;text-align:left}.sctb th{font-size:12px;color:#5F6B80}
 .sctb td.w{color:#1F5FBF;font-weight:700}.sctb td.o{color:#C8312B;font-weight:700}.sctb input{width:70px;font:inherit;padding:3px 6px}
 .mu.sm{font-size:12px}
+.scpos{font-size:14px;color:#3A4558;font-weight:600;align-self:center}

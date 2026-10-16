@@ -219,18 +219,19 @@ function statsTab(ctx) {
   switch (A.sub) {
     case 'sum': cols = [...base,
       N('shots', 'シュート<br><small>（SZ内）</small>', (d) => d.shots, { f: (x, d) => `${n(x, d.games)}<small>（${n(d.sz, d.games)}）</small>`, tot: (t) => `${g(t.A.shots)}<small>（${g(t.A.sz)}）</small>` }),
+      N('son', 'シュート<br>関与', (d) => d.on.shot, { cls: 'w', tot: tm((t) => t.A.shots) }), N('oson', '被シュート<br>関与', (d) => d.on.oshot, { cls: 'o', tot: tm((t) => t.B.shots) }),
       N('goals', '得点', (d) => d.goals, { tot: (t) => g(t.score.own) }), N('assists', 'アシスト', (d) => d.assists), N('inv', '進入関与', (d) => d.inv),
       N('pf', 'パス<br>出し手', (d) => d.passFrom), N('pt', 'パス<br>受け手', (d) => d.passTo), N('rec', 'リカバリー', (d) => d.rec, { tot: tm((t) => t.rec) }), N('lost', 'ロスト', (d) => d.lost, { tot: tm((t) => t.lost) }),
       { ...PM('spm', 'シュート<br>／分', (d) => d.on.shot), tot: tmPm((t) => t.A.shots) }, { ...PM('ospm', '被シュート<br>／分', (d) => d.on.oshot), tot: tmPm((t) => t.B.shots) },
       { ...PM('epm', 'Z4・SZ進入<br>／分', ent), tot: tmPm((t) => t.A.z4 + t.A.szE) }, { ...PM('oepm', '被Z4・SZ<br>進入／分', oent), tot: tmPm((t) => t.B.z4 + t.B.szE) },
       N('pmv', '得失点±', (d) => d.on.gf - d.on.ga, { f: (x, d) => { const v = avg && d.games ? (x / d.games).toFixed(1) : x; return `<b>${x > 0 ? '+' : ''}${v}</b>`; }, tot: (t) => `${t.score.own - t.score.opp > 0 ? '+' : ''}${g(t.score.own - t.score.opp)}` })];
-      note = 'シュート・得点などは本人のプレー。／分 と得失点±は、その選手がピッチにいる間のチームの数（1分あたり＝合計の本数÷合計の出場時間）。'; break;
+      note = 'シュート・得点などは本人のプレー。シュート関与・被シュート関与（本数）、／分、得失点±は、その選手がピッチにいる間のチームの数（1分あたり＝合計の本数÷合計の出場時間）。'; break;
     case 'shot': cols = [...base,
       N('shots', '合計', (d) => d.shots, { grp: '本人のシュート', tot: tm((t) => t.A.shots) }), N('sz', 'SZ内', (d) => d.sz, { grp: '本人のシュート', tot: tm((t) => t.A.sz) }),
       N('in', '枠内', (d) => d.in, { grp: '本人のシュート', tot: tm((t) => t.A.in) }), N('out', '枠外', (d) => d.out, { grp: '本人のシュート', tot: tm((t) => t.A.out) }), N('block', 'ブロック', (d) => d.block, { grp: '本人のシュート', tot: tm((t) => t.A.block) }),
       { k: 'rate', grp: '本人のシュート', h: '決定率', v: (d) => (d.shots ? d.goals / d.shots : -1), f: (x, d) => (d.shots ? Math.round(d.goals / d.shots * 100) + '%' : '—'), tot: (t) => (t.A.shots ? Math.round(t.A.goals / t.A.shots * 100) + '%' : '—') },
-      N('os', 'シュート', (d) => d.on.shot, { grp: '出場中', tot: tm((t) => t.A.shots) }), { ...PM('osm', '／分', (d) => d.on.shot), grp: '出場中', tot: tmPm((t) => t.A.shots) },
-      N('oo', '被シュート', (d) => d.on.oshot, { grp: '出場中', tot: tm((t) => t.B.shots) }), { ...PM('oom', '／分', (d) => d.on.oshot), grp: '出場中', tot: tmPm((t) => t.B.shots) },
+      N('os', 'シュート<br>関与', (d) => d.on.shot, { grp: '出場中', tot: tm((t) => t.A.shots) }), { ...PM('osm', '／分', (d) => d.on.shot), grp: '出場中', tot: tmPm((t) => t.A.shots) },
+      N('oo', '被シュート<br>関与', (d) => d.on.oshot, { grp: '出場中', tot: tm((t) => t.B.shots) }), { ...PM('oom', '／分', (d) => d.on.oshot), grp: '出場中', tot: tmPm((t) => t.B.shots) },
       N('od', '差', (d) => d.on.shot - d.on.oshot, { grp: '出場中', tot: tm((t) => t.A.shots - t.B.shots) })];
       note = 'シュートは得点を含む（OGは除く）。決定率＝得点÷シュート。'; break;
     case 'goal': cols = [...base, N('goals', '得点', (d) => d.goals, { grp: '本人', tot: tm((t) => t.score.own) }), N('assists', 'アシスト', (d) => d.assists, { grp: '本人' }),

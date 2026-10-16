@@ -23,26 +23,25 @@ export function vSportscode(m) {
   const M = matchModel(st, Date.now(), m.fix); const R = toRunning(M, st);
   const gn = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
   const evs = evC.list.filter((e) => !e.deleted);
-  const ko = m.scKO || {}; const shift = m.scShift || {};
+  const shift = {};
   const lead = loadLead();
   const ps = R.periods.filter((p) => p.status !== 'none' && st.periods[p.key]?.kickT != null);
   const name = (pid) => { const p = playerById(pid); return p ? `${p.last} ${p.first || ''}`.trim() : ''; };
   const rel = (k, at) => R.relOf(k, at);
+  // 前半のキックオフを 0:00 とし、後半（延長も）は前のピリオドの終わりのすぐあとに続ける（2026-10-16 決定。細かい位置は Sportscode 側で合わせる）
+  const ko = {}; { let t = 0; for (const p of ps) { ko[p.key] = +t.toFixed(3); t += p.elapsed / 1000; } }
   const cards = ps.map((p, i) => {
     const k0 = ko[p.key]; const prev = ps[i - 1];
     const goals = evs.filter((e) => e.period === p.key && (e.kind === 'goal' || e.kind === 'conc')).sort((a, b) => a.at - b.at);
     const vt = (e) => (k0 == null ? '—' : fmtT(+k0 + (+shift[p.key] || 0) + rel(p.key, e.at) / 1000));
-    const gt = goals.length ? `<table class="sctb"><tr><th>得点・失点</th><th>試合の時計（経過）</th><th>動画の時刻</th></tr>${goals.map((e) => `<tr><td class="${e.kind === 'goal' ? 'w' : 'o'}">${e.kind === 'goal' ? '得点' : '失点'}${e.kind === 'goal' && e.pid && e.pid !== OPP_OG && e.pid !== UNKNOWN ? '（' + esc(name(e.pid)) + '）' : ''}</td><td>${fmtT(e.at / 1000).replace(/\.0$/, '')}</td><td><b>${vt(e)}</b></td></tr>`).join('')}</table><p class="mu sm">動画のこの時刻にゴールの場面があるか確かめてください。ずれているときは「全体をずらす」で直します</p>` : '<p class="mu sm">このピリオドに得点・失点はありません（動画の時刻を確かめるときは、キックオフの位置を見直してください）</p>';
+    const gt = goals.length ? `<table class="sctb"><tr><th>得点・失点</th><th>試合の時計（経過）</th><th>XMLの時刻</th></tr>${goals.map((e) => `<tr><td class="${e.kind === 'goal' ? 'w' : 'o'}">${e.kind === 'goal' ? '得点' : '失点'}${e.kind === 'goal' && e.pid && e.pid !== OPP_OG && e.pid !== UNKNOWN ? '（' + esc(name(e.pid)) + '）' : ''}</td><td>${fmtT(e.at / 1000).replace(/\.0$/, '')}</td><td><b>${vt(e)}</b></td></tr>`).join('')}</table><p class="mu sm">XMLの時刻です。Sportscode でタイムラインを動画に合わせたあと、ゴールの場面と合っているかの確認に使えます</p>` : '<p class="mu sm">このピリオドに得点・失点はありません</p>';
     return `<div class="card sccard"><h3>${p.label}<small>実際の長さ ${fmtT(p.elapsed / 1000).replace(/\.\d$/, '')}（キックオフから時計が0:00になるまで）</small></h3>
-      <div class="scrow"><label>動画上のキックオフの位置<input data-ko="${p.key}" value="${fmtT(k0)}" placeholder="例 2:04.5"></label>
-        <label>全体をずらす（秒）<input data-shift="${p.key}" value="${shift[p.key] ?? ''}" placeholder="0" inputmode="decimal"></label>
-        ${prev ? `<button class="btn sm" data-follow="${p.key}" title="ハーフタイムをカットして、前のピリオドのすぐあとに続く1本の動画のとき">${prev.label}のすぐあとに続く</button>` : ''}
-        <span class="sp"></span><button class="btn pri" data-dl="${p.key}" ${k0 == null ? 'disabled' : ''}>${p.label}のXMLを書き出す</button></div>${gt}</div>`;
+      <div class="scrow"><span class="scpos">XMLの ${fmtT(k0).replace(/\.0$/, '')} ＝ ${p.label}のキックオフ${prev ? `（${prev.label}の終わりのすぐあと）` : ''}</span><span class="sp"></span><button class="btn pri" data-dl="${p.key}">${p.label}のXMLを書き出す</button></div>${gt}</div>`;
   }).join('');
   const leadT = `<table class="sctb"><tr><th>コード</th><th>イベントの何秒前から</th><th>何秒後まで</th></tr>${Object.keys(DEFAULT_LEAD).map((k) => `<tr><td>${LEAD_LABEL[k]}</td><td><input data-lead="${k}:0" value="${lead[k][0]}" inputmode="decimal"></td><td><input data-lead="${k}:1" value="${lead[k][1]}" inputmode="decimal"></td></tr>`).join('')}</table>`;
   const html = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › Sportscode（XML）</div>
     <h1>Sportscode（XML）の書き出し</h1>
-    <p class="mu">動画上のキックオフの位置を入れると、MATCH PLAYの実際の時刻から動画の時刻を計算して、ピリオドごとのXMLを書き出します（前半・後半は別のファイル）。動画はハーフタイムをカットしている前提です。</p>
+    <p class="mu">前半のキックオフを 0:00 として、MATCH PLAYの実際の時刻（ランニングタイム）でピリオドごとのXMLを書き出します（前半・後半は別のファイル）。後半は前半の終わりのすぐあとに続けます。動画との位置合わせは Sportscode 側で行ってください。</p>
     <div class="card"><div class="scrow"><label class="ck"><input type="checkbox" id="scP" ${opt.players ? 'checked' : ''}>出場の帯（#背番号の行。時計が動いていた区間ごと）</label>
       <label class="ck"><input type="checkbox" id="scE" ${opt.events ? 'checked' : ''}>イベント（今のコードウィンドウと同じコード名：シュート、ゾーン4進入、SETPLAY AT、ROBO、ファウルなど）${evs.length ? `　${evs.length}件` : '　（まだありません）'}</label></div></div>
     ${ps.length ? cards : '<div class="card empty">キックオフを押したピリオドがありません</div>'}
@@ -52,14 +51,6 @@ export function vSportscode(m) {
     bind: (root) => {
       root.querySelector('#scP').onchange = (e) => { opt.players = e.target.checked; };
       root.querySelector('#scE').onchange = (e) => { opt.events = e.target.checked; };
-      root.querySelectorAll('[data-ko]').forEach((i) => i.onchange = () => { const v = parseT(i.value); if (i.value.trim() && v == null) { toast('「2:04.5」か「124.5」の形で入れてください'); return; } put(teamPath('matches', m.id), { scKO: { ...ko, [i.dataset.ko]: v } }); m.scKO = { ...ko, [i.dataset.ko]: v }; render(); });
-      root.querySelectorAll('[data-shift]').forEach((i) => i.onchange = () => { const v = i.value.trim() === '' ? null : +i.value; if (v != null && !Number.isFinite(v)) return; put(teamPath('matches', m.id), { scShift: { ...shift, [i.dataset.shift]: v } }); m.scShift = { ...shift, [i.dataset.shift]: v }; render(); });
-      root.querySelectorAll('[data-follow]').forEach((b) => b.onclick = () => {
-        const i = ps.findIndex((p) => p.key === b.dataset.follow); const prev = ps[i - 1];
-        if (ko[prev.key] == null) { toast(`先に${prev.label}のキックオフの位置を入れてください`); return; }
-        const v = +(ko[prev.key] + prev.elapsed / 1000).toFixed(3);
-        put(teamPath('matches', m.id), { scKO: { ...ko, [b.dataset.follow]: v } }); m.scKO = { ...ko, [b.dataset.follow]: v }; render();
-      });
       root.querySelectorAll('[data-lead]').forEach((i) => i.onchange = () => { const [k, j] = i.dataset.lead.split(':'); const L = loadLead(); L[k] = [...L[k]]; L[k][+j] = +i.value || 0; try { localStorage.setItem(LKEY, JSON.stringify(L)); } catch {} });
       root.querySelectorAll('[data-dl]').forEach((b) => b.onclick = () => {
         const k = b.dataset.dl; const p = ps.find((x) => x.key === k);
