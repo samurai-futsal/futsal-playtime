@@ -7,6 +7,7 @@ import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
 import { matchModel, toRunning, playerTable, setTable, playedTime, periodSig, entryOrder } from './model.js';
 import { esc, fmtShort, fmtDate } from './ui.js';
 import { render } from './views.js';
+import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge } from './review58.js';
 
 const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -49,28 +50,34 @@ export function vReview(m) {
   const badge = (pid) => `<span class="no ${mem(pid).pos === 'GK' ? 'gk' : 'fp'}">${esc(mem(pid).no ?? '')}</span>`;
   const played = playedTime(M);
   const started = M.periods.some((p) => p.status !== 'none');
+  // イベントを使う項目（5〜8）と得点・失点の線（2026-10-16 決定）
+  const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
+  const R = teamStats(M0, evs, goalName);
+  const C = { M0, order, byNo, mem, last, badge, gkLast, evs, goalName, R, T0: playerTable(M0), own: S.team?.name || '自チーム', opp: m.opponent || '相手' };
+  const marks = evs.length ? goalMarks(R, C) : [];
+  const half = (k) => `${R.score.own[k] ?? 0}−${R.score.opp[k] ?? 0}`;
 
   // ---------- 試合の状況 ----------
   const pDone = (k) => st.periods[k]?.status === 'done';
   let state;
-  if (st.matchOver) state = '<span class="rvst done">試合終了</span>';
+  if (st.matchOver) state = `<span class="rvst done">試合終了</span>${evs.length ? scoreBadge(C, R) + `<span class="rvclk">（前半 ${half('1H')}）</span>` : ''}`;
   else if (M.live) {
     const len = periodLen(cfg, st.current);
-    state = `<span class="rvst ${running ? 'run' : ''}">${running ? '試合進行中' : '停止中'}</span><span class="rvclk">${periodLabel(st.current)}　残り <b>${mmssUp(len - nowElapsed(st))}</b></span>`;
-  } else if (st.askExtra) state = '<span class="rvst half">後半終了</span>';
-  else if (pDone('1H') && !pDone('2H')) state = '<span class="rvst half">ハーフタイム</span><span class="rvclk">前半終了</span>';
+    state = `<span class="rvst ${running ? 'run' : ''}">${running ? '試合進行中' : '停止中'}</span><span class="rvclk">${periodLabel(st.current)}　残り <b>${mmssUp(len - nowElapsed(st))}</b></span>${evs.length ? scoreBadge(C, R) : ''}`;
+  } else if (st.askExtra) state = `<span class="rvst half">後半終了</span>${evs.length ? scoreBadge(C, R) : ''}`;
+  else if (pDone('1H') && !pDone('2H')) state = `<span class="rvst half">ハーフタイム</span><span class="rvclk">前半終了</span>${evs.length ? scoreBadge(C, R) : ''}`;
   else if (pDone('2H') && !st.matchOver) state = '<span class="rvst half">延長前</span>';
   else state = '<span class="rvst">開始前</span>';
 
   const others = matchesOf(m.activityId).filter((x) => x.status === 'playing' || x.status === 'done' || x.id === m.id);
   const sw = `<select id="rvMatch" class="rvsel">${others.map((x) => `<option value="${x.id}" ${x.id === m.id ? 'selected' : ''}>vs ${esc(x.opponent)}（${fmtShort(x.date)}）</option>`).join('')}</select>`;
   // 項目の番号は固定（1〜8）。出ていない項目は番号が飛ぶので、上部にその理由を書く
-  const jumps = [[1, '出場時間', 'rv1'], [2, '1回ごと', 'rv1b'], [3, 'タイムライン', 'rv2'], [4, 'セット', 'rv3'], ...(evs.length ? [[6, 'セット別', 'rv4b']] : [])].map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
+  const jumps = [[1, '出場時間', 'rv1'], [2, '1回ごと', 'rv1b'], [3, 'タイムライン', 'rv2'], [4, 'セット', 'rv3'], ...(evs.length ? [[5, 'ペース', 'rv5'], [6, 'セット別', 'rv4b'], [7, 'スコア', 'rv7'], [8, 'スタッツ', 'rv8']] : [])].map(([n, t, id]) => `<a class="rvjp" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a>${state}<span class="sp"></span>${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
         <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで書き出す</button></div>
-      <div class="rvjumps">${jumps}<span class="rvnote">番号が飛んでいる項目：${evs.length ? '' : '6 セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントを入力すると表示）、'}5 マッチ・ペース・7 スコアとチームスタッツ・8 スタッツまとめ（まだアプリにない項目。今後の版で表示）</span>
+      <div class="rvjumps">${jumps}${evs.length ? '' : '<span class="rvnote">番号が飛んでいる項目：5 マッチ・ペース・6 セットごとのシュート・ゾーン進入・FINISH SET PLAY・7 スコアとチームスタッツ・8 スタッツまとめ（イベントを入力すると表示）</span>'}
         ${M.fixed.length ? `<span class="rvfix">記録の修正を反映：${M.fixed.map((k) => periodLabel(k)).join('・')}</span>` : ''}
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
 
@@ -177,7 +184,8 @@ export function vReview(m) {
   // ---------- 3. 出場タイムライン ----------
   // ピリオドごとに帯を分けて並べ、2つ目以降のピリオドの前に背番号と名前の列をもう一度置く（右の方の帯も誰か分かるように）
   const axis = M.periods.filter((p) => !p.extra || p.status !== 'none' || st.askExtra || cfg.times?.extra);
-  const pp = (p, v) => (v / p.len * 100).toFixed(3);
+  const pp = (p, v) => (Math.max(0, Math.min(1, v / p.len)) * 100).toFixed(3);
+  const gAt = (g) => (runMode && M.relOf ? M.relOf(g.period, g.at) : g.at); // ランニングタイムでは実際の時間に置きかえる
     // 目盛りは経過時間（0:00→）。プレーイングタイムもランニングタイムも同じ向き（2026-10-16 決定）
   const ticksOf = (p) => `<span style="left:0%">${p.label} 0:00</span><span style="left:50%">${mmss(p.len / 2)}</span><span class="r" style="left:100%">${mmss(p.len)}</span>`;
   const futureOf = (p) => (p.status === 'none' ? '<i class="tlfut" style="left:0%;width:100%"></i>'
@@ -194,12 +202,18 @@ export function vReview(m) {
       }).join('');
       const zeros = (M.zero || []).filter((s) => s.pid === pid && s.period === p.key)
         .map((s) => `<i class="tlz" style="left:${pp(p, s.from)}%" title="時計が止まっている間だけの出場"></i><span class="tlzl" style="left:${pp(p, s.from)}%">0:00</span>`).join('');
-      return (i ? who(pid, 'tlmid') : '') + `<div class="tlt">${futureOf(p)}${bands}${zeros}</div>`;
+      const gl = marks.filter((g) => g.period === p.key).map((g) => `<i class="tlgl ${g.own ? 'own' : 'opp'}" style="left:${pp(p, gAt(g))}%"></i>`).join('');
+      return (i ? who(pid, 'tlmid') : '') + `<div class="tlt">${futureOf(p)}${bands}${zeros}${gl}</div>`;
     }).join('');
     return `<div class="tlr ${tlHl.has(pid) ? 'hl' : ''}" data-tl="${pid}" ${tlStyle}>${who(pid, 'tlnm')}${tracks}<b class="tlend">${badge(pid)}<span class="tlsum">${mmss(T[pid]?.total || 0)}</span></b></div>`;
   }).join('');
-  const tlHead = `<div class="tlr tlhead" ${tlStyle}><span></span>${axis.map((p, i) => (i ? '<span></span>' : '') + `<div class="tlax">${ticksOf(p)}</div>`).join('')}<span>合計</span></div>`;
-  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝先発のFP（背番号順）、そのあとは初めてピッチに入った順、GKは一番下。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : '（目盛りは試合の時計の経過時間）'}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計${(M.zero || []).length ? '。オレンジの線と「0:00」＝時計が止まっている間だけの出場（セットプレーの守備などで入れ替えたとき。実際の時間に合わせるなら「記録の修正」で時刻を直す）' : ''}</span></div>
+  // 得点・失点のラベル：目盛りの上の段（重なるときは段をずらす）。時刻は経過時間
+  const lane = (p) => { const ls = stagger(marks.filter((g) => g.period === p.key).map((g) => ({ ...g, x: +pp(p, gAt(g)) })), isCompact() ? 44 : 26);
+    if (!marks.length) return '';
+    const n = Math.max(1, ...ls.map((l) => l.row + 1));
+    return `<div class="tlgoal" style="height:${n * 15 + 2}px">${ls.map((l) => `<span class="${l.own ? 'own' : 'opp'} ${l.x > 88 ? 'r' : l.x < 12 ? 'l' : ''}" style="left:${l.x}%;top:${l.row * 15}px">${esc(l.label)}</span>`).join('')}</div>`; };
+  const tlHead = `<div class="tlr tlhead" ${tlStyle}><span></span>${axis.map((p, i) => (i ? '<span></span>' : '') + `<div class="tlaxw">${lane(p)}<div class="tlax">${ticksOf(p)}</div></div>`).join('')}<span>合計</span></div>`;
+  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝先発のFP（背番号順）、そのあとは初めてピッチに入った順、GKは一番下。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : '（目盛りは試合の時計の経過時間）'}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計${marks.length ? '。緑＝得点・赤＝失点の線（上の文字は試合の時計の経過時間と得点者）' : ''}${(M.zero || []).length ? '。オレンジの線と「0:00」＝時計が止まっている間だけの出場（セットプレーの守備などで入れ替えたとき。実際の時間に合わせるなら「記録の修正」で時刻を直す）' : ''}</span></div>
     <div class="rvbox rvtl">${tlHead}${tlRows}</div></section>`;
 
   // ---------- 4. セットの出場時間 ----------
@@ -225,7 +239,7 @@ export function vReview(m) {
     <div class="rvbox"><table class="rvtb rvset2"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l}</th>`).join('')}</tr>${body}</table></div></section>`;
   }
 
-  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${s4b}</div></div>`, bind: bindReview(m) };
+  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${evs.length ? paceSection(C) : ''}${s4b}${evs.length ? teamSection(C) + playerSection(C) : ''}</div></div>`, bind: bindReview(m) };
 }
 
 function bindReview(m) {

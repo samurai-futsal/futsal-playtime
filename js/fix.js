@@ -2,7 +2,8 @@
 // (match.fix) and adds one history line to fixlog with the state just before it, so 「1つ戻す」 and the
 // history's 「ここに戻す」 work on any device (also recorded at once). No draft, no save button. The MATCH PLAY op log is never changed:
 // the review and analysis use the saved correction instead of the MATCH PLAY record for that period.
-import { S as D, playerById, opts, put, teamPath, watchOps, watchFixLog, addFixLog, updFixLog, teamSettings } from './store.js';
+import { S as D, playerById, opts, put, teamPath, watchOps, watchFixLog, addFixLog, updFixLog, teamSettings, watchEvents } from './store.js';
+import { recheckEvents } from './evinput.js';
 import { replay, periodLen, PERIODS, periodLabel } from './engine.js';
 import { replayToFix, seatWalk, fixData, checkFix, periodSig, basisOk, newEvId, matchModel, whyNot, toRunning } from './model.js';
 import { $, esc, openModal, closeModal, confirmBox, toast, optionTags } from './ui.js';
@@ -52,6 +53,8 @@ function writeState(m, state, origin = false, infoKeys = INFO_KEYS) {
   const fix = origin ? null : { periods, savedAt: Date.now(), dev: devName() };
   put(teamPath('matches', m.id), { fix, ...info });
   Object.assign(m, { fix, ...info }); // すぐ画面に出す（同期の知らせを待たない）
+  // 交代などを直したら、イベントの⚠（要確認）を直した記録で判定し直す（2026-10-16 決定）
+  if (ctx.st) { const evC = watchEvents(m.id); if (evC.ready) recheckEvents(m, matchModel(ctx.st, Date.now(), m.fix), evC.list); }
 }
 
 // ---------- view ----------
@@ -70,12 +73,13 @@ function clockNote(m, st, sig, k) {
 export function vFix(m) {
   const opsC = watchOps(m.id);
   if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
+  watchEvents(m.id); // 直したあとに⚠を付け直すため、イベントも読んでおく
   if (ui.m !== m.id) { ui = { tab: 'sub', period: null, m: m.id }; dropDraft(m); }
   setLeaveGuard(null);
   const cfg = cfgOf(m);
   const st = replay(opsC.list, cfg); const sig = periodSig(opsC.list);
   const d = baseline(m, st, sig);
-  ctx = { origin: baseline({ ...m, fix: null }, st, sig) };
+  st.sig = sig; ctx = { origin: baseline({ ...m, fix: null }, st, sig), st };
   const keys = PERIODS.map((p) => p.key).filter((k) => d.periods[k]);
   const live = PERIODS.find((p) => st.periods[p.key].status === 'live');
   const crumb = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 記録の修正</div>`;
@@ -176,13 +180,12 @@ function tabEject(m, d, k, fp, cfg) {
     const fill = fp.ev.find((x) => x.kind === 'fill' && x.seat === e.seat && x.at >= e.at && !fp.ev.some((y) => y.kind === 'eject' && y.seat === e.seat && y.at > e.at && y.at <= x.at));
     const early = fill && fill.at - e.at < 120000;
     return `<tr><td>${remEl(fp, e.at)}</td><td>${nm(cfg, outOf(fp, e))}</td>
-      <td><select data-reason="${e.id}"><option value="">（未選択）</option><option value="red" ${e.reason === 'red' ? 'selected' : ''}>レッド</option><option value="y2" ${e.reason === 'y2' ? 'selected' : ''}>イエロー2枚目</option></select></td>
       <td>${fill ? `${remEl(fp, fill.at)}<br>${nm(cfg, fill.in)}${early ? ' <span class="tag">2分経過前（失点による補充）</span>' : ''}` : '<span class="mu">補充なし（最後まで空席）</span>'}</td>
       <td class="fxact"><button class="btn sm" data-ejedit="${e.id}">直す</button><button class="btn sm dangerline" data-ejdel="${e.id}">退場を削除</button></td></tr>`;
-  }).join('') : '<tr><td colspan="5" class="mu" style="text-align:center">このピリオドの退場はありません</td></tr>';
+  }).join('') : '<tr><td colspan="4" class="mu" style="text-align:center">このピリオドの退場はありません</td></tr>';
   return `<div class="card"><div class="row between"><h2 class="h" style="margin:0">${periodLabel(k)}の退場・空席</h2><button class="btn" id="fxAddEj">＋ 退場を追加</button></div>
-    <table class="fxtb"><tr><th>退場の時刻</th><th>退場した選手</th><th>理由</th><th>補充（時刻・選手）</th><th></th></tr>${rows}</table>
-    <p class="mu">空席の時間は誰の出場時間にも入りません。退場を削除すると、退場した選手は補充の時刻まで出場していたことになります。理由はレッドカードのイベントにも使います（④）。</p></div>`;
+    <table class="fxtb"><tr><th>退場の時刻</th><th>退場した選手</th><th>補充（時刻・選手）</th><th></th></tr>${rows}</table>
+    <p class="mu">空席の時間は誰の出場時間にも入りません。退場を削除すると、退場した選手は補充の時刻まで出場していたことになります。カードはイベント入力のファールで記録します。</p></div>`;
 }
 
 // ---------- パワープレー ----------
@@ -311,7 +314,6 @@ function bindFix(root, m, d, k, cfg, st, sig) {
   root.addEventListener('change', (e) => {
     const t = e.target;
     if (t.dataset.lu != null) { const i = +t.dataset.lu; const old = fp.lineup[i]; commit('スタメン', `場所${i + 1}のスタメン ${plain(cfg, old)} → ${plain(cfg, t.value)}`, () => { fp.lineup[i] = t.value; }); }
-    if (t.dataset.reason) { const ev = fp.ev.find((x) => x.id === t.dataset.reason); const L = { '': '未選択', red: 'レッド', y2: 'イエロー2枚目' }; commit('退場', `${plain(cfg, outOf(fp, ev))} の退場の理由 ${L[ev.reason || '']} → ${L[t.value]}`, () => { ev.reason = t.value || null; }); }
     if (t.dataset.info) { const f = t.dataset.info; const lab = { date: '日付', opponent: '対戦相手', category: '試合の区分', kickoff: 'キックオフ時刻', venue: '会場', memo: 'メモ' }[f]; const old = d.info[f]; if ((f === 'date' || f === 'opponent') && !t.value.trim()) { toast('日付と対戦相手は空にできません'); t.value = old; return; } if (old !== t.value) commit('試合情報', `${lab} ${old || '（なし）'} → ${t.value || '（なし）'}`, () => { d.info[f] = t.value; }); }
     if (t.id === 'fxLogType') { ui.logType = t.value; render(); }
   });

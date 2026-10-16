@@ -10,6 +10,8 @@
 //   teams/{teamId}/activities/{id}     活動（members: {playerId: {no}} = 招集メンバー）
 //   teams/{teamId}/matches/{id}        試合（members: {playerId: {no,pos,pp,order}} = 試合メンバー）
 
+import { todoCount } from './events.js';
+
 export const DEFAULT_OPTIONS = {
   activityTypes: ['合宿', '大会', 'リーグ戦の節', '遠征', '練習試合'],
   matchCategories: ['予選リーグ', '決勝トーナメント', '順位決定戦'],
@@ -122,7 +124,7 @@ export function matchesOf(activityId) {
 // 試合の状態（spec 14章）。①の段階では「準備中」「準備完了」まで。
 export function matchStatus(m) {
   if (m.status === 'playing') return '試合中';
-  if (m.status === 'done') return m.incomplete ? '未入力あり' : '記録完了';
+  if (m.status === 'done') return m.evTodo > 0 ? '未入力あり' : '記録完了';
   return Object.keys(m.members || {}).length >= 5 ? '準備完了' : '準備中';
 }
 // A player counts as 出場済み once a match they are a member of has started. Used to protect records.
@@ -222,13 +224,21 @@ export function addFixLog(matchId, rec) {
 // ---------- イベント（teams/{t}/matches/{m}/events/{id}、spec 6章・13章） ----------
 // 1件ずつの文書。直すときは上書き、消すときは deleted:true（ほかの端末にも消したことが届く）。
 const evCache = {};
+const todoSent = {}; // 同じ数を何度も書かない
 export function watchEvents(matchId) {
   if (evCache[matchId]) return evCache[matchId];
   const c = (evCache[matchId] = { list: [], ready: false });
   const { onSnapshot, collection } = F.fsM;
   onSnapshot(collection(F.db, 'teams', S.teamId, 'matches', matchId, 'events'), { includeMetadataChanges: true }, (snap) => {
     track('ev_' + matchId, snap);
-    c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() })); c.ready = true; emit();
+    c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() })); c.ready = true;
+    // 試合の状態「未入力あり n」：未入力の項目か要確認が残っているイベントの数を試合に書いておく（一覧で使う）
+    if (!snap.metadata.fromCache || snap.metadata.hasPendingWrites) {
+      const gn = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
+      const n = todoCount(c.list, gn); const m = matchById(matchId);
+      if (m && (m.evTodo ?? 0) !== n && todoSent[matchId] !== n) { todoSent[matchId] = n; put(teamPath('matches', matchId), { evTodo: n }); }
+    }
+    emit();
   }, onErr);
   return c;
 }

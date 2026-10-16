@@ -9,12 +9,15 @@ import { keypadHTML, bindKeypad } from './keypad.js';
 import { render } from './views.js';
 import { devName } from './matchplay.js';
 import {
-  KIND, MAIN_OWN, MAIN_OPP, SUBS, RESULTS, CLS, SETP, FSP, METHODS, ZONES, CARDS, UNKNOWN, OPP_OG, NO_ASSIST,
-  isShot, isSZ, isFsp, hasCls, isOG, missing, pitchAt, subAtSecond, autoCls, needsCheck, liveEvents, sortEvents, summary,
+  KIND, MAIN_OWN, MAIN_OPP, SUBS, RESULTS, CLS, SETP, FSP, METHODS, ZONES, CARDS, CARDS_OPP, cardsOf, UNKNOWN, OPP_OG, NO_ASSIST,
+  isShot, isSZ, isFsp, hasCls, isOG, missing, recheckAll, isTodo, pitchAt, subAtSecond, autoCls, needsCheck, liveEvents, sortEvents, summary,
 } from './events.js';
 
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.max(0, sec) % 60).padStart(2, '0')}`;
 let ui = { m: null };
+// 「未入力あり n」から開いたとき：未入力・要確認のイベントだけを並べる
+let todoFor = null;
+export function openTodo(matchId) { todoFor = matchId; if (ui.m === matchId) ui.todo = true; }
 const FIELDS = ['pid', 'pid2', 'assist', 'method', 'result', 'n', 'cls', 'sp', 'gtype', 'sz', 'zone', 'card', 'fsp', 'og'];
 
 function cfgOf(m) { return { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 }; }
@@ -145,7 +148,7 @@ function lastMine(all) {
 // 何をどう変えたか（履歴の1行）
 const FL = { at: '時刻', kind: 'イベント', pid: '選手', pid2: '受け手', assist: 'アシスト', result: '結果', n: '進入人数', cls: '局面', sp: 'セットプレー', gtype: '種類', sz: 'SZ', zone: 'ゾーン', card: 'カード', fsp: '種類', method: '方法', og: 'OG', period: 'ピリオド' };
 function diffText(a, b, nm, periods) {
-  const lists = { result: RESULTS, cls: CLS, sp: SETP, fsp: FSP, method: METHODS, zone: ZONES, card: CARDS };
+  const lists = { result: RESULTS, cls: CLS, sp: SETP, fsp: FSP, method: METHODS, zone: ZONES, card: [...CARDS_OPP] };
   const v = (k, x, e) => {
     if (x == null || x === '') return '—';
     if (k === 'at') { const pl = periods.find((p) => p.key === e.period); return pl ? mmss(Math.round((pl.len - x) / 1000)) : String(x); }
@@ -173,8 +176,11 @@ export function vEvents(m) {
   if (ui.m !== m.id) {
     const live = periods.find((p) => p.status === 'live');
     const last = [...periods].reverse().find((p) => p.status === 'done');
-    ui = { m: m.id, period: (live || last || periods[0]).key, sec: null, kind: null, f: {}, edit: null, clsTouched: false };
+    ui = { m: m.id, period: (live || last || periods[0]).key, sec: null, kind: null, f: {}, edit: null, clsTouched: false, todo: todoFor === m.id, rechecked: false };
   }
+  if (todoFor === m.id) { ui.todo = true; ui.ltab = 'ev'; todoFor = null; }
+  // 開いたときに⚠（要確認）を今の記録で判定し直す（記録の修正で交代の時刻を直したあとなど）
+  if (!ui.rechecked && evC.ready) { ui.rechecked = true; recheckEvents(m, M, evC.list); }
   const per = periods.find((p) => p.key === ui.period) || periods[0];
   const lenSec = Math.round(per.len / 1000);
   if (ui.sec == null) ui.sec = lenSec;
@@ -199,13 +205,16 @@ export function vEvents(m) {
   // ---------- 左：入力したイベント ----------
   const counts = Object.fromEntries(periods.map((p) => [p.key, events.filter((e) => e.period === p.key).length]));
   if (!ui.listPer || !periods.some((p) => p.key === ui.listPer)) ui.listPer = ui.period;
-  const rows = events.filter((e) => e.period === ui.listPer).map((e) => {
+  const cardMap = cardsOf(events, periods.map((p) => p.key));
+  const todoN = events.filter((e) => isTodo(e, goalName)).length;
+  if (ui.todo && !todoN) ui.todo = false;
+  const rows = events.filter((e) => (ui.todo ? isTodo(e, goalName) : e.period === ui.listPer)).map((e) => {
     const pl = periods.find((p) => p.key === e.period); const rem = Math.round((pl.len - e.at) / 1000);
     const miss = missing(e, goalName);
     const dup = events.some((x) => x !== e && x.kind === e.kind && x.period === e.period && Math.abs(x.at - e.at) <= 3000 && x.dev && e.dev && x.dev !== e.dev);
     const by = (e.hist || [])[0]?.by;
-    return `<button class="evr ${ui.edit === e.id ? 'sel' : ''}" data-ev="${e.id}"><span class="t">${mmss(rem)}${e.role != null && sp.n > 1 ? `<span class="who r${e.role}" title="${esc(by || '')}">${e.role + 1}</span>` : ''}</span><span class="k ${KIND[e.kind].team === 'opp' ? 'opp' : ''}">${KIND[e.kind].label}</span>
-      <span class="d">${esc(summary(e, nm, goalName))}${miss ? ` <span class="miss">未入力 ${miss}</span>` : ''}${e.check ? ' <span class="evchk">⚠ 要確認</span>' : ''}${dup ? ' <span class="evdup">同じイベントが2回入っているかも</span>' : ''}${by ? ` <span class="evby">${esc(by)}</span>` : ''}</span></button>`;
+    return `<button class="evr ${ui.edit === e.id ? 'sel' : ''}" data-ev="${e.id}"><span class="t">${ui.todo ? `<small class="evper">${pl.label}</small>` : ''}${mmss(rem)}${e.role != null && sp.n > 1 ? `<span class="who r${e.role}" title="${esc(by || '')}">${e.role + 1}</span>` : ''}</span><span class="k ${KIND[e.kind].team === 'opp' ? 'opp' : ''}">${KIND[e.kind].label}</span>
+      <span class="d">${esc(cardMap.get(e.id) === 'y2' && e.card === 'yellow' ? summary(e, nm, goalName).replace('イエロー', 'イエロー2枚目（退場）') : summary(e, nm, goalName))}${miss ? ` <span class="miss">未入力 ${miss}</span>` : ''}${e.check ? ' <span class="evchk">⚠ 要確認</span>' : ''}${dup ? ' <span class="evdup">同じイベントが2回入っているかも</span>' : ''}${by ? ` <span class="evby">${esc(by)}</span>` : ''}</span></button>`;
   }).join('') || '<p class="mu" style="padding:8px 14px">まだありません</p>';
   const all = evC.list;
   const histRows = all.flatMap((e) => { const u = undoable(e); return (e.hist || []).map((h, i) => ({ e, h, i, last: i === e.hist.length - 1, can: i === u })); }).filter((x) => x.h.act !== 'add').sort((a, b) => b.h.t - a.h.t);
@@ -222,7 +231,8 @@ export function vEvents(m) {
   const ltabs = `<div class="ltabs"><button class="${ui.ltab !== 'hist' ? 'on' : ''}" data-ltab="ev">イベント</button><button class="${ui.ltab === 'hist' ? 'on' : ''}" data-ltab="hist">直した履歴</button></div>`;
   const list = ui.ltab === 'hist' ? `<div class="card evlist evhist">${ltabs}<h3>直した履歴（新しい順）</h3><div class="hrows">${histHTML}</div>
     <p class="mu" style="font-size:12px">取り消すと、そのイベントだけが前の状態に戻ります（ほかの人の入力はそのまま）。同じイベントは、新しい変更から順に取り消せます。</p></div>` : `<div class="card evlist">${ltabs}<h3>入力したイベント（時刻順）</h3>
-    <div class="perh">${periods.map((p) => `<button class="btn sm ${p.key === ui.listPer ? 'pri' : ''}" data-lper="${p.key}">${p.label} ${counts[p.key]}件</button>`).join('')}</div>
+    <div class="perh">${periods.map((p) => `<button class="btn sm ${!ui.todo && p.key === ui.listPer ? 'pri' : ''}" data-lper="${p.key}">${p.label} ${counts[p.key]}件</button>`).join('')}${todoN ? `<button class="btn sm todo ${ui.todo ? 'on' : ''}" id="evTodo">未入力・要確認だけ ${todoN}件</button>` : ''}</div>
+    ${ui.todo ? '<div class="evtodo">未入力の項目か ⚠ 要確認が残っているイベントだけを並べています（前半・後半とも）。押すと直せます。埋め終わると一覧から消えます</div>' : ''}
     <div class="evrows">${rows}</div></div>`;
 
   // ---------- 右：入力 ----------
@@ -329,7 +339,7 @@ function dynHTML(ctx) {
     html += step(4, '場所', row('ゾーン', OPT, `<div class="ch zch">${ZONES.map(([z, c]) => `<button class="btn ${f.zone === z ? 'on' : ''}" data-set="zone" data-v="${z}">${z}<span class="zcap">${c}</span></button>`).join('')}</div>`));
   } else if (k === 'foul' || k === 'fouled') {
     html += step(3, `${k === 'foul' ? 'ファールをした選手' : 'ファールを受けた選手'} ${REQ}${at5}`, players('pid'));
-    html += step(4, 'カード', row('カード', REQ, choice('card', CARDS), k === 'fouled' ? '相手選手へのカード' : ''));
+    html += step(4, 'カード', row('カード', REQ, choice('card', k === 'fouled' ? CARDS_OPP : CARDS), k === 'fouled' ? '相手選手へのカード' : '同じ選手の2枚目のイエローは、自動で「イエロー2枚目（退場）」として数えます'));
   }
   return html;
 }
@@ -365,7 +375,8 @@ function bindEv(root, ctx) {
   root.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b || b.disabled) return;
     if (b.dataset.per) { ui.period = b.dataset.per; ui.listPer = b.dataset.per; applyAuto(ctx); return render(); }
-    if (b.dataset.lper) { ui.listPer = b.dataset.lper; return render(); }
+    if (b.dataset.lper) { ui.listPer = b.dataset.lper; ui.todo = false; return render(); }
+    if (b.id === 'evTodo') { ui.todo = !ui.todo; return render(); }
     if (b.dataset.ltab) { ui.ltab = b.dataset.ltab; return render(); }
     if (b.id === 'evWho') return changeWho(m);
     if (b.id === 'evRoleChange') { setRole(m, null); return render(); }
@@ -442,4 +453,14 @@ function save(ctx) {
   toast(`${was ? '直しました' : '記録しました'}：${mmss(ui.sec)} ${KIND[ui.kind].label}${saved.check ? '（要確認）' : ''}`);
   resetForm(); ui.listPer = ui.period;
   render();
+}
+
+// ⚠（要確認）を今の記録で判定し直し、変わったものだけ保存して知らせる（2026-10-16 決定）
+export function recheckEvents(m, M, list, { quiet = false } = {}) {
+  const ch = recheckAll(M, list);
+  if (!ch.length) return ch;
+  for (const { ev, check } of ch) saveEvent(m.id, { ...ev, check });
+  const on = ch.filter((x) => x.check).length, off = ch.length - on;
+  if (!quiet) toast(`要確認（⚠）を今の記録で付け直しました：新しく ${on}件・外れた ${off}件`);
+  return ch;
 }

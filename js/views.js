@@ -7,13 +7,14 @@ import {
 import { vPlay, unmountPlay } from './matchplay.js';
 import { vReview, stopReviewTick } from './review.js';
 import { vFix } from './fix.js';
-import { vEvents, vSplit } from './evinput.js';
+import { vEvents, vSplit, openTodo } from './evinput.js';
+import { vStats } from './stats.js';
 import { vPhys, stopPhysTick } from './viewer.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js'];
 export function startApp(c) {
   ctx = c;
   try { const t = localStorage.getItem('fpt.team'); if (t) selectTeam(t); } catch {}
@@ -140,20 +141,28 @@ function vHome() {
     ${next ? `<a class="card nextm" href="#/m/${next.id}">
         <div class="nm-l"><div class="mu">${esc(actName(next))}</div><div class="vs">vs ${esc(next.opponent)}</div>
         <div class="mu">${fmtDate(next.date)}${next.kickoff ? ' ' + esc(next.kickoff) + ' キックオフ' : ''}${next.venue ? '　' + esc(next.venue) : ''}</div></div>
-        <div class="nm-r">${chip(matchStatus(next))}<span class="go">試合ページへ ›</span></div></a>`
+        <div class="nm-r">${chip(matchStatus(next), next)}<span class="go">試合ページへ ›</span></div></a>`
       : `<div class="card empty">予定の試合はまだありません。<a href="#/acts">活動と試合</a>から、活動の中に試合を作ってください。</div>`}
     <h2 class="h">最近の試合</h2>
     ${recent.length ? `<div class="card list">${recent.map((m) => matchRow(m, true)).join('')}</div>` : '<div class="card empty">まだありません</div>'}
     <div class="row end"><a class="btn" href="#/search">⌕ 試合を探す</a></div>`,
   };
 }
-function chip(st) {
+function chip(st, m = null) {
   const c = { 準備中: 'c-prep', 準備完了: 'c-ready', 試合中: 'c-live', 未入力あり: 'c-todo', 記録完了: 'c-done' }[st] || '';
+  // 未入力あり n：押すと、イベント入力が未入力・要確認のイベントだけを並べた形で開く
+  if (st === '未入力あり' && m) return `<span class="chip ${c} todo" data-todo="${m.id}" title="押すと未入力のイベントだけを開きます">${esc(st)} ${m.evTodo || ''} ›</span>`;
   return `<span class="chip ${c}">${esc(st)}</span>`;
 }
+// 「未入力あり」のチップは試合の行（リンク）の中にあるので、先に受け取って行き先を変える
+document.addEventListener('click', (e) => {
+  const t = e.target.closest?.('[data-todo]'); if (!t) return;
+  e.preventDefault(); e.stopPropagation();
+  openTodo(t.dataset.todo); location.hash = `#/m/${t.dataset.todo}/events`;
+}, true);
 function matchRow(m, withAct = false) {
   return `<a class="lrow" href="#/m/${m.id}"><span class="d">${fmtShort(m.date)}</span>
-    <span class="o">vs ${esc(m.opponent)}${withAct ? `<small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small>` : ''}</span>${chip(matchStatus(m))}<span class="go">›</span></a>`;
+    <span class="o">vs ${esc(m.opponent)}${withAct ? `<small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small>` : ''}</span>${chip(matchStatus(m), m)}<span class="go">›</span></a>`;
 }
 function backupOverdue() {
   // remind only once a match has been played (spec 5章: 試合が終わるたびにバックアップを促す)
@@ -395,7 +404,7 @@ function vActivity(r) {
 
     <div class="row between mt"><h2 class="h">試合（${ms.length}件）</h2><button class="btn pri" id="btnAddMatch">＋ 試合を作る</button></div>
     <div class="card list">${ms.length ? ms.map((m) => `<div class="lrow static"><span class="d">${fmtShort(m.date)}${m.kickoff ? `<small>${esc(m.kickoff)}</small>` : ''}</span>
-        <span class="o">vs ${esc(m.opponent)}<small>${esc(m.category || '')}</small></span>${chip(matchStatus(m))}
+        <span class="o">vs ${esc(m.opponent)}<small>${esc(m.category || '')}</small></span>${chip(matchStatus(m), m)}
         <a class="btn sm pri" href="#/m/${m.id}">開く</a><button class="btn sm" data-editm="${m.id}">編集</button><button class="btn sm dangerline" data-delm="${m.id}">削除</button></div>`).join('')
       : '<div class="empty">まだ試合がありません</div>'}</div>`,
     bind(root) {
@@ -486,6 +495,7 @@ function vMatch(r) {
   if (r.sub === 'fix') return vFix(m);
   if (r.sub === 'events') return vEvents(m);
   if (r.sub === 'split') return vSplit(m);
+  if (r.sub === 'stats') return vStats(m);
   if (r.sub === 'physical') return vPhys(m);
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
@@ -501,7 +511,7 @@ function vMatch(r) {
   return {
     active: 'acts',
     html: `<div class="crumb"><a href="#/acts">活動と試合</a> › <a href="#/a/${a?.id}">${esc(a?.name || '')}</a> › vs ${esc(m.opponent)}</div>
-    <div class="row between"><div><h1 class="inl">vs ${esc(m.opponent)}</h1> ${chip(st)}
+    <div class="row between"><div><h1 class="inl">vs ${esc(m.opponent)}</h1> ${chip(st, m)}
       <div class="mu">${fmtDate(m.date)}${m.kickoff ? ' ' + esc(m.kickoff) + ' キックオフ' : ''}${m.category ? '　' + esc(m.category) : ''}${m.venue ? '　' + esc(m.venue) : ''}　前後半 各${t.half}分・延長${t.extra ? `あり（各${t.extraHalf}分）` : 'なし'}</div></div></div>
     <h2 class="h">試合前</h2>
     <div class="acts acts2">
@@ -518,7 +528,7 @@ function vMatch(r) {
     <div class="acts acts3">
       ${btn('フィジカルコーチ用 <small class="ro">閲覧専用</small>', 'ランニングタイムで\n今の出場・休み・合計出場', `#/m/${m.id}/physical`, { kind: 'see' })}
       ${btn('マッチレビュー', '出場時間・タイムライン・セット\nPDFでも書き出せる ※試合後も', `#/m/${m.id}/review`, { kind: 'see' })}
-      ${btn('マッチスタッツ', 'シュート・ゾーン進入などの比較\nいつものシートの形', '', { soon: true, soonText: '④の続きで入ります', kind: 'see' })}
+      ${btn('マッチスタッツ', 'シュート・ゾーン進入などの比較\nいつものシートの形 ※試合後も', `#/m/${m.id}/stats`, { kind: 'see' })}
     </div>
     <h2 class="h">試合後</h2>
     <div class="grp">入れる・直す</div>

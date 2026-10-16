@@ -223,6 +223,8 @@ export function toRunning(M, st, now = Date.now()) {
   }
   for (const x of M.ejections) { const c = C(x.period); if (c) out.ejections.push({ ...x, at: c.rel(!c.fixed && x.t != null ? x.t : c.wallOf(x.at)) }); }
   for (const x of M.timeouts || []) { const c = C(x.period); if (c) out.timeouts.push({ ...x, at: c.rel(x.t ?? c.wallOf(x.at)) }); }
+  // イベント（得点・失点など）の時刻（時計の経過）→ キックオフからの実際の時間
+  out.relOf = (k, at) => { const c = C(k); return c ? c.rel(c.wallOf(at)) : at; };
   return out;
 }
 

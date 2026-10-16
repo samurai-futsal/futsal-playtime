@@ -22,6 +22,26 @@ export const FSP = [['CK', 'CK'], ['CK-KI', 'CK-KI'], ['KI', 'KI'], ['FK', 'FK']
 export const METHODS = [['dribble', 'ドリブル'], ['pass', 'パス'], ['rebound', 'リバウンド']];
 export const ZONES = [['Z4', '相手陣'], ['Z3', '相手陣'], ['Z2', '自陣'], ['Z1', '自陣']];
 export const CARDS = [['none', 'カードなし'], ['yellow', 'イエロー'], ['red', 'レッド']];
+// 被ファール（相手選手へのカード）：相手の選手は記録しないので「イエロー2枚目（退場）」をボタンで選ぶ
+export const CARDS_OPP = [['none', 'カードなし'], ['yellow', 'イエロー'], ['y2', 'イエロー2枚目（退場）'], ['red', 'レッド']];
+export const CARD_LABEL = { none: 'カードなし', yellow: 'イエロー', y2: 'イエロー2枚目（退場）', red: 'レッド' };
+// カードを数える形にする。自チームのファールは、同じ選手の2枚目のイエローを自動で「y2」にする（2026-10-16 決定）
+// 返す：Map(ev.id → 'yellow'|'y2'|'red')（カードなしは入れない）
+export function cardsOf(events, periodOrder = []) {
+  const po = (k) => periodOrder.indexOf(k);
+  const list = events.filter((e) => !e.deleted && (e.kind === 'foul' || e.kind === 'fouled') && e.card && e.card !== 'none')
+    .sort((a, b) => po(a.period) - po(b.period) || a.at - b.at || (a.seq || 0) - (b.seq || 0));
+  const out = new Map(); const yel = new Map();
+  for (const e of list) {
+    let c = e.card;
+    if (e.kind === 'foul' && c === 'yellow' && e.pid && e.pid !== UNKNOWN) {
+      const n = (yel.get(e.pid) || 0) + 1; yel.set(e.pid, n);
+      if (n >= 2) c = 'y2';
+    }
+    out.set(e.id, c);
+  }
+  return out;
+}
 export const UNKNOWN = '?';      // 不明（確認したが分からない＝入力済み）
 export const OPP_OG = 'oppOG';   // 得点者「相手OG」
 export const NO_ASSIST = 'none';
@@ -137,7 +157,7 @@ export function summary(ev, nm, goalName = (x) => x) {
   if (ev.cls) parts.push(lab(CLS, ev.cls) + (ev.sp ? `（${lab(SETP, ev.sp)}）` : ''));
   if (ev.fsp) parts.push(lab(FSP, ev.fsp));
   if (ev.zone) parts.push(ev.zone);
-  if (ev.card && ev.card !== 'none') parts.push(lab(CARDS, ev.card));
+  if (ev.card && ev.card !== 'none') parts.push(CARD_LABEL[ev.card] || ev.card);
   if ((k === 'foul' || k === 'fouled') && ev.card === 'none') parts.push('カードなし');
   return parts.join('・');
 }
@@ -171,3 +191,18 @@ export function setEventTable(Mp, sets, events, goalName = (x) => x) {
   }
   return { cols: SET_COLS, rows, special, other, total };
 }
+
+// ---------- 要確認の付け直し・未入力の数（2026-10-16 決定） ----------
+// 今の記録（記録の修正を反映した出場）で、すべてのイベントの⚠を判定し直す。変わるものだけ返す
+export function recheckAll(M, events) {
+  const out = [];
+  for (const e of events) {
+    if (e.deleted) continue;
+    const c = needsCheck(M, e);
+    if (!!e.check !== c) out.push({ ev: e, check: c });
+  }
+  return out;
+}
+// 未入力の項目があるか、要確認が残っているイベントか（試合の状態「未入力あり」・未入力だけの一覧）
+export const isTodo = (ev, goalName) => !ev.deleted && (missing(ev, goalName) > 0 || !!ev.check);
+export const todoCount = (events, goalName) => events.filter((e) => isTodo(e, goalName)).length;

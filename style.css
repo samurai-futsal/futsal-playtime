@@ -698,3 +698,54 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .evw .evkp .adjpad [data-bs]{grid-area:2/6}
 .evw .evkp .adjpad .btn.s{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:2px;font-size:13px;white-space:nowrap;padding:0 4px}
 .evw .evkp .adjpad .btn.s .kl{display:inline}
+/* マッチスタッツ（シートの形。画面では大きめ、印刷はA4縦1枚） */
+.sthead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 12px}.sthead h1{margin:0 6px 0 0}
+.sthead .sp{flex:1}.stasof{font-weight:800;color:var(--navy)}
+.ststat{border-radius:8px;padding:5px 10px;font-weight:700;font-size:14px;border:0}.ststat.ok{background:#E3F4E8;color:#1E7A3C}.ststat.none{background:#EEF1F6;color:#5F6B80}
+.ststat.todo{background:#FFF1DD;color:#B5600F;border:1.5px solid #F0A030;cursor:pointer}
+.stpage{background:#fff;border-radius:12px;padding:18px;max-width:900px;margin:0 auto;color:#1B2433}
+.stsheet{display:grid;gap:22px}
+.stsheet table{border-collapse:collapse}
+.sthd,.stsc,.stpos{width:100%;font-size:12px;table-layout:fixed}
+.sthd td{border:1px solid #333;text-align:center;padding:3px;height:22px;white-space:nowrap;overflow:hidden}.sthd td.g{background:#D9D9D9;width:9%}.sthd td.w{width:30%}
+.stsc td{border:1px solid #333;text-align:center;height:22px}.stsc .sttm{width:28%;font-size:16px;font-weight:800}.stsc .stbig{width:12%;font-size:26px;font-weight:900}.stsc .stp{font-size:14px;font-weight:700}
+.stpos td{border:1px solid #333;text-align:center;height:20px}.stpos .py{background:#FFC000;width:28%;font-weight:700}.stpos .pl{font-size:11px;color:#8A93A6}
+.stt{margin:10px auto 0;font-size:12px}
+.stt td{height:21px;padding:0 5px}
+.stt .v{width:52px;border:1px solid #333;text-align:center;font-weight:800;font-size:15px;line-height:1.05}
+.stt .lb{width:220px;border:1px solid #333;text-align:center;font-size:12px}
+.stt tr.b .v{font-size:18px;height:27px}.stt tr.b .lb{font-weight:800}
+.stt tr.sec td:nth-child(2){color:#fff;text-align:center;border:1px solid #333;font-size:12px;height:17px;font-weight:700}
+.stt .bl,.stt .br{width:130px}.stt .bl{text-align:right}
+.stt .bl i,.stt .br i{display:inline-block;height:14px;vertical-align:middle}.stt .bl i{background:#00208F}.stt .br i{background:#FF2600}
+.stt .miss{font-size:9.5px;line-height:1;color:#8A93A6;font-weight:500;white-space:nowrap}
+.stpage .na{color:#AAB2C0}
+.stft{font-size:11px;color:#56607A;margin-top:12px}
+@media print{
+  .noprint,.crumb{display:none!important}
+  .stw .stpage{max-width:none;padding:0;border-radius:0;zoom:.66}
+  .stsheet{gap:10px}.stsheet .sttier{break-inside:avoid}
+}
+.chip.todo{cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.perh .btn.todo{border:1.5px solid #F0A030;color:#B5600F}.perh .btn.todo.on{background:#F0A030;color:#fff}
+.evtodo{background:#FFF6E8;color:#7A4A0A;border-radius:8px;padding:6px 10px;font-size:12.5px;margin:6px 0}
+.evr .t .evper{display:block;font-size:10px;color:#5F6B80;font-weight:700}
+/* マッチレビュー：得点・失点の線とラベル、5・7・8 */
+.tlgl{position:absolute;top:0;bottom:-3px;width:2px;margin-left:-1px;z-index:2;pointer-events:none}.tlgl.own{background:#13A10E}.tlgl.opp{background:#E00000}
+.tlaxw{display:flex;flex-direction:column;justify-content:flex-end}
+.tlgoal{position:relative}.tlgoal span{position:absolute;transform:translateX(-50%);white-space:nowrap;font-size:11px;font-weight:800;line-height:14px}
+.tlgoal span.own{color:#13A10E}.tlgoal span.opp{color:#E00000}
+.rvw.compact .tlgoal span{font-size:9.5px}
+.rvscore{background:#0B2D6B;color:#fff;border-radius:8px;padding:3px 10px;font-weight:700;white-space:nowrap}.rvscore b{font-size:18px;margin:0 4px}
+svg.pace{width:100%;height:auto;display:block}
+.rvscore7{display:flex;align-items:center;gap:18px;margin:4px 0 12px;flex-wrap:wrap}.rvscore7 .tn{font-size:22px;font-weight:800;color:#0B2D6B}.rvscore7 .sv{font-size:34px;font-weight:900;color:#0B2D6B}.rvscore7 .hv{font-size:14px;color:#56607A;margin-left:10px}
+.rvflow td,.rvflow th{text-align:center}.rvflow td.own{color:#1F5FBF;font-weight:700}.rvflow td.opp{color:#E00000;font-weight:700}
+.rvcmp{margin:18px auto 6px;border-collapse:collapse}.rvcmp th{font-size:15px;padding:4px}.rvcmp th.own{color:#1F5FBF}.rvcmp th.opp{color:#E00000}
+.rvcmp td{padding:5px 8px;border-bottom:1px solid #E6EAF1}.rvcmp .cv{font-size:22px;font-weight:800;text-align:center;width:170px}.rvcmp .cv small{display:block;font-size:11px;font-weight:500;color:#56607A}
+.rvcmp .cl{font-size:15px;font-weight:700;text-align:center;width:150px;background:#F3F5F9}
+.rvcmp .xb{width:180px}.rvcmp .xb.l{text-align:right}.rvcmp .xb i{display:inline-block;height:16px;vertical-align:middle}.rvcmp .xb.l i{background:#1F5FBF}.rvcmp .xb.r i{background:#E04A3A}
+.rvrl{display:flex;gap:28px;align-items:baseline;margin:16px 0 4px;padding:10px 14px;background:#EEF3FB;border-radius:10px;font-size:15px;flex-wrap:wrap}.rvrl b{font-size:20px}.rvrl>b{font-size:15px;color:#0B2D6B}
+.rvs8 th{text-align:center;line-height:1.2}.rvs8 td{text-align:center}.rvs8 td:first-child{text-align:left;white-space:nowrap}.rvs8 small{font-size:12px;color:#56607A}.rvs8 tr.tot td{background:#EEF3FB;font-weight:700}
+.rvs8 .miss,.rvbox .miss{font-size:10px;color:#8A93A6;font-weight:500}
+.rvw .na{color:#AAB2C0}
+.tlgoal span.r{transform:translateX(-100%)}.tlgoal span.l{transform:none}

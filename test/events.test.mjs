@@ -1,6 +1,6 @@
 // Event rules (spec 6章・13章): 未入力の数え方、ピッチの5人（交代と同じ秒）、分類の初めの選択、要確認。
 // Run: node test/events.test.mjs
-import { missing, pitchAt, subAtSecond, autoCls, needsCheck, OPP_OG, NO_ASSIST, UNKNOWN, sortEvents, setEventTable } from '../js/events.js';
+import { cardsOf, recheckAll, isTodo, todoCount, missing, pitchAt, subAtSecond, autoCls, needsCheck, OPP_OG, NO_ASSIST, UNKNOWN, sortEvents, setEventTable } from '../js/events.js';
 
 let pass = 0, fail = 0;
 const eq = (a, b, msg) => { const ok = JSON.stringify(a) === JSON.stringify(b); ok ? pass++ : (fail++, console.log('FAIL', msg, '\n  got', JSON.stringify(a), '\n  want', JSON.stringify(b))); };
@@ -95,6 +95,33 @@ eq(sortEvents([{ id: 2, period: '2H', at: 1 }, { id: 3, period: '1H', at: 5, seq
   eq(t.rows[0].c, [0, 2, 1, 0, 0, 0, 1, 0], 'set bcde: opp SZ shot + conc (own OG not), z4 after sub, FSP after sub');
   eq(t.special, [0, 0, 0, 1, 0, 0, 0, 0], 'GK absent → special row');
   eq(t.total, [2, 2, 1, 1, 0, 0, 1, 0], 'total');
+}
+
+// --- カード（2026-10-16 決定）：自チームの同じ選手の2枚目のイエローは自動で y2。被ファールは選んだまま
+{
+  const evs = [
+    { id: 'f1', kind: 'foul', period: '1H', at: 10000, pid: 'a', card: 'yellow' },
+    { id: 'f2', kind: 'foul', period: '1H', at: 20000, pid: 'b', card: 'yellow' },
+    { id: 'f3', kind: 'foul', period: '2H', at: 5000, pid: 'a', card: 'yellow' },
+    { id: 'f4', kind: 'foul', period: '1H', at: 30000, pid: 'c', card: 'none' },
+    { id: 'f5', kind: 'fouled', period: '1H', at: 40000, pid: 'd', card: 'y2' },
+    { id: 'f6', kind: 'fouled', period: '1H', at: 41000, pid: 'd', card: 'yellow' },
+    { id: 'f7', kind: 'foul', period: '1H', at: 15000, pid: 'a', card: 'yellow', deleted: true },
+  ];
+  const c = cardsOf(evs, ['1H', '2H']);
+  eq([...c.entries()], [['f1', 'yellow'], ['f2', 'yellow'], ['f5', 'y2'], ['f6', 'yellow'], ['f3', 'y2']], 'cards: 2nd yellow of same own player → y2; deleted ignored; opp as chosen');
+}
+// --- 要確認の付け直しと「未入力あり」の数
+{
+  const evs = [
+    { id: 'r1', kind: 'rec', period: '1H', at: 50000, pid: 'a' },              // a はピッチ：⚠なし
+    { id: 'r2', kind: 'rec', period: '1H', at: 150000, pid: 'a', check: false }, // a はベンチ → ⚠ が付く
+    { id: 'r3', kind: 'rec', period: '1H', at: 150000, pid: 'e', check: true },  // e はピッチ → ⚠ が外れる
+    { id: 'r4', kind: 'rec', period: '1H', at: 150000 },                          // 選手が未入力
+  ];
+  eq(recheckAll(M, evs).map((x) => [x.ev.id, x.check]), [['r2', true], ['r3', false]], 'recheckAll: only changed ones');
+  eq(evs.map((e) => isTodo(e, gn)), [false, false, true, true], 'isTodo: missing or check');
+  eq(todoCount(evs, gn), 2, 'todoCount');
 }
 
 console.log(`events: ${pass} passed, ${fail} failed`);
