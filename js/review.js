@@ -43,6 +43,8 @@ export function vReview(m) {
   const order = entryOrder(M0); // タイムライン：GK → 先発のFP（背番号順）→ 初めて入った順
   const byNo = Object.keys(m.members || {}).sort((a, b) => (parseInt(mem(a).no, 10) || 999) - (parseInt(mem(b).no, 10) || 999));
   const last = (pid) => playerById(pid)?.last || '';
+  // FPを見ることを優先：1〜3の表はGKをいつも一番下に置く（5. マッチ・ペースは別）
+  const gkLast = (list) => [...list.filter((pid) => mem(pid).pos !== 'GK'), ...list.filter((pid) => mem(pid).pos === 'GK')];
   const badge = (pid) => `<span class="no ${mem(pid).pos === 'GK' ? 'gk' : 'fp'}">${esc(mem(pid).no ?? '')}</span>`;
   const played = playedTime(M);
   const started = M.periods.some((p) => p.status !== 'none');
@@ -135,7 +137,7 @@ export function vReview(m) {
   sv.push('</svg>');
   const sh = (col, label) => `<th class="srt ${sortState.col === col ? 'on' : ''}" data-sort="${col}">${label}<i>${sortState.col === col ? (sortState.dir === 'asc' ? '▲' : '▼') : '⇅'}</i></th>`;
   const th = shownP.map((p) => sh(`${p.key}:t`, p.label) + sh(`${p.key}:n`, '回数')).join('');
-  const rows = sorted.map((pid) => {
+  const rows = gkLast(sorted).map((pid) => {
     const r = T[pid] || { per: {}, total: 0, count: 0 };
     const cells = shownP.map((p) => {
       if (p.status === 'none') return '<td class="na">—</td><td class="na">—</td>';
@@ -143,7 +145,7 @@ export function vReview(m) {
     }).join('');
     return `<tr class="${r.total ? '' : 'zero'}"><td>${badge(pid)} ${esc(last(pid))}</td>${cells}<td><b>${mmss(r.total)}</b></td><td>${r.count}</td><td>${played ? Math.round(r.total / played * 100) : 0}%</td></tr>`;
   }).join('');
-  const s1 = `<section class="rvsec" id="rv1"><div class="rvtt"><b>1. 出場時間</b><span>グラフはFPだけ（GKは右の枠）。棒＝ピリオドを積み上げ、上の数字＝合計、オレンジの点線＝FPの平均。並びは下の表と同じ。${runMode ? '時間はすべてランニングタイム（キックオフから時計が0:00になるまでの実際の時間。止まっている間もピッチにいた選手の時間に入る）。' : ''}出場率は、ここまでの${TT}（${denomTxt}）に対して</span></div>
+  const s1 = `<section class="rvsec" id="rv1"><div class="rvtt"><b>1. 出場時間</b><span>グラフはFPだけ（GKは右の枠）。棒＝ピリオドを積み上げ、上の数字＝合計、オレンジの点線＝FPの平均。並びは下の表と同じ（表のGKはいつも一番下）。${runMode ? '時間はすべてランニングタイム（キックオフから時計が0:00になるまでの実際の時間。止まっている間もピッチにいた選手の時間に入る）。' : ''}出場率は、ここまでの${TT}（${denomTxt}）に対して</span></div>
     <div class="rvbox"><div class="rvlg">${legend}</div>${sv.join('')}
     <table class="rvtb"><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${th}${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}</tr>${rows}</table>
     <p class="rvhint">初めは合計の長い順。見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）、「選手」を押すと背番号順。グラフも同じ順に並びます</p></div></section>`;
@@ -156,7 +158,7 @@ export function vReview(m) {
     const lists = Object.fromEntries(byNo.map((pid) => [pid, M.stints.filter((x) => x.period === p.key && x.pid === pid).sort((a, b) => a.from - b.from)]));
     const n = Math.max(1, ...Object.values(lists).map((l) => l.length));
     const hd = Array.from({ length: n }, (_, i) => `<th>${i + 1}回目</th>`).join('');
-    const body = byNo.map((pid) => {
+    const body = gkLast(byNo).map((pid) => {
       const l = lists[pid]; const tot = l.reduce((a, x) => a + x.to - x.from, 0);
       const cells = Array.from({ length: n }, (_, i) => {
         const x = l[i]; if (!x) return '<td class="na"></td>';
@@ -183,7 +185,7 @@ export function vReview(m) {
   const seps = axis.slice(1).map((p) => `<i class="tlsep" style="left:${pct(off[p.key])}%"></i>`).join('');
   const future = axis.filter((p) => p.status === 'none').map((p) => `<i class="tlfut" style="left:${pct(off[p.key])}%;width:${pct(p.len)}%"></i>`).join('')
     + (M.live ? `<i class="tlfut" style="left:${pct(off[M.current] + (M.periods.find((p) => p.key === M.current).elapsed))}%;width:${pct(M.periods.find((p) => p.key === M.current).len - M.periods.find((p) => p.key === M.current).elapsed)}%"></i>` : '');
-  const tlRows = order.map((pid) => {
+  const tlRows = gkLast(order).map((pid) => {
     const bands = M.stints.filter((s) => s.pid === pid && off[s.period] != null).map((s) => {
       const d = s.to - s.from, l = pct(off[s.period] + s.from), w = pct(d);
       const small = d / total < 0.045;
@@ -193,7 +195,7 @@ export function vReview(m) {
       .map((s) => `<i class="tlz" style="left:${pct(off[s.period] + s.from)}%" title="時計が止まっている間だけの出場"></i><span class="tlzl" style="left:${pct(off[s.period] + s.from)}%">0:00</span>`).join('');
     return `<div class="tlr"><span>${badge(pid)} ${esc(last(pid))}</span><div class="tlt">${seps}${future}${bands}${zeros}</div><b>${mmss(T[pid]?.total || 0)}</b></div>`;
   }).join('');
-  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝GK、先発のFP（背番号順）、そのあとは初めてピッチに入った順。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : ''}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計${(M.zero || []).length ? '。オレンジの線と「0:00」＝時計が止まっている間だけの出場（セットプレーの守備などで入れ替えたとき。実際の時間に合わせるなら「記録の修正」で時刻を直す）' : ''}</span></div>
+  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>並び＝先発のFP（背番号順）、そのあとは初めてピッチに入った順、GKは一番下。いつピッチにいたか${runMode ? '（目盛りはキックオフからの実際の時間）' : ''}。帯の中の数字＝その出場の時間（短い出場は帯の上）、右端＝合計${(M.zero || []).length ? '。オレンジの線と「0:00」＝時計が止まっている間だけの出場（セットプレーの守備などで入れ替えたとき。実際の時間に合わせるなら「記録の修正」で時刻を直す）' : ''}</span></div>
     <div class="rvbox"><div class="tlr tlhead"><span></span><div class="tlax">${ticks}</div><span>合計</span></div>${tlRows}</div></section>`;
 
   // ---------- 4. セットの出場時間 ----------
