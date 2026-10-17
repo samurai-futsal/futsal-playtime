@@ -1086,3 +1086,15 @@ svg.pace .pmk{pointer-events:none}
 .rvset tr.ex td.setn,.rvset tr.tot td:nth-child(2){text-align:center!important}
 .rvtb.rveq td.setn{display:table-cell}
 .rvset.rveq th:nth-child(2){text-align:center!important}
+/* マッチレビュー：項目を画面いっぱいに大きく表示（2026-10-17） */
+.rvmax{margin-left:auto;align-self:center;border-color:#9DB4D8;color:#1F5FBF;font-weight:700}
+.rvsec.rvfull{position:fixed;inset:0;z-index:80;background:#F3F5F8;overflow:auto;padding:0 16px 16px;margin:0;break-before:auto}
+.rvsec.rvfull>.rvtt{display:none}
+.rvsec.rvfull .rvbox{margin:0 auto}
+.rvfsbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:10px 0;background:#F3F5F8;border-bottom:1px solid #DCE3EE;margin-bottom:10px}
+.rvfsbar b{flex:1;text-align:center;font-size:20px;color:var(--navy)}
+.rvfull svg.pace{max-height:none!important}
+body.rvfsmode{overflow:hidden}
+@media print{.rvmax,.rvfsbar{display:none!important}}
+.rvsec.rvfull{display:block;min-height:0;border-top:0}
+.rvsec.rvfull .rvbox{flex-grow:0}

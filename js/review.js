@@ -246,6 +246,7 @@ function bindReview(m) {
     // 表の行を押すと強調（1・2・4・6・8。何行でも。もう一度押すと戻す）
     root.querySelectorAll('tr[data-hlk]').forEach((tr) => tr.onclick = () => { const k = tr.dataset.hlk; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); tr.classList.toggle('hl', rvHl.has(k)); });
     bindPacePick(root);
+    bindFull(root);
     root.querySelectorAll('[data-tl]').forEach((r) => r.onclick = () => { const id = r.dataset.tl; if (tlHl.has(id)) tlHl.delete(id); else tlHl.add(id); r.classList.toggle('hl', tlHl.has(id)); });
     root.querySelectorAll('[data-sort]').forEach((th) => th.onclick = () => {
       const col = th.dataset.sort;
@@ -329,4 +330,62 @@ export function timelineHTML(o) {
     return `<div class="tlgoal" style="height:${n * 15 + 2}px">${ls.map((l) => `<span class="${l.own ? 'own' : 'opp'} ${l.x > 88 ? 'r' : l.x < 12 ? 'l' : ''}" style="left:${l.x}%;top:${l.row * 15}px">${esc(l.label)}</span>`).join('')}</div>`; };
   const tlHead = `<div class="tlr tlhead" ${tlStyle}><span></span>${axis.map((p, i) => (i ? '<span></span>' : '') + `<div class="tlaxw">${lane(p)}<div class="tlax">${ticksOf(p)}</div></div>`).join('')}<span>合計</span></div>`;
   return { tlHead, tlRows };
+}
+
+// ---------- 項目を画面いっぱいに大きく表示（1〜8のどれでも。2026-10-17） ----------
+// 見出しの右の「⛶ 大きく表示」で、その項目だけを画面全体に出す。1画面に入る大きさに自動で拡大・縮小する
+// （選手の多い表は文字が小さくなりすぎないところで止めて、上下に動かして見る）。「‹ 前の項目」「次の項目 ›」「× 閉じる」。
+// 画面を描き直しても（並べ替えなど）、開いていた項目はそのまま
+let fsId = null;
+function bindFull(root) {
+  const secs = [...root.querySelectorAll('.rvbody > .rvsec:not(.rvwait)')].filter((x) => x.id && x.querySelector('.rvbox'));
+  if (!secs.length) return;
+  const open = (id) => {
+    secs.forEach((x) => { x.classList.remove('rvfull'); x.querySelector('.rvfsbar')?.remove(); const b = x.querySelector('.rvbox'); if (b) { b.style.zoom = ''; b.style.width = ''; } });
+    document.body.classList.toggle('rvfsmode', !!id);
+    fsId = id;
+    const sec = secs.find((x) => x.id === id); if (!sec) { fsId = null; document.body.classList.remove('rvfsmode'); return; }
+    const i = secs.indexOf(sec);
+    const title = sec.querySelector('.rvtt b')?.textContent || '';
+    sec.classList.add('rvfull');
+    sec.insertAdjacentHTML('afterbegin', `<div class="rvfsbar"><button class="btn" data-fs="prev" ${i ? '' : 'disabled'}>‹ 前の項目</button><b>${esc(title)}</b><button class="btn" data-fs="next" ${i < secs.length - 1 ? '' : 'disabled'}>次の項目 ›</button><button class="btn pri" data-fs="close">× 閉じる</button></div>`);
+    sec.scrollTop = 0;
+    fit(sec);
+  };
+  const fit = (sec) => {
+    const box = sec.querySelector('.rvbox'); const bar = sec.querySelector('.rvfsbar'); if (!box) return;
+    const availW = sec.clientWidth - 32, availH = window.innerHeight - (bar?.offsetHeight || 0) - 28;
+    box.style.zoom = ''; box.style.width = '';
+    // 列の多い表は、細くしすぎると数字が重なるので、横幅の下限を決める
+    const cols = Math.max(0, ...[...box.querySelectorAll('table')].map((t) => t.rows[0]?.cells.length || 0));
+    const minW = cols > 6 ? Math.min(availW, 1100) : cols ? 640 : 320;
+    for (let z = 1.8; z >= 0.75; z -= 0.05) {
+      if (availW / z < minW) continue;
+      box.style.width = `${availW / z}px`;
+      if (box.offsetHeight * z <= availH) { box.style.zoom = z.toFixed(2); return; }
+    }
+    // 1画面に入らないとき：グラフだけの項目は横幅を縮めて入れる。表は等倍で上下に動かして見る
+    box.style.width = `${availW}px`;
+    const onlyGraph = !box.querySelector('table') && box.querySelector('svg');
+    if (onlyGraph) { const h = box.offsetHeight; box.style.width = `${Math.max(320, availW * availH / h)}px`; }
+    box.style.zoom = '1';
+  };
+  secs.forEach((sec) => {
+    const tt = sec.querySelector('.rvtt'); if (!tt || tt.querySelector('.rvmax')) return;
+    tt.insertAdjacentHTML('beforeend', `<button class="btn sm rvmax" data-max="${sec.id}">⛶ 大きく表示</button>`);
+  });
+  root.querySelectorAll('[data-max]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); open(b.dataset.max); });
+  root.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fs]'); if (!b) return;
+    const i = secs.findIndex((x) => x.id === fsId);
+    if (b.dataset.fs === 'close') open(null); else if (b.dataset.fs === 'prev' && i > 0) open(secs[i - 1].id); else if (b.dataset.fs === 'next' && i < secs.length - 1) open(secs[i + 1].id);
+  });
+  if (!window.__rvfsKeys) {
+    window.__rvfsKeys = true;
+    document.addEventListener('keydown', (e) => { if (!fsId || !document.querySelector('.rvfull')) return; const t = { Escape: 'close', ArrowLeft: 'prev', ArrowRight: 'next' }[e.key]; if (t) document.querySelector(`.rvfull [data-fs="${t}"]`)?.click(); });
+    window.addEventListener('resize', () => { const sec = document.querySelector('.rvfull'); if (sec) sec.dispatchEvent(new Event('rvrefit')); });
+    window.addEventListener('hashchange', () => { if (!location.hash.includes('/review')) { fsId = null; document.body.classList.remove('rvfsmode'); } });
+  }
+  secs.forEach((sec) => sec.addEventListener('rvrefit', () => fit(sec)));
+  if (fsId && secs.some((x) => x.id === fsId)) open(fsId); else { fsId = null; document.body.classList.remove('rvfsmode'); }
 }
