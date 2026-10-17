@@ -77,6 +77,25 @@ export function periodFromName(name) {
 // Kick Off の印（ピリオドの始まり）
 export const kickOffs = (inst) => inst.filter((i) => /^kick ?off$/i.test(i.code)).sort((a, b) => a.start - b.start);
 
+// 複数のファイルをまとめて取り込む（前半のファイルと後半のファイルなど。2026-10-17）。
+// files：[{ instances, assign: [Kick Off ごとのピリオド] }]。ファイルごとに Kick Off でピリオドに分けて buildImport し、結果を1つにまとめる。
+// 同じピリオドを2つ以上の Kick Off で選んでいたら dup に入れる（取り込みは止める）
+export function buildImportFiles(files, o) {
+  const keys = files.flatMap((f) => f.assign || []).filter(Boolean);
+  const dup = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
+  const sum = (lists) => { const m = new Map(); for (const l of lists) for (const [k, n] of l) m.set(k, (m.get(k) || 0) + n); return [...m]; };
+  const rs = files.map((f) => {
+    const kos = kickOffs(f.instances);
+    const periods = kos.map((k, i) => ({ key: f.assign[i], ko: k.start, shift: +(o.shift || {})[f.assign[i]] || 0, from: i ? k.start : -1e9, to: kos[i + 1] ? kos[i + 1].start : 1e9 }));
+    return { periods, r: buildImport({ ...o, instances: f.instances, periods }) };
+  });
+  return {
+    periods: rs.flatMap((x) => x.periods), dup, events: rs.flatMap((x) => x.r.events),
+    unknownCodes: sum(rs.map((x) => x.r.unknownCodes)), unknownLabels: sum(rs.map((x) => x.r.unknownLabels)),
+    unmatched: sum(rs.map((x) => x.r.unmatched)), warnings: sum(rs.map((x) => x.r.warnings)),
+  };
+}
+
 // ---------- イベントにする ----------
 // o = { instances, periods:[{key, ko（秒）, shift（秒）, from, to（このピリオドに入れる動画の範囲。秒）}], R（ランニングタイムの試合）, M, members, players, goalTypes:[{id,name}], lead, seqBase }
 // ピリオドの範囲（from・to）は、コードの開始ではなくプレーの瞬間（開始＋リード）で見る（前半の最後の数秒が後半に入らないように）

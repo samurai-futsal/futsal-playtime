@@ -1,6 +1,6 @@
 // Sportscode からの取り込み（spec 9章）：XML と CSV が同じ結果になること、コード・ラベルの読み方、時刻の直し方。
 // Run: node test/scimport.test.mjs
-import { parseSC, buildImport, kickOffs, periodFromName } from '../js/scimport.js';
+import { parseSC, buildImport, buildImportFiles, kickOffs, periodFromName } from '../js/scimport.js';
 import { OPP_OG } from '../js/events.js';
 let pass = 0, fail = 0;
 const eq = (a, b, msg) => { const ok = JSON.stringify(a) === JSON.stringify(b); ok ? pass++ : (fail++, console.log('FAIL', msg, '\n  got', JSON.stringify(a), '\n  want', JSON.stringify(b))); };
@@ -77,6 +77,19 @@ eq([r2.events[0].kind, r2.events[0].pid], ['goal', OPP_OG], 'their own goal = ou
   const sz0 = E.find((e) => e.kind === 'szshot'); eq(sz0.n, undefined, 'SZ shot with 0 people → n empty');
   eq(r.warnings.length, 3, 'warnings: SZ goal 0, SZ shot 0, zone');
   eq(E.map((e) => e.seq), E.map((_, i) => 1700000000001 + i), 'seq = import time + index');
+  // 2つのファイル（前半と後半を別々に書き出したもの。後半の動画は別の時刻から始まる）でも、1つのファイルと同じイベントになる
+  {
+    const A = inst.filter((i) => i.start < 1203 && !(i.code === 'Kick Off' && i.start === 1203));
+    const B = inst.filter((i) => i.start >= 1203).map((i) => ({ ...i, start: i.start - 1000, end: i.end - 1000 }));
+    const o2 = { R: R0, M: M2, members, players, goalTypes: gts };
+    const two = buildImportFiles([{ instances: A, assign: ['1H'] }, { instances: B, assign: ['2H'] }], o2);
+    const sig = (L) => L.map((e) => `${e.period}|${e.at}|${e.kind}|${e.pid || ''}`).sort();
+    eq(sig(two.events), sig(E), 'two files (1H + 2H) give the same events as one file');
+    eq(two.dup, [], 'no duplicate periods');
+    eq(buildImportFiles([{ instances: A, assign: ['1H'] }, { instances: B, assign: ['1H'] }], o2).dup, ['1H'], 'same period chosen twice → dup');
+    const sh = buildImportFiles([{ instances: B, assign: ['2H'] }], { ...o2, shift: { '2H': 2 } });
+    eq(sh.events.map((e) => e.at), [110000], 'shift by period key moves the times (2s earlier)');
+  }
   const og = buildImport({ instances: [{ code: '被シュート', start: 20, end: 37, labels: [['シュート分類', 'オウンゴール'], ['スコアゾーン進入人数', '2']] }], periods: [{ key: '1H', ko: 10, from: -1e9, to: 1e9 }], R: R0, M: M2, members, players, goalTypes: gts });
   eq([og.events[0].kind, og.events[0].gtype, og.events[0].sz, og.events[0].n], ['conc', 'o11_OG', undefined, undefined], 'renamed OG type found by id; OG ignores SZ (決5)');
 }
