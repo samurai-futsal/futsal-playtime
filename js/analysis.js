@@ -2,8 +2,8 @@
 // マッチレビューと同じ記録から同じ計算で作るので、数字は必ず一致する。
 // 画面全体はスクロールせず、選手の表の中だけをスクロールする（条件を切り替えて見比べる画面のため）。
 import { S, watchOps, watchEvents, opts, teamSettings, playerById, activityById, matchStatus } from './store.js';
-import { replay, periodLabel } from './engine.js';
-import { matchModel, playerTable, periodSig, entryOrder } from './model.js';
+import { periodLabel } from './engine.js';
+import { modelOf, playerTable, entryOrder } from './model.js';
 import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppWindows, windowsOf, clipModel, winTest, ppTime, setSplit, asOfLabel } from './teamstats.js';
 import { missing, pitchAt, isFsp, OPP_OG, isOG } from './events.js';
 import { shotsOf, CLS_KEYS } from './teamstats.js';
@@ -52,12 +52,28 @@ function selected() {
 export const liveSkipped = () => skippedLive;
 
 // 1試合ぶんの計算（選んだピリオドの範囲）
+// 試合が多いと、タブや切り替えを押すたび・記録が1件届くたびに全試合を計算し直すと遅い（50試合で数秒）。
+// 記録（ops・イベントの一覧）・修正・得点の種類が同じで、選んだ範囲（前半/後半・時間帯）も同じなら、前の計算を使う。
+// 試合中の試合は出場中の時間が進むので、毎回計算する（modelOf が毎回新しい M を返す）。
+const memo = new Map(); // m.id → { M, evs, gts, vals: Map(範囲 → 計算) }
 function oneMatch(m, per) {
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
   if (!opsC.ready && !opsC.list.length) return null;
   const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
-  const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
-  const M = matchModel(st, Date.now(), m.fix);
+  const { st, M } = modelOf(opsC.list, cfg, m.fix);
+  const gts = S.global?.goalTypes;
+  let c = memo.get(m.id);
+  if (!c || c.M !== M || c.evs !== evC.list || c.gts !== gts) memo.set(m.id, (c = { M, evs: evC.list, gts, vals: new Map() }));
+  const vk = `${per}|${A.pp}|${evC.ready}`;
+  let v = c.vals.get(vk);
+  if (!v) {
+    v = calcOne(m, per, st, M, evC);
+    if (c.vals.size >= 4) c.vals.delete(c.vals.keys().next().value);
+    c.vals.set(vk, v);
+  }
+  return { ...v, m }; // 試合の情報（相手・日付など）はいつも今のものを使う
+}
+function calcOne(m, per, st, M, evC) {
   const keys = per === 'all' ? null : M.periods.some((p) => p.key === per && p.status !== 'none') ? [per] : [];
   const gn = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
   const evs = evC.list.filter((e) => !e.deleted);
@@ -75,7 +91,8 @@ function oneMatch(m, per) {
   const len = Mw.periods.filter((p) => p.status !== 'none' && (!keys || keys.includes(p.key))).reduce((a, p) => a + p.elapsed, 0);
   const empty = Mw.empties.filter((e) => !keys || keys.includes(e.period)).reduce((a, e) => a + e.to - e.from, 0);
   const todo = evs.filter((e) => missing(e, gn) > 0 || e.check).length;
-  return { m, st, M, Mw, T, R, D, keys, len, empty, hasEv: evs.length > 0, todo, ready: evC.ready, hasOpp: W.hasOpp, evs, gn, W, win, wins };
+  // lazy：タブごとの1試合ぶんの計算の写し（セット・パワープレー）
+  return { m, st, M, Mw, T, R, D, keys, len, empty, hasEv: evs.length > 0, todo, ready: evC.ready, hasOpp: W.hasOpp, evs, gn, W, win, wins, lazy: {} };
 }
 
 // 選んだ試合の計算と、選手ごと・チームの合計（画面とマッチレポートで使う）
@@ -366,16 +383,22 @@ function setTab(ctx) {
   const ppRow = blank(), special = blank(), other = blank(), total = blank();
   for (const x of ctx.ok) {
     // セットの時間と回数は、数的同数の時間帯だけで数える（5×4・4×5と、両チームの退場の時間帯を除く。2026-10-16・17 決定）
-    const sp = setSplit(x.M, x.W, x.keys);
+    // 1試合ぶん（セットの時間と、イベントごとの行）は試合の計算と一緒に取っておく
+    const { sp, items } = x.lazy.set || (x.lazy.set = (() => {
+      const sp = setSplit(x.M, x.W, x.keys); const items = [];
+      const ev = x.evs.filter((e) => !x.keys || x.keys.includes(e.period));
+      const own = new Set(shotsOf(ev, x.gn, true).map((s) => s.e)), opp = new Set(shotsOf(ev, x.gn, false).map((s) => s.e));
+      for (const e of ev) {
+        const f = own.has(e) ? 'sh' : opp.has(e) ? 'osh' : (e.kind === 'z4' || e.kind === 'sz') ? 'en' : (e.kind === 'oz4' || e.kind === 'osz') ? 'oen' : null;
+        const g = e.kind === 'goal' ? 'gf' : e.kind === 'conc' ? 'ga' : null;
+        if (!f && !g) continue;
+        items.push([f, g, sp.classify(e)]);
+      }
+      return { sp, items };
+    })());
     ppRow.time += sp.time.ex; special.time += sp.time.special; other.time += sp.time.other; total.time += sp.time.played;
     for (const st of sp.sets) { const r = rows.get(st.key) || rows.set(st.key, { ...blank(), pids: st.pids }).get(st.key); r.time += st.time; r.count += st.count; r.games.add(x.m.id); }
-    const ev = x.evs.filter((e) => !x.keys || x.keys.includes(e.period));
-    const own = new Set(shotsOf(ev, x.gn, true).map((s) => s.e)), opp = new Set(shotsOf(ev, x.gn, false).map((s) => s.e));
-    for (const e of ev) {
-      const f = own.has(e) ? 'sh' : opp.has(e) ? 'osh' : (e.kind === 'z4' || e.kind === 'sz') ? 'en' : (e.kind === 'oz4' || e.kind === 'osz') ? 'oen' : null;
-      const g = e.kind === 'goal' ? 'gf' : e.kind === 'conc' ? 'ga' : null;
-      if (!f && !g) continue;
-      const c = sp.classify(e);
+    for (const [f, g, c] of items) {
       const r = c === 'ex' ? ppRow : c === 'special' ? special : c === 'other' ? other : rows.get(c);
       for (const q of [r, total]) { if (f) q[f]++; if (g) q[g]++; }
     }
@@ -411,22 +434,29 @@ const PPK = [['own', '自チームの5×4', '（攻撃・GKを入れ替え）', 
 function ppTab(ctx) {
   const occ = []; const split = {};
   for (const x of ctx.ok) {
-    const inK = (k) => !x.keys || x.keys.includes(k);
-    for (const [team] of PPK) for (const [k, iv] of Object.entries(windowsOf(x.M, x.W, team))) {
-      if (!inK(k)) continue;
-      const pl = x.M.periods.find((p) => p.key === k);
-      for (const [a, b] of iv) {
-        const test = winTest({ [k]: [[a, b]] }, x.M); const ev = x.evs.filter((e) => e.period === k && test(e));
-        occ.push({ m: x.m, team, label: pl?.label || k, a, b, sh: shotsOf(ev, x.gn, true).length, osh: shotsOf(ev, x.gn, false).length, gf: ev.filter((e) => e.kind === 'goal').length, ga: ev.filter((e) => e.kind === 'conc').length });
+    // 1試合ぶん（時間帯ごとの一覧と数字）は試合の計算と一緒に取っておく
+    const one = x.lazy.pp || (x.lazy.pp = (() => {
+      const inK = (k) => !x.keys || x.keys.includes(k);
+      const occ1 = [], split1 = {};
+      for (const [team] of PPK) for (const [k, iv] of Object.entries(windowsOf(x.M, x.W, team))) {
+        if (!inK(k)) continue;
+        const pl = x.M.periods.find((p) => p.key === k);
+        for (const [a, b] of iv) {
+          const test = winTest({ [k]: [[a, b]] }, x.M); const ev = x.evs.filter((e) => e.period === k && test(e));
+          occ1.push({ team, label: pl?.label || k, a, b, sh: shotsOf(ev, x.gn, true).length, osh: shotsOf(ev, x.gn, false).length, gf: ev.filter((e) => e.kind === 'goal').length, ga: ev.filter((e) => e.kind === 'conc').length });
+        }
       }
-    }
-    for (const mode of ['ex', ...PPK.map(([k]) => k), 'all']) {
-      const wins = windowsOf(x.M, x.W, mode);
-      const R = teamStats(x.M, x.evs, x.gn, x.keys, winTest(wins, x.M));
-      const Mk = clipModel(x.M, wins);
-      const len = Mk.periods.filter((p) => p.status !== 'none' && (!x.keys || x.keys.includes(p.key))).reduce((t, p) => t + p.elapsed, 0);
-      split[mode] = addInto(split[mode] || {}, { len, gf: R.rangeScore.own, ga: R.rangeScore.opp, A: R.A, B: R.B, rec: R.rec, lost: R.lost });
-    }
+      for (const mode of ['ex', ...PPK.map(([k]) => k), 'all']) {
+        const wins = windowsOf(x.M, x.W, mode);
+        const R = teamStats(x.M, x.evs, x.gn, x.keys, winTest(wins, x.M));
+        const Mk = clipModel(x.M, wins);
+        const len = Mk.periods.filter((p) => p.status !== 'none' && (!x.keys || x.keys.includes(p.key))).reduce((t, p) => t + p.elapsed, 0);
+        split1[mode] = { len, gf: R.rangeScore.own, ga: R.rangeScore.opp, A: R.A, B: R.B, rec: R.rec, lost: R.lost };
+      }
+      return { occ: occ1, split: split1 };
+    })());
+    for (const o of one.occ) occ.push({ m: x.m, ...o });
+    for (const [mode, v] of Object.entries(one.split)) split[mode] = addInto(split[mode] || {}, v);
   }
   const sum = (team) => { const l = occ.filter((o) => o.team === team); return { n: l.length, t: l.reduce((s, o) => s + o.b - o.a, 0), sh: l.reduce((s, o) => s + o.sh, 0), osh: l.reduce((s, o) => s + o.osh, 0), gf: l.reduce((s, o) => s + o.gf, 0), ga: l.reduce((s, o) => s + o.ga, 0) }; };
   const noOpp = ctx.ok.filter((x) => !x.hasOpp).length;

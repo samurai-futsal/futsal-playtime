@@ -43,9 +43,17 @@ function derive() {
 
 export function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 let queued = false;
+let soon = null, soonAt = 0; // emitSoon（下）
 function emit() {
   if (queued) return; queued = true;
-  queueMicrotask(() => { queued = false; listeners.forEach((f) => f()); });
+  queueMicrotask(() => { queued = false; if (soon) { clearTimeout(soon); soon = null; } listeners.forEach((f) => f()); }); // 待っている描き直しも、この1回で済む
+}
+// 一覧の知らせ（スナップショット）から描き直すときは、少しまとめてから：分析で全試合を開くと、試合ごとの記録・イベントの知らせが
+// 何十件も続けて届き、そのたびに画面全体を描き直していた（50試合で140回・数秒）。続けて届く間は 0.2秒に1回まで。
+// この端末の操作（addOp・saveEvent など）はこれまでどおりすぐ描き直す。
+function emitSoon() {
+  if (soon) return;
+  soon = setTimeout(() => { soon = null; soonAt = Date.now(); emit(); }, Math.max(30, soonAt + 200 - Date.now()));
 }
 // 同期待ち：見ている一覧の「まだ送っていない書き込み」に加えて、この端末が書いてまだサーバーに届いていない
 // 書き込みすべて（記録の修正の履歴、ほかのチームの記録など、いま見ていないものも）を数える。
@@ -120,7 +128,7 @@ export function selectTeam(teamId) {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.deleted);
       if (field === 'players') S.players = list; else { raw[field] = list; derive(); }
       if (++got >= 3) S.ready.team = true;
-      emit();
+      emitSoon();
     }, onErr));
   }
   emit();
@@ -215,7 +223,7 @@ export function watchOps(matchId, keep) {
     c.ready = true; c.pending = snap.metadata.hasPendingWrites;
     if (snap.metadata.fromCache) { if (!c.fromCache) c.cacheAt = Date.now(); c.fromCache = true; }
     else { c.fromCache = false; c.srvAt = Date.now(); c.checkAt = 0; }
-    emit();
+    emitSoon();
   }, onErr);
   return c;
 }
@@ -263,7 +271,7 @@ export function watchFixLog(matchId) {
   const c = (logCache[matchId] = { list: [], ready: false });
   const { onSnapshot, collection } = F.fsM;
   onSnapshot(collection(F.db, 'teams', S.teamId, 'matches', matchId, 'fixlog'), {}, (snap) => {
-    c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() })); c.ready = true; emit();
+    c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() })); c.ready = true; emitSoon();
   }, onErr);
   return c;
 }
@@ -300,7 +308,7 @@ export function watchEvents(matchId) {
       const n = todoCount(c.list, gn); const m = matchById(matchId);
       if (m && (m.evTodo ?? 0) !== n && todoSent[matchId] !== n) { todoSent[matchId] = n; put(teamPath('matches', matchId), { evTodo: n }); }
     }
-    emit();
+    emitSoon();
   }, onErr);
   return c;
 }

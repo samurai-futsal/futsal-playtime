@@ -2,8 +2,8 @@
 // いつも使っているシート（リニューアル版）の形：上段＝シュート・進入・FINISH SET PLAY の中身、下段＝時間帯。
 // 「試合全体／前半／後半」で範囲を切り替える。「PDFで書き出す」は印刷の画面から保存する。
 import { S, watchOps, watchEvents, opts, teamSettings, activityById } from './store.js';
-import { replay, periodLabel } from './engine.js';
-import { matchModel, periodSig } from './model.js';
+import { periodLabel } from './engine.js';
+import { modelOf } from './model.js';
 import { todoCount } from './events.js';
 import { teamStats, asOfLabel } from './teamstats.js';
 import { esc, fmtDate, toast } from './ui.js';
@@ -36,8 +36,7 @@ function calc(m, range0) {
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
   if (!opsC.ready && !opsC.list.length) return null;
   const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
-  const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
-  const M = matchModel(st, Date.now(), m.fix);
+  const { M } = modelOf(opsC.list, cfg, m.fix);
   const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
   const evs = evC.list.filter((e) => !e.deleted);
   const shownP = M.periods.filter((p) => p.status !== 'none');

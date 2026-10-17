@@ -18,7 +18,13 @@ export function printReport(ms, agg = 'sum') {
 // ② それでも下が余るときは、表の行の高さを少しずつ広げて埋める
 const PAGE_W = 1062, PAGE_H = 726, MAX_Z = 1.3;
 export function fitPages(root) {
-  root.querySelectorAll('.rpw').forEach((pg) => {
+  // 試合が多いとページが数百になる：ページを1枚ずつ出して測る（まだ測っていないページは組まないので、測るたびの組み直しが1ページぶんで済む）
+  const pgs = [...root.querySelectorAll('.rpw')];
+  const lastW = new Map(); // ページの見出し → 前に決まった幅
+  const disp = pgs.map((pg) => pg.style.display);
+  pgs.forEach((pg) => { pg.style.display = 'none'; });
+  pgs.forEach((pg, i) => {
+    pg.style.display = disp[i];
     const bx = pg.querySelector('.rpbx'), w = pg.querySelector('.rpin');
     const availH = bx.clientHeight, availW = PAGE_W;
     const fits = (W) => { w.style.width = W + 'px'; const h = w.scrollHeight, sw = w.scrollWidth; const z = Math.min(availW / W, MAX_Z); return { W, h, z, ok: sw <= W + 2 && h * z <= availH }; };
@@ -27,7 +33,17 @@ export function fitPages(root) {
       let f = best; for (let W = 1500; W <= 2200; W += 100) { const g = fits(W); if (Math.min(availW / g.W, availH / g.h) > Math.min(availW / f.W, availH / f.h)) f = g; }
       fits(f.W); best = { ...f, z: Math.min(availW / f.W, availH / f.h) };
     } else {
-      for (let W = 1350; W >= availW / MAX_Z; W -= 25) { const g = fits(W); if (!g.ok) break; best = g; }
+      // 1350px から 25px ずつ狭めて、収まる一番狭い幅（狭いほど高くなるので、収まらなくなったらその先も収まらない）。
+      // 1つずつ試す代わりに二分探索で同じ幅を探す（組み直しの回数を約20回 → 5回に）。
+      // 同じ見出しのページ（試合ごとの同じ表）は同じ幅になることが多いので、前のページの幅から確かめる
+      const Ws = []; for (let W = 1350; W >= availW / MAX_Z; W -= 25) Ws.push(W);
+      let lo = 0, hi = Ws.length; // Ws[0..lo) は収まる、Ws[hi..] は収まらない
+      const memo = new Map();
+      const test = (i) => { const g = fits(Ws[i]); memo.set(i, g); if (g.ok) lo = Math.max(lo, i + 1); else hi = Math.min(hi, i); };
+      const title = pg.querySelector('.rpttl')?.textContent || ''; const gi = Ws.indexOf(lastW.get(title));
+      if (gi >= 0) { test(gi); if (lo === gi + 1 && gi + 1 < hi) test(gi + 1); }
+      while (lo < hi) test((lo + hi) >> 1);
+      if (lo > 0) { best = memo.get(lo - 1) || fits(Ws[lo - 1]); lastW.set(title, best.W); }
       fits(best.W);
       // 余った高さを、表の行に配る（1行につき最大40px）
       const rows = [...w.querySelectorAll('.rpbody table tr')].filter((r) => !r.closest('svg'));

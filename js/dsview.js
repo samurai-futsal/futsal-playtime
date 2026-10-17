@@ -1,7 +1,6 @@
 // データシート（Excel）の書き出し（試合ページ・分析画面から）。中身は datasheet.js、ファイルの形は xlsx.js。
 import { S, watchOps, watchEvents, opts, teamSettings, activityById } from './store.js';
-import { replay } from './engine.js';
-import { matchModel, periodSig } from './model.js';
+import { modelOf } from './model.js';
 import { datasheetSheets } from './datasheet.js';
 import { buildXLSX } from './xlsx.js';
 import { esc, toast } from './ui.js';
@@ -13,9 +12,9 @@ export function downloadDatasheet(ms) {
     const opsC = watchOps(m.id); const evC = watchEvents(m.id);
     if ((!opsC.ready && !opsC.list.length) || !evC.ready) { toast('記録を読み込んでいます。少し待ってからもう一度押してください'); ms.forEach((x) => { watchOps(x.id); watchEvents(x.id); }); return false; }
     const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
-    const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
+    const { st, M } = modelOf(opsC.list, cfg, m.fix);
     const gts = opts('goalTypes', true);
-    list.push({ m, M: matchModel(st, Date.now(), m.fix), st, evs: evC.list.filter((e) => !e.deleted), goalName: (id) => gts.find((o) => o.id === id)?.name || '', players: S.players, activity: activityById(m.activityId)?.name || '', setMin: (teamSettings().setMin ?? 60) * 1000 });
+    list.push({ m, M, st, evs: evC.list.filter((e) => !e.deleted), goalName: (id) => gts.find((o) => o.id === id)?.name || '', players: S.players, activity: activityById(m.activityId)?.name || '', setMin: (teamSettings().setMin ?? 60) * 1000 });
   }
   const bytes = buildXLSX(datasheetSheets(list, S.team?.name || '自チーム'));
   const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

@@ -1,7 +1,7 @@
 // Match model for the review / analysis screens (spec 7章・8章).
 // Built from the MATCH PLAY replay. Every number on the review is computed from this, so the
 // review, analysis and reports always agree (spec 7章「どちらも同じ記録から同じ計算」).
-import { PERIODS, perLen, nowElapsed, effectiveOps } from './engine.js';
+import { PERIODS, perLen, nowElapsed, effectiveOps, replay } from './engine.js';
 
 const isGK = (cfg, pid) => cfg.members?.[pid]?.pos === 'GK';
 export const SET_MIN = 3000; // ms
@@ -417,6 +417,25 @@ export function whyNot(f2, cfg, pid, seat, startEv, banned = new Set()) {
     if (gk) return `GK（${name(gk.pid)}）が出ています（残り${fmt(Math.max(gk.from, seg.from))}〜${fmt(Math.min(gk.to, seg.to))}）`;
   }
   return null;
+}
+
+// 記録（ops の一覧）から試合の形を作る（replay → matchModel）。同じ一覧・同じ設定・同じ修正なら前に作ったものを使う。
+// 分析・書き出しで何十試合も扱うとき、描き直すたびに全試合を作り直さないため（2026-10-17）。
+// ops の一覧は、記録が変わるたびに新しい配列になる（store.js）ので、配列そのものを鍵にする。
+// 試合中（記録中のピリオドがある）は、出場中の時間が今の時刻で変わるので、matchModel は毎回作る。
+// 返した st と M は書き換えないこと（ほかの画面と共有する）。
+const modelMemo = new WeakMap(); // ops → { k, st, fk, M }
+export function modelOf(ops, cfg, fix = null, now = Date.now()) {
+  const k = JSON.stringify([cfg.times || {}, cfg.members || {}, !!cfg.timesFixed, cfg.setplayAuto ?? null]);
+  let c = modelMemo.get(ops);
+  if (!c || c.k !== k) {
+    const st = replay(ops, cfg); st.sig = periodSig(ops);
+    c = { k, st, fk: null, M: null }; modelMemo.set(ops, c);
+  }
+  if (c.st.periods[c.st.current]?.status === 'live') return { st: c.st, M: matchModel(c.st, now, fix) };
+  const fk = fix ? JSON.stringify(fix) : '';
+  if (c.M == null || c.fk !== fk) { c.M = matchModel(c.st, now, fix); c.fk = fk; }
+  return { st: c.st, M: c.M };
 }
 
 // MATCH PLAYの記録の「形」：ピリオドごとの有効な操作の数と最後の操作。修正はこれが同じときだけ使う

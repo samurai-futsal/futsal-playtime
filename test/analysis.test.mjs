@@ -154,3 +154,23 @@ if (fail) process.exit(1);
 }
 console.log(`analysis (stats sheet): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
+
+// ---------- 試合の形の写し（modelOf、2026-10-17）：同じ記録なら同じ形を使い、記録・設定・修正が変われば作り直す ----------
+{
+  const { modelOf, matchModel } = await import('../js/model.js');
+  const { replay } = await import('../js/engine.js');
+  const mem = { G: { no: '1', pos: 'GK' }, A: { no: '2', pos: 'FP' }, B: { no: '3', pos: 'FP' }, C: { no: '4', pos: 'FP' }, D: { no: '5', pos: 'FP' }, E: { no: '6', pos: 'FP' } };
+  const cfg = { times: { half: 20 }, members: mem, setplayAuto: 60 };
+  const t0 = 1e12; let n = 0; const op = (t, o) => ({ id: 'x' + n, n: n++, t: t0 + t * 1000, dev: 'd', period: o.period || '1H', ...o });
+  const ops = [op(0, { type: 'kickoff', lineup: ['G', 'A', 'B', 'C', 'D'], len: 1200000 }), op(100, { type: 'out', pid: 'A' }), op(101, { type: 'in', pid: 'E' }), op(1300, { type: 'periodEnd' })];
+  const a = modelOf(ops, cfg), b = modelOf(ops, { ...cfg, members: { ...mem } });
+  eq([a.M === b.M, a.st === b.st], [true, true], 'modelOf: same ops and same settings → same model');
+  eq(JSON.stringify(a.M), JSON.stringify(matchModel(replay(ops, cfg), Date.now())), 'modelOf: same result as replay + matchModel');
+  eq(modelOf(ops, { ...cfg, times: { half: 15 } }).M === a.M, false, 'modelOf: settings changed → rebuilt');
+  eq(modelOf([...ops], cfg).M === a.M, false, 'modelOf: new list of ops → rebuilt');
+  const live = ops.slice(0, 3);
+  const l1 = modelOf(live, cfg, null, t0 + 200000), l2 = modelOf(live, cfg, null, t0 + 260000);
+  eq([l1.st === l2.st, l1.M === l2.M, l2.M.periods[0].elapsed - l1.M.periods[0].elapsed], [true, false, 60000], 'modelOf: live match → model follows the clock');
+}
+console.log(`analysis (modelOf): ${pass} passed, ${fail} failed`);
+if (fail) process.exit(1);
