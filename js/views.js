@@ -23,7 +23,7 @@ export { promptBackup }; // 試合が終わったときのバックアップの�
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js', 'js/guide.js', 'js/options.js', 'js/backup.js', 'js/restoreplan.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js', 'js/guide.js', 'js/options.js', 'js/backup.js', 'js/restoreplan.js', 'js/pdfsave.js', 'vendor/html2canvas.min.js'];
 const FB_FILES = ['firebase-app.js', 'firebase-auth.js', 'firebase-firestore.js'].map((f) => 'https://www.gstatic.com/firebasejs/10.12.2/' + f);
 export function startApp(c) {
   ctx = c;

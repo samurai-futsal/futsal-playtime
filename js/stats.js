@@ -1,6 +1,6 @@
 // マッチスタッツ（spec 7章・9章「マッチスタッツ（PDF）」、2026-10-16 決定）。
 // いつも使っているシート（リニューアル版）の形：上段＝シュート・進入・FINISH SET PLAY の中身、下段＝時間帯。
-// 「試合全体／前半／後半」で範囲を切り替える。「PDFで書き出す」は印刷の画面から保存する。
+// 「試合全体／前半／後半」で範囲を切り替える。「PDFで保存」はPDFのファイルを作って保存する（js/pdfsave.js）。
 import { S, watchOps, watchEvents, opts, teamSettings, activityById } from './store.js';
 import { periodLabel } from './engine.js';
 import { modelOf } from './model.js';
@@ -9,6 +9,7 @@ import { teamStats, asOfLabel } from './teamstats.js';
 import { esc, fmtDate, toast } from './ui.js';
 import { render } from './views.js';
 import { openTodo } from './evinput.js';
+import { savePdf, safeName, preloadPdf } from './pdfsave.js';
 
 let range = 'all';
 
@@ -66,16 +67,18 @@ export function vStats(m) {
     : todo ? `<button class="ststat todo" id="stTodo">イベント ${evs.length}件・未入力あり ${todo}件 ›</button>` : `<span class="ststat ok">イベント ${evs.length}件・未入力なし</span>`;
   const head = `<div class="crumb noprint"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › マッチスタッツ</div>
     <div class="sthead noprint"><h1>マッチスタッツ</h1><span class="rvmode strange">${segs}</span><span class="stasof">${asOf}（${hm}に表示）</span>${status}<span class="sp"></span>
-      <span class="stbtns"><button class="btn" id="stPdf">PDFで書き出す</button><a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></span></div>`;
+      <span class="stbtns"><button class="btn" id="stPdf">PDFで保存</button><a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></span></div>`;
 
   return {
     active: 'acts',
     html: `<div class="stw">${head}<div class="stpage">${sheet}${foot}</div></div>`,
     bind: (root) => {
       root.querySelectorAll('[data-range]').forEach((b) => b.onclick = () => { range = b.dataset.range; render(); });
-      root.querySelector('#stPdf').onclick = () => window.print();
-      // 試合ページの「マッチスタッツ（PDF）」から来たときは、すぐ印刷の画面を出す
-      if (location.hash.endsWith('/print')) { history.replaceState(null, '', `#/m/${m.id}/stats`); setTimeout(() => window.print(), 300); }
+      preloadPdf();
+      const save = () => savePdf([{ html: root.querySelector('.stpage').outerHTML }], `${safeName(`マッチスタッツ_vs${m.opponent || ''}_${(m.date || '').replace(/-/g, '')}${range === 'all' ? '' : '_' + periodLabel(range)}`)}.pdf`, { stageCls: 'stw', widths: [1100, 1250, 1400] });
+      root.querySelector('#stPdf').onclick = save;
+      // 試合ページの「マッチスタッツ（PDF）」から来たときは、すぐ保存する
+      if (location.hash.endsWith('/print')) { history.replaceState(null, '', `#/m/${m.id}/stats`); setTimeout(save, 300); }
       const t = root.querySelector('#stTodo'); if (t) t.onclick = () => { openTodo(m.id); location.hash = `#/m/${m.id}/events`; };
     },
   };

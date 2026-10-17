@@ -1110,3 +1110,12 @@ svg.pace .prl.on rect[fill="#F3F5F9"]{fill:#FFE9A8}@media print{svg.pace .prl.on
 .rvs8 th.srt{vertical-align:middle;font-size:12px;padding-left:2px;padding-right:2px;letter-spacing:-.02em}@media (min-width:1000px){.rvs8 th.srt{white-space:nowrap}}.rvfull .rvs8 th.srt{white-space:nowrap}.rvset2 th.srt{vertical-align:middle}.rvs8 th.srt i,.rvset2 th.srt i{display:block;margin:2px 0 0;line-height:1}
 .rvs8 th.srt:first-child i{display:inline;margin-left:4px}
 @media (max-width:999px){.rvs8 td{padding-left:2px!important;padding-right:2px!important;font-size:13px}.rvs8 td small{font-size:10px;letter-spacing:-.04em}}
+/* PDFで保存：画面の外で、1項目ずつページの形に組む */
+.pdfstage{position:fixed;left:-20000px;top:0;background:#fff;z-index:-1;pointer-events:none}
+.pdfstage .pdfpage{background:#fff;padding:8px 10px}
+.pdfstage .rvprint{display:block;padding:2px 0 8px;border-bottom:3px solid var(--navy);margin-bottom:8px}
+.pdfstage .rvpt{font-size:20px;font-weight:900;color:var(--navy)}.pdfstage .rvps{font-size:12.5px;color:#3A4660;margin-top:3px}
+.pdfstage .rvsec{min-height:0!important;border-top:0;padding-top:4px;scroll-margin-top:0}
+.pdfstage .rvbox{flex-grow:0}
+.pdfstage .rvsec svg{max-height:none!important}
+.pdfbar{height:10px;background:#E4E9F2;border-radius:6px;overflow:hidden;margin:6px 0 4px}.pdfbar i{display:block;height:100%;width:0;background:#1F5FBF;transition:width .2s}
