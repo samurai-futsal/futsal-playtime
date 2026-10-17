@@ -14,6 +14,8 @@ export const KIND = {
   conc: { label: '失点', team: 'opp' }, fspdf: { label: 'FINISH SET PLAY DF', short: 'FINISH SET PLAY<br>DF', team: 'opp' },
   rec: { label: 'ボールリカバリー', team: 'own', sub: true }, lost: { label: 'ボールロスト', team: 'own', sub: true },
   foul: { label: 'ファール', team: 'own', sub: true }, fouled: { label: '被ファール', team: 'own', sub: true },
+  // 相手の退場（こちらが5対4の時間帯。2026-10-17 決定）。at＝退場の時刻、endPeriod・endAt＝数的優位の終わり
+  oej: { label: '相手の退場', team: 'opp', sub: true },
 };
 export const RESULTS = [['in', '枠内'], ['out', '枠外'], ['block', 'ブロック'], ['post', 'ポスト']];
 export const CLS = [['pos', '定位置'], ['set', 'セットプレー'], ['trans', 'トランジション'], ['gk', 'GK活用'], ['special', '特殊局面']];
@@ -36,10 +38,19 @@ export function cardsOf(events, periodOrder = []) {
     let c = e.card;
     if (e.kind === 'foul' && c === 'yellow' && e.pid && e.pid !== UNKNOWN) {
       const n = (yel.get(e.pid) || 0) + 1; yel.set(e.pid, n);
-      if (n >= 2) c = 'y2';
+      if (n === 2) c = 'y2'; // 3枚目からは退場に数えない（cardIssues で要確認にする）
     }
     out.set(e.id, c);
   }
+  return out;
+}
+// カードの記録のおかしなところ：同じ選手の3枚目のイエロー（2枚目で退場しているはず）。返す：Map(ev.id → 理由)
+export function cardIssues(events, periodOrder = []) {
+  const po = (k) => periodOrder.indexOf(k);
+  const list = events.filter((e) => !e.deleted && e.kind === 'foul' && e.card === 'yellow' && e.pid && e.pid !== UNKNOWN)
+    .sort((a, b) => po(a.period) - po(b.period) || a.at - b.at || (a.seq || 0) - (b.seq || 0));
+  const out = new Map(); const yel = new Map();
+  for (const e of list) { const n = (yel.get(e.pid) || 0) + 1; yel.set(e.pid, n); if (n >= 3) out.set(e.id, `同じ選手の${n}枚目のイエローです（2枚目で退場しています）`); }
   return out;
 }
 export const UNKNOWN = '?';      // 不明（確認したが分からない＝入力済み）
@@ -51,6 +62,21 @@ export const isSZ = (k) => k === 'szshot' || k === 'oszshot';
 export const isFsp = (k) => k === 'fspat' || k === 'fspdf';
 export const hasCls = (k) => isShot(k) || k === 'z4' || k === 'oz4';
 export const isOG = (name) => name === 'OG';
+
+// ---------- 得点・失点の種類（選択肢）を名前に頼らずに見分ける ----------
+// 初めから入っている種類は id が 'o11_OG' のように「o番号_もとの名前」になっている（store.js の optList）。
+// 設定で名前を変えても id は変わらないので、id の「もとの名前」を使う。あとから足した種類（'o' + 時刻）や古い記録は名前で見る。
+export function goalTypeKey(id, name = '') {
+  const m = /^o\d+_(.+)$/.exec(String(id ?? ''));
+  return m ? m[1] : (name || '');
+}
+// gn：id → いまの名前（あとから足した種類のため。なくてもよい）
+export const isOGType = (id, gn = null) => !!id && goalTypeKey(id, gn ? gn(id) : '') === 'OG';
+export const clsOfGoalTypeId = (id, gn = null) => (id ? clsOfGoalType(goalTypeKey(id, gn ? gn(id) : '')) : null);
+// 選択肢の一覧（[{id,name}]）から、もとの名前（なければいまの名前）が key の種類の id
+export function goalTypeIdOf(list, key) {
+  return (list || []).find((o) => goalTypeKey(o.id, o.name) === key)?.id || (list || []).find((o) => o.name === key)?.id || null;
+}
 
 // 得点・失点の種類（名前）から分類を決める（spec 6章「攻撃の分類」）
 export function clsOfGoalType(name) {
@@ -79,13 +105,13 @@ export function missingLv(ev, goalName = (x) => x) {
   } else if (k === 'oz4') d += e(ev.cls);
   else if (k === 'goal') {
     b += e(ev.pid);
-    if (ev.pid !== OPP_OG) {
+    if (ev.pid !== OPP_OG) { // 相手OGは種類（OG）だけ。SZ・人数は記録しない（2026-10-17 決定）
       d += e(ev.assist) + e(ev.gtype) + e(ev.sz);
       if (ev.sz === 'out') d += e(ev.n);
     }
   } else if (k === 'conc') {
     d += e(ev.gtype);
-    if (isOG(goalName(ev.gtype))) d += e(ev.og);
+    if (isOGType(ev.gtype, goalName)) d += e(ev.og);
     else { d += e(ev.sz); if (ev.sz === 'out') d += e(ev.n); }
   } else if (isFsp(k)) d += e(ev.fsp);
   else if (k === 'rec' || k === 'lost') d += e(ev.pid);
@@ -121,25 +147,73 @@ export function subAtSecond(M, period, at) {
   return M.stints.some((s) => s.period === period && ((s.from === at && at > 0) || (s.to === at && at < (p?.elapsed ?? Infinity))));
 }
 
+// ---------- 自チームの特殊局面（GKをFPと入れ替えていた区間） ----------
+// 2026-10-17 決定（A）：GKをフィールドの選手と入れ替えたときだけ特殊局面。GKの退場（空席）や、GKなしで始めたピリオドは特殊局面にしない。
+// GKがピッチにいない続きの区間ごとに、その始まりで「GKが出て、同じ場所に同じ時刻にFPが入った」ものだけを返す。
+// 返す：{ [periodKey]: [[from, to], ...] }（ms・経過）
+export function gkOutWindows(M) {
+  const out = {};
+  for (const p of M.periods || []) {
+    const ss = (M.stints || []).filter((x) => x.period === p.key);
+    const end = Math.max(p.elapsed || 0, ...ss.map((x) => x.to));
+    const cuts = [...new Set([0, end, ...ss.flatMap((x) => [x.from, x.to])])].filter((c) => c >= 0 && c <= end).sort((a, b) => a - b);
+    const res = []; let run = null;
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const a = cuts[i], b = cuts[i + 1];
+      const on = ss.filter((x) => x.from <= a && x.to >= b);
+      const noGK = on.length > 0 && !on.some((x) => isGK(M.cfg, x.pid));
+      if (!noGK) { run = null; continue; }
+      if (run) { run.to = b; continue; }
+      // 区間の始まり：その時刻にGKが出て、同じ場所にFPが入ったか
+      const gkOut = ss.filter((x) => x.to === a && isGK(M.cfg, x.pid));
+      const swapped = a > 0 && gkOut.some((g) => ss.some((x) => x.seat === g.seat && x.from === a && !isGK(M.cfg, x.pid)));
+      run = { from: a, to: b, swapped };
+      if (swapped) res.push(run);
+    }
+    out[p.key] = res.map((r) => [r.from, r.to]);
+  }
+  return out;
+}
+// その時刻（交代と同じ秒は side に従う）が GK をFPと入れ替えていた区間か
+export function inGkOut(M, period, at, side = 'before', W = null) {
+  const iv = (W || gkOutWindows(M))[period] || [];
+  const after = side === 'after' || at === 0;
+  return iv.some(([a, b]) => (after ? a <= at && at < b : a < at && at <= b));
+}
+
 // ---------- 分類の初めの選択（spec 6章・13章） ----------
-// 自チームのGKがいない区間、相手の5x4の時間帯 → 特殊局面。前後5秒以内に同じ側のFINISH SET PLAY → セットプレー
+// 自チームのGKをFPと入れ替えていた区間、相手の5x4の時間帯 → 特殊局面。前後5秒以内に同じ側のFINISH SET PLAY → セットプレー
 export function autoCls(M, events, ev) {
   if (!hasCls(ev.kind)) return null;
   const on = pitchAt(M, ev.period, ev.at, ev.side);
   const gkOn = on.some((pid) => isGK(M.cfg, pid));
   const p = M.periods.find((x) => x.key === ev.period);
   const opp5 = (M.pp || []).some((x) => x.period === ev.period && x.team === 'opp' && x.from <= ev.at && ev.at < (x.to ?? p?.elapsed ?? Infinity));
-  if ((on.length && !gkOn) || opp5) return 'special';
+  if ((on.length && !gkOn && inGkOut(M, ev.period, ev.at, ev.side)) || opp5) return 'special';
   const want = KIND[ev.kind].team === 'own' ? 'fspat' : 'fspdf';
   if (events.some((x) => !x.deleted && x.id !== ev.id && x.kind === want && x.period === ev.period && Math.abs(x.at - ev.at) <= 5000)) return 'set';
   return null;
 }
 
 // 記録上その時刻にピッチにいない選手を選んだか（要確認）
+export const PLAYER_KEYS = ['pid', 'pid2', 'assist', 'og'];
 export function needsCheck(M, ev) {
+  if (ev.kind === 'oej') return false;
   const on = new Set(pitchAt(M, ev.period, ev.at, ev.side));
-  const picked = [ev.pid, ev.pid2, ev.assist, ev.og].filter((x) => x && x !== UNKNOWN && x !== OPP_OG && x !== NO_ASSIST);
+  const picked = PLAYER_KEYS.map((k) => ev[k]).filter((x) => x && x !== UNKNOWN && x !== OPP_OG && x !== NO_ASSIST);
   return picked.some((pid) => !on.has(pid));
+}
+export const CHECK_PITCH = '記録上この時刻にピッチにいない選手を選んでいます';
+// 要確認（⚠）とその理由。理由：ピッチにいない選手・同じ選手の3枚目のイエロー・取り込みで分からなかったこと（impWhy）
+// 「このままにする」（checkOk）を押したイベントは要確認にしない（未4・2026-10-17）。cards＝cardIssues の結果（なければここで数える）
+export function checkOf(M, ev, cards = null, events = null) {
+  if (ev.deleted || ev.checkOk) return { check: false, why: '' };
+  const why = [];
+  if (needsCheck(M, ev)) why.push(CHECK_PITCH);
+  const c = (cards || cardIssues(events || [ev], (M.periods || []).map((p) => p.key))).get(ev.id);
+  if (c) why.push(c);
+  if (ev.impWhy) why.push(ev.impWhy);
+  return { check: why.length > 0, why: why.join('／') };
 }
 
 export const liveEvents = (list) => list.filter((e) => !e.deleted);
@@ -149,10 +223,15 @@ export function sortEvents(list, periodOrder) {
 }
 
 // 一覧の1行の説明
-export function summary(ev, nm, goalName = (x) => x) {
+// fmtAt(period, at)：時刻の書き方（相手の退場の終わり。なければ経過の分:秒）
+export function summary(ev, nm, goalName = (x) => x, fmtAt = null) {
   const P = (pid) => (pid === UNKNOWN ? '不明' : pid === OPP_OG ? '相手OG' : pid ? nm(pid) : null);
   const parts = [];
   const k = ev.kind;
+  if (k === 'oej') {
+    const f = fmtAt || ((p, at) => `${Math.floor(at / 60000)}:${String(Math.floor(at / 1000) % 60).padStart(2, '0')}`);
+    return ev.endPeriod != null && ev.endAt != null ? `5対4 〜 ${f(ev.endPeriod, ev.endAt)}まで` : '5対4（終わり未入力）';
+  }
   if (k === 'z4' || k === 'sz') {
     if (ev.method === 'pass') parts.push(`パス ${P(ev.pid) || '?'} → ${P(ev.pid2) || '?'}`);
     else if (ev.method) parts.push(`${lab(METHODS, ev.method)} ${P(ev.pid) || ''}`.trim());
@@ -182,13 +261,14 @@ export function setEventTable(Mp, sets, events, goalName = (x) => x) {
     if (k === 'shot' || k === 'szshot') return 0;
     if (k === 'goal') return e.pid === OPP_OG ? -1 : 0;
     if (k === 'oshot' || k === 'oszshot') return 1;
-    if (k === 'conc') return isOG(goalName(e.gtype)) ? -1 : 1;
+    if (k === 'conc') return isOGType(e.gtype, goalName) ? -1 : 1;
     const i = ['z4', 'oz4', 'sz', 'osz', 'fspat', 'fspdf'].indexOf(k);
     return i < 0 ? -1 : i + 2;
   };
   const zero = () => SET_COLS.map(() => 0);
   const rows = sets.map((s) => ({ key: s.key, pids: s.pids, time: s.time, c: zero() }));
   const special = zero(), other = zero(), total = zero();
+  const gw = gkOutWindows(Mp);
   for (const e of events) {
     if (e.deleted) continue;
     const ci = col(e); if (ci < 0) continue;
@@ -197,19 +277,107 @@ export function setEventTable(Mp, sets, events, goalName = (x) => x) {
     const gks = on.filter((p) => isGK(Mp.cfg, p)), fps = on.filter((p) => !isGK(Mp.cfg, p));
     const key = gks.length === 1 && fps.length === 4 ? fps.slice().sort().join('|') : null;
     const r = key ? rows.find((x) => x.key === key) : null;
-    (r ? r.c : key ? other : special)[ci]++; total[ci]++;
+    // 特殊局面の行は、GKをFPと入れ替えていた区間だけ（GKの退場・GKなしで始めた区間は「そのほか」。2026-10-17 決定）
+    const sp = !key && gks.length === 0 && inGkOut(Mp, e.period, e.at, side, gw);
+    (r ? r.c : sp ? special : other)[ci]++; total[ci]++;
   }
   return { cols: SET_COLS, rows, special, other, total };
 }
 
 // ---------- 要確認の付け直し・未入力の数（2026-10-16 決定） ----------
-// 今の記録（記録の修正を反映した出場）で、すべてのイベントの⚠を判定し直す。変わるものだけ返す
+// 今の記録（記録の修正を反映した出場）で、すべてのイベントの⚠を判定し直す。変わるもの（⚠か理由）だけ返す：[{ev, check, why}]
 export function recheckAll(M, events) {
   const out = [];
+  const cards = cardIssues(events, (M.periods || []).map((p) => p.key));
   for (const e of events) {
     if (e.deleted) continue;
-    const c = needsCheck(M, e);
-    if (!!e.check !== c) out.push({ ev: e, check: c });
+    const { check, why } = checkOf(M, e, cards);
+    if (!!e.check !== check || (e.checkWhy || '') !== why) out.push({ ev: e, check, why });
+  }
+  return out;
+}
+// ピッチの5人が決まる記録の「しるし」（出場の区切り）。これが変わったら⚠を付け直す（記4：MATCH PLAYの取り消し・リセット・あとからの交代、修正が古くなったときなど）
+// 試合中の出場中の区切りは「出場中」とだけ見る（毎秒変わらないように）
+export function pitchSig(M) {
+  const row = (s) => `${s.period}|${s.pid}|${s.seat ?? ''}|${s.from}|${s.open ? 'open' : s.to}`;
+  const txt = [...(M.stints || []).map(row), '#', ...(M.zero || []).map(row)].sort().join(';');
+  let h = 5381; for (let i = 0; i < txt.length; i++) h = ((h * 33) ^ txt.charCodeAt(i)) >>> 0;
+  return `${(M.stints || []).length}:${h.toString(36)}`;
+}
+
+// ---------- イベントの種類ごとに持てる項目（記3：種類を変えたときは、新しい種類の項目だけを残す） ----------
+export const EV_FIELDS = ['pid', 'pid2', 'assist', 'method', 'result', 'n', 'cls', 'sp', 'gtype', 'sz', 'zone', 'card', 'fsp', 'og', 'endPeriod', 'endAt'];
+const FIELDS_OF = {
+  shot: ['pid', 'result', 'n', 'cls', 'sp'], szshot: ['pid', 'result', 'n', 'cls', 'sp'],
+  oshot: ['result', 'n', 'cls', 'sp'], oszshot: ['result', 'n', 'cls', 'sp'],
+  z4: ['method', 'pid', 'pid2', 'cls', 'sp'], sz: ['method', 'pid', 'pid2'], oz4: ['cls', 'sp'], osz: [],
+  goal: ['pid', 'assist', 'gtype', 'sz', 'n'], conc: ['gtype', 'og', 'sz', 'n'],
+  fspat: ['fsp'], fspdf: ['fsp'], rec: ['pid', 'zone'], lost: ['pid', 'zone'],
+  foul: ['pid', 'card'], fouled: ['pid', 'card'], oej: ['endPeriod', 'endAt'],
+};
+const okVal = { result: RESULTS, cls: CLS, sp: SETP, fsp: FSP, method: METHODS, zone: ZONES };
+// 項目を新しい種類に合うものだけにしたイベントを返す（イベントのほかの印 id・時刻・src・imp・hist などはそのまま）
+export function cleanFields(ev, goalName = null) {
+  const k = ev.kind; const keep = new Set(FIELDS_OF[k] || []);
+  const out = { ...ev };
+  for (const f of EV_FIELDS) {
+    const v = out[f];
+    if (!keep.has(f) || v == null || v === '') { delete out[f]; continue; }
+    if (okVal[f] && !okVal[f].some(([x]) => x === v)) delete out[f];
+  }
+  if (out.card != null && !(k === 'fouled' ? CARDS_OPP : CARDS).some(([x]) => x === out.card)) delete out.card;
+  if ((k === 'foul' || k === 'fouled') && out.card == null) out.card = 'none';
+  if (out.n != null && !(Number.isInteger(+out.n) && +out.n >= 0 && +out.n <= 5)) delete out.n;
+  if (out.n != null) out.n = +out.n;
+  if (out.method !== 'pass') delete out.pid2;
+  if (out.cls !== 'set') delete out.sp;
+  if (out.sz != null && out.sz !== 'in' && out.sz !== 'out') delete out.sz;
+  if (k === 'goal') {
+    if (out.pid === OPP_OG) { delete out.sz; delete out.n; out.assist = NO_ASSIST; }
+    else if (isOGType(out.gtype, goalName)) delete out.gtype;
+    if (out.assist && out.assist === out.pid && out.assist !== NO_ASSIST) delete out.assist;
+  }
+  if (k === 'conc') { if (isOGType(out.gtype, goalName)) { delete out.sz; delete out.n; } else delete out.og; }
+  if ((k === 'goal' || k === 'conc') && out.sz == null) delete out.n;
+  if (out.n === 0 && (isSZ(k) || out.sz === 'in')) delete out.n; // SZ内は打った選手を1人目に数えるので0人はない
+  return out;
+}
+
+// ---------- 相手の退場（こちらが5対4。決8・2026-10-17） ----------
+const pEnd = (p) => (p.status === 'done' ? p.elapsed : p.len);
+const periodsOf = (M) => (M.periods || []).filter((p, i, a) => p.status !== 'none' || !M.matchOver || i === 0);
+// 初めの終わり：プレーイングタイムで2:00後（次のピリオドにまたがることもある。試合の終わりまで）。その前にこちらが得点したら、その得点の時刻
+export function oejDefaultEnd(M, events, period, at) {
+  const ps = periodsOf(M); let i = ps.findIndex((p) => p.key === period);
+  if (i < 0) return { endPeriod: period, endAt: at };
+  const goals = (events || []).filter((e) => !e.deleted && e.kind === 'goal');
+  let left = 120000, cur = at;
+  for (;;) {
+    const p = ps[i]; const end = pEnd(p); const stop = Math.min(end, cur + left);
+    const g = goals.filter((e) => e.period === p.key && (p.key === period ? e.at > at : e.at >= cur) && e.at <= stop).sort((a, b) => a.at - b.at)[0];
+    if (g) return { endPeriod: p.key, endAt: g.at };
+    if (cur + left <= end) return { endPeriod: p.key, endAt: cur + left };
+    if (i + 1 >= ps.length) return { endPeriod: p.key, endAt: end };
+    left -= end - cur; i++; cur = 0;
+  }
+}
+// 相手の退場の時間帯（分析用）：{ [periodKey]: [[fromMs, toMs], ...] }。終わりがないものは初めの終わりを使う
+export function oppEjWindows(events, M) {
+  const ps = M.periods || []; const out = Object.fromEntries(ps.map((p) => [p.key, []]));
+  const idx = (k) => ps.findIndex((p) => p.key === k);
+  for (const e of events || []) {
+    if (e.deleted || e.kind !== 'oej') continue;
+    const d = e.endPeriod != null && e.endAt != null ? { endPeriod: e.endPeriod, endAt: e.endAt } : oejDefaultEnd(M, events, e.period, e.at);
+    const a = idx(e.period), b = idx(d.endPeriod); if (a < 0 || b < a) continue;
+    for (let i = a; i <= b; i++) {
+      const p = ps[i]; const from = i === a ? e.at : 0; const to = i === b ? d.endAt : pEnd(p);
+      if (to > from) out[p.key].push([from, to]);
+    }
+  }
+  for (const k of Object.keys(out)) {
+    const s = out[k].sort((x, y) => x[0] - y[0]); const m = [];
+    for (const iv of s) { const l = m[m.length - 1]; if (l && iv[0] <= l[1]) l[1] = Math.max(l[1], iv[1]); else m.push([...iv]); }
+    out[k] = m;
   }
   return out;
 }

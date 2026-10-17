@@ -42,5 +42,43 @@ eq([ev('rec')[0].pid, ev('foul')[0].card], ['p1', 'yellow'], 'ROBO 1/2 = recover
 eq([r.events.length, r.unknownCodes], [7, [['なにか', 1]]], 'player rows skipped, unknown codes listed');
 const r2 = buildImport({ instances: [{ code: 'シュート', start: 20, end: 37, labels: [['シュート分類', 'オウンゴール']] }], periods: [{ key: '1H', ko: 10, from: -1e9, to: 1e9 }], R, M, members: {}, players: [], goalTypes: gts });
 eq([r2.events[0].kind, r2.events[0].pid], ['goal', OPP_OG], 'their own goal = our goal by opp OG');
+
+// --- 記14：名前があいまいなとき・ピリオドの分け方・おかしな値・同じグループの2つのラベル・入力の順
+{
+  const R0 = { elOfRel: (k, rel) => rel };
+  const M2 = { periods: [{ key: '1H', elapsed: 1200000, len: 1200000 }, { key: '2H', elapsed: 1200000, len: 1200000 }] };
+  const members = { p1: { no: '7' }, p2: { no: '8' }, p3: { no: '9' } };
+  const players = [{ id: 'p1', last: '山田', first: '太郎' }, { id: 'p2', last: '山田', first: '次郎' }, { id: 'p3', last: '松', first: '一' }];
+  const kos = [0, 1203]; // 前半の終わり（動画 1200）のすぐあとに後半の Kick Off
+  const periods = kos.map((k, i) => ({ key: ['1H', '2H'][i], ko: k, shift: 0, from: i ? k : -1e9, to: kos[i + 1] ?? 1e9 }));
+  const inst = [
+    { code: 'Kick Off', start: 0, end: 1, labels: [] }, { code: 'Kick Off', start: 1203, end: 1204, labels: [] },
+    { code: 'シュート', start: 1199 - 15, end: 1201, labels: [['シュート分類', '枠内']] },                                     // 前半 19:59 のシュート
+    { code: 'スコアゾーン内シュート', start: 300, end: 317, labels: [['シュート分類', 'ゴール'], ['スコアゾーン進入人数', '0'], ['選手', '#7']] },
+    { code: 'シュート', start: 400, end: 417, labels: [['シュート分類', '枠内'], ['局面', '定位置攻撃'], ['局面', 'トランジション攻撃'], ['選手', '山田 次郎']] },
+    { code: 'シュート', start: 500, end: 517, labels: [['シュート分類', '枠外'], ['選手', '山田']] },        // 山田が2人
+    { code: 'シュート', start: 510, end: 527, labels: [['シュート分類', '枠外'], ['選手', '松川 網汰']] },   // 名字の前だけ「松」と合う
+    { code: 'ROBO 1/2', start: 600, end: 615, labels: [['ゾーン', '相手陣'], ['選手', '#8']] },
+    { code: 'PERDIDA', start: 610, end: 625, labels: [['ゾーン', 'Ｚ３'], ['選手', '#9']] },
+    { code: 'スコアゾーン内シュート', start: 700, end: 717, labels: [['シュート分類', '枠内'], ['スコアゾーン進入人数', '0']] },
+    { code: 'シュート', start: 1300, end: 1317, labels: [['シュート分類', '枠内']] },
+  ];
+  const gts = [{ id: 'o0_定位置', name: '定位置' }, { id: 'o11_OG', name: 'オウンゴール' }];
+  const r = buildImport({ instances: inst, periods, R: R0, M: M2, members, players, goalTypes: gts, seqBase: 1700000000000 });
+  const E = r.events;
+  const last1H = E.find((e) => e.kind === 'shot' && e.period === '1H' && e.at === 1199000);
+  eq(!!last1H, true, 'shot at 19:59 of 1H (code starts before, play before 2H Kick Off) stays in 1H');
+  eq(E.filter((e) => e.period === '2H').map((e) => e.at), [112000], '2H: only the shot after Kick Off 2');
+  const g = E.find((e) => e.kind === 'goal'); eq([g.sz, g.n, g.pid], ['in', undefined, 'p1'], 'SZ goal with 0 people → n empty');
+  const amb = E.filter((e) => e.kind === 'shot' && (e.at === 515000 || e.at === 525000)); eq(amb.map((e) => e.pid), [undefined, undefined], 'same surname / prefix only → not matched');
+  eq(r.unmatched.map(([v]) => v).sort(), ['山田', '松川 網汰'].sort(), 'ambiguous names are listed as not found');
+  const two = E.find((e) => e.at === 415000); eq([two.pid, two.cls, two.check, /局面/.test(two.impWhy)], ['p2', 'pos', true, true], 'two 局面 labels → first one + 要確認 with a reason');
+  const rec = E.find((e) => e.kind === 'rec'), lost = E.find((e) => e.kind === 'lost'); eq([rec.zone, lost.zone], [undefined, 'Z3'], 'zone not Z1-Z4 → empty; full-width Ｚ３ read as Z3');
+  const sz0 = E.find((e) => e.kind === 'szshot'); eq(sz0.n, undefined, 'SZ shot with 0 people → n empty');
+  eq(r.warnings.length, 3, 'warnings: SZ goal 0, SZ shot 0, zone');
+  eq(E.map((e) => e.seq), E.map((_, i) => 1700000000001 + i), 'seq = import time + index');
+  const og = buildImport({ instances: [{ code: '被シュート', start: 20, end: 37, labels: [['シュート分類', 'オウンゴール'], ['スコアゾーン進入人数', '2']] }], periods: [{ key: '1H', ko: 10, from: -1e9, to: 1e9 }], R: R0, M: M2, members, players, goalTypes: gts });
+  eq([og.events[0].kind, og.events[0].gtype, og.events[0].sz, og.events[0].n], ['conc', 'o11_OG', undefined, undefined], 'renamed OG type found by id; OG ignores SZ (決5)');
+}
 console.log(`scimport: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

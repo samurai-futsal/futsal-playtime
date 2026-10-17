@@ -1,7 +1,7 @@
 // Sportscode からの取り込み（spec 9章「Sportscodeからの取り込み」）。XML と CSV は同じ中身で、どちらも読める。
 // 画面を作らない純粋な処理：ファイルを読む → コードとラベルを対応表で読む → 動画の時刻を試合の時計に直す → イベントにする。
 // 出場（#背番号の行）と AT_／DF_ のコードは取り込まない（出場は MATCH PLAY の記録を使う）。読めなかったコード・ラベルは一覧で返す。
-import { OPP_OG, UNKNOWN, NO_ASSIST } from './events.js';
+import { OPP_OG, UNKNOWN, NO_ASSIST, goalTypeIdOf } from './events.js';
 
 // ---------- ファイルを読む ----------
 const unx = (s) => String(s ?? '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&').trim();
@@ -68,25 +68,32 @@ const leadKey = (k) => (['shot', 'szshot', 'oshot', 'oszshot'].includes(k) ? 'sh
 export const kickOffs = (inst) => inst.filter((i) => /^kick ?off$/i.test(i.code)).sort((a, b) => a.start - b.start);
 
 // ---------- イベントにする ----------
-// o = { instances, periods:[{key, ko（秒）, shift（秒）, from, to（このピリオドに入れる動画の範囲。秒）}], R（ランニングタイムの試合）, M, members, players, goalTypes:[{id,name}], lead }
+// o = { instances, periods:[{key, ko（秒）, shift（秒）, from, to（このピリオドに入れる動画の範囲。秒）}], R（ランニングタイムの試合）, M, members, players, goalTypes:[{id,name}], lead, seqBase }
+// ピリオドの範囲（from・to）は、コードの開始ではなくプレーの瞬間（開始＋リード）で見る（前半の最後の数秒が後半に入らないように）
+// seqBase：入力の順（seq）の始まり。取り込む時刻を入れると、同じ秒のイベントも取り込んだ順に並ぶ（アプリで入れたものとも混ざらない）
 export function buildImport(o) {
   const lead = { ...DEFAULT_LEAD, ...(o.lead || {}) };
-  const unknownCodes = new Map(), unknownLabels = new Map(), unmatched = new Map();
+  const unknownCodes = new Map(), unknownLabels = new Map(), unmatched = new Map(), warnings = new Map();
+  const warn = (w) => warnings.set(w, (warnings.get(w) || 0) + 1);
   const mem = o.members || {};
   const byNo = new Map(Object.entries(mem).map(([pid, m]) => [String(m.no), pid]));
   const P = (id) => o.players.find((p) => p.id === id);
   const full = (pid) => { const p = P(pid); return p ? `${p.last || ''} ${p.first || ''}`.trim() : ''; };
   const norm = (s) => String(s).replace(/[\s　]+/g, '');
+  // 名前で探すのは、ちょうど1人に決まるときだけ（同じ名字が2人・名字の前だけ合う、は「見つからない」にして一覧で知らせる）
   const pidOf = (v) => {
     if (!v) return null;
     const m = String(v).match(/^#?\s*(\d+)$/); if (m) return byNo.get(m[1]) || null;
     const n = norm(v); const ids = Object.keys(mem);
-    return ids.find((pid) => norm(full(pid)) === n) || ids.find((pid) => norm(P(pid)?.last || '') === n) || ids.find((pid) => n.startsWith(norm(P(pid)?.last || '-')) && norm(P(pid)?.last || '')) || null;
+    const one = (f) => { const h = ids.filter(f); return h.length === 1 ? h[0] : h.length > 1 ? false : null; };
+    const a = one((pid) => norm(full(pid)) === n); if (a !== null) return a || null;
+    const b = one((pid) => norm(P(pid)?.last || '') === n); return b || null;
   };
-  const gtId = (name) => o.goalTypes.find((g) => g.name === name)?.id || null;
-  const events = []; let seq = 0;
+  const gtId = (name) => goalTypeIdOf(o.goalTypes, name); // 種類の名前を変えても、初めからある種類は id で見つける（記15）
+  const events = []; let seq = +o.seqBase || 0;
+  const tOf = (i) => { const k = CODE[i.code]; return i.start + (k ? lead[leadKey(k)] : 0); };
   for (const per of o.periods) {
-    const list = o.instances.filter((i) => i.start >= per.from && i.start < per.to).sort((a, b) => a.start - b.start);
+    const list = o.instances.filter((i) => { const t = tOf(i); return t >= per.from && t < per.to; }).sort((a, b) => tOf(a) - tOf(b) || a.start - b.start);
     const pend = o.M.periods.find((p) => p.key === per.key)?.elapsed ?? Infinity;
     const toAt = (videoSec) => {
       const rel = Math.max(0, (videoSec - per.ko - (+per.shift || 0)) * 1000);
@@ -98,21 +105,22 @@ export function buildImport(o) {
       if (IGNORE(i.code)) continue;
       const kind = CODE[i.code];
       if (!kind) { unknownCodes.set(i.code, (unknownCodes.get(i.code) || 0) + 1); continue; }
-      const L = {}; for (const [g, v] of i.labels) { (L[g] = L[g] || []).push(v); if (g && !KNOWN_GROUPS.includes(g)) unknownLabels.set(g, (unknownLabels.get(g) || 0) + 1); }
-      const first = (...gs) => { for (const g of gs) if (L[g]?.length) return L[g][0]; return null; };
+      const L = {}; for (const [g, v] of i.labels) { if (!(L[g] = L[g] || []).includes(v)) L[g].push(v); if (g && !KNOWN_GROUPS.includes(g)) unknownLabels.set(g, (unknownLabels.get(g) || 0) + 1); }
+      const used = new Set(); // 読んだグループ（同じグループに2つのラベルがあれば要確認にする）
+      const first = (...gs) => { for (const g of gs) if (L[g]?.length) { used.add(g); return L[g][0]; } return null; };
       const t = i.start + lead[leadKey(kind)];
       const ev = { id: null, period: per.key, at: toAt(t), seq: ++seq, src: 'sportscode', kind };
       const who = (v, g) => { if (!v) return null; const pid = pidOf(v); if (!pid) unmatched.set(v, (unmatched.get(v) || 0) + 1); return pid; };
       const phase = first('局面'); const cls = phase ? phaseOf(phase) : null;
       if (['shot', 'szshot', 'oshot', 'oszshot'].includes(kind)) {
         const own = kind === 'shot' || kind === 'szshot'; const sz = kind === 'szshot' || kind === 'oszshot';
-        const res = L['シュート分類'] || [];
+        const res = L['シュート分類'] || []; used.add('シュート分類');
         const n = first('スコアゾーン進入人数', 'スコアゾーン進入');
         if (res.includes('ゴール') || res.includes('オウンゴール')) {
           const og = res.includes('オウンゴール');
           ev.kind = own ? 'goal' : 'conc';
-          ev.sz = og ? undefined : (sz ? 'in' : 'out');
-          if (!og && n != null && n !== '' && Number.isFinite(+n)) ev.n = +n;
+          ev.sz = og ? undefined : (sz ? 'in' : 'out'); // OGはSZ内／SZ外を記録しない（決5）
+          if (!og && n != null && n !== '' && Number.isFinite(+n)) { if (sz && +n === 0) warn('SZ内の得点・失点で「ゾーン内の人数」が0人になっているもの（人数は空けて取り込みます）'); else ev.n = +n; }
           if (own) {
             if (og) { ev.pid = OPP_OG; ev.assist = NO_ASSIST; ev.gtype = gtId('OG'); }
             else { ev.pid = who(first('選手', 'シュート選手')) || undefined; const a = first('アシスト'); if (a) ev.assist = a === 'なし' ? NO_ASSIST : who(a) || undefined; }
@@ -126,6 +134,7 @@ export function buildImport(o) {
           if (r) ev.result = RES[r];
           if (!sz && n != null && n !== '' && Number.isFinite(+n)) ev.n = +n;
           else if (sz && n != null && n !== '' && +n >= 1) ev.n = +n;
+          else if (sz && n != null && n !== '' && +n === 0) warn('SZ内シュートで「ゾーン内の人数」が0人になっているもの（SZ内は打った選手を1人目に数えるので、人数は空けて取り込みます）');
           if (cls) ev.cls = cls;
           if (own) ev.pid = who(first('選手', 'シュート選手')) || undefined;
           const sp = first('セットプレー分類', 'セットの種類'); if (sp && cls === 'set') ev.sp = fspOf(sp) || undefined;
@@ -142,18 +151,22 @@ export function buildImport(o) {
         const sp = first('セットプレー分類', 'セットの種類'); if (sp) ev.fsp = fspOf(sp) || undefined;
         fsps.push(ev);
       } else if (kind === 'rec' || kind === 'lost') {
-        ev.pid = who(first('選手')) || undefined; const z = first('ゾーン'); if (z) ev.zone = z;
+        ev.pid = who(first('選手')) || undefined;
+        const z = first('ゾーン'); const zz = z && String(z).normalize('NFKC').trim().toUpperCase();
+        if (zz && /^Z[1-4]$/.test(zz)) ev.zone = zz; else if (z) warn(`ROBO・PERDIDAのゾーンが Z1〜Z4 でないもの「${z}」（ゾーンは空けて取り込みます）`);
       } else if (kind === 'foul' || kind === 'fouled') {
         ev.pid = who(first('選手')) || undefined;
         const c = (L['カード'] || []).concat(i.labels.map(([, v]) => v)).find((v) => /イエロー|レッド/.test(v));
         ev.card = !c ? 'none' : /2枚目/.test(c) ? (kind === 'fouled' ? 'y2' : 'yellow') : /イエロー/.test(c) ? 'yellow' : 'red';
       }
+      const multi = [...used].filter((g) => (L[g] || []).length > 1);
+      if (multi.length) { ev.impWhy = `Sportscodeで同じグループに2つ以上のラベルがあります（${multi.map((g) => `${g}：${L[g].join('・')}`).join('、')}）`; ev.check = true; }
       for (const k of Object.keys(ev)) if (ev[k] === undefined) delete ev[k];
       events.push(ev);
     }
     for (const [ev, cls] of later) { const n = goalTypeOf(cls, ev, fsps, per, W(o, per.key)); if (n && gtId(n)) ev.gtype = gtId(n); }
   }
-  return { events, unknownCodes: [...unknownCodes], unknownLabels: [...unknownLabels], unmatched: [...unmatched] };
+  return { events, unknownCodes: [...unknownCodes], unknownLabels: [...unknownLabels], unmatched: [...unmatched], warnings: [...warnings] };
 }
 // 得点の種類：局面から。セットプレーは直前の FINISH SET PLAY の種類、特殊局面は自チームの5x4ならパワープレー・相手の5x4ならパワープレー返し
 function goalTypeOf(cls, ev, fsps, per, Wk) {

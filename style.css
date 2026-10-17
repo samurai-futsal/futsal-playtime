@@ -882,3 +882,14 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .rpsum th small{color:#C9D6EE}
 .rpsum2{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 36px;align-items:start}.rpsc{width:100%}.rpsc td,.rpsc th{text-align:center}
 .prrep .anscroll .antb{width:100%;min-width:0}
+/* 要確認の「このままにする」・相手の退場（5対4）・ピリオドの長さ（2026-10-17） */
+.evw .evok{display:inline-block;font-size:11px;font-weight:700;background:#E9EDF3;color:#44546A;border-radius:6px;padding:0 6px;margin-left:2px}
+.evkeep{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 0;padding:8px 12px;background:#FDECEA;border:1px solid #E3A49E;border-radius:10px;color:#8E2A20;font-size:14px}
+.evkeep span{flex:1;min-width:200px}
+.oejsw{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.oejsw .btn{flex-direction:column;align-items:flex-start;min-height:52px;line-height:1.25;font-size:13px}
+.oejsw .btn b{font-size:17px}
+.oejper{margin-top:8px}
+.fxlenrow{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.fxlenrow label{display:flex;align-items:center;gap:6px;font-weight:700;white-space:nowrap}
+.fxlenrow input{width:84px}

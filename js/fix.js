@@ -3,17 +3,17 @@
 // history's 「ここに戻す」 work on any device (also recorded at once). No draft, no save button. The MATCH PLAY op log is never changed:
 // the review and analysis use the saved correction instead of the MATCH PLAY record for that period.
 import { S as D, playerById, opts, put, teamPath, watchOps, watchFixLog, addFixLog, updFixLog, teamSettings, watchEvents } from './store.js';
-import { recheckEvents } from './evinput.js';
+import { recheckEvents, ensureChecks } from './evinput.js';
 import { replay, periodLen, PERIODS, periodLabel } from './engine.js';
-import { replayToFix, seatWalk, fixData, checkFix, periodSig, basisOk, newEvId, matchModel, whyNot, toRunning } from './model.js';
+import { replayToFix, seatWalk, fixData, checkFix, periodSig, basisOk, newEvId, matchModel, whyNot, toRunning, playerTable } from './model.js';
 import { $, esc, openModal, closeModal, confirmBox, toast, optionTags } from './ui.js';
 import { keypadHTML, bindKeypad } from './keypad.js';
 import { render, setLeaveGuard } from './views.js';
 import { devName } from './matchplay.js';
+import { KIND } from './events.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const TABS = [['sub', '交代'], ['lineup', 'スタメン'], ['eject', '退場・空席'], ['pp', 'パワープレー'], ['info', '試合情報'], ['log', '履歴']];
-const LATER = [['event', 'イベント'], ['check', '要確認']];
 const key = (m) => `fpt.fix.${m.id}`;
 let ui = { tab: 'sub', period: null };
 
@@ -80,6 +80,7 @@ export function vFix(m) {
   const st = replay(opsC.list, cfg); const sig = periodSig(opsC.list);
   const d = baseline(m, st, sig);
   st.sig = sig; ctx = { origin: baseline({ ...m, fix: null }, st, sig), st };
+  ensureChecks(m, matchModel(st, Date.now(), m.fix), watchEvents(m.id), { quiet: true }); // 記録が変わっていたら⚠を付け直す（記4）
   const keys = PERIODS.map((p) => p.key).filter((k) => d.periods[k]);
   const live = PERIODS.find((p) => st.periods[p.key].status === 'live');
   const crumb = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 記録の修正</div>`;
@@ -99,7 +100,7 @@ export function vFix(m) {
     ${stale.length ? `<div class="fxwarn">MATCH PLAYの記録があとから変わったため（リセットなど）、${stale.join('・')}の修正は使われていません。もう一度直してください。</div>` : ''}
     ${clockNote(m, st, sig, k)}
     ${errs.length ? `<div class="fxerr"><b>記録に矛盾があります</b><ul>${errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
-    <div class="fxtabs">${TABS.map(([t, l]) => `<button class="fxtab ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${l}</button>`).join('')}${LATER.map(([, l]) => `<span class="fxtab off">${l}<small>④で</small></span>`).join('')}</div>`;
+    <div class="fxtabs">${TABS.map(([t, l]) => `<button class="fxtab ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${l}</button>`).join('')}</div>`;
 
   const body = { sub: tabSub, lineup: tabLineup, eject: tabEject, pp: tabPP, info: tabInfo, log: tabLog }[ui.tab](m, d, k, fp, cfg);
   return {
@@ -117,6 +118,8 @@ function badge(cfg, pid) { const mm = cfg.members?.[pid] || {}; return pid ? `<s
 function nm(cfg, pid) { return pid ? `${badge(cfg, pid)} ${esc(playerById(pid)?.last || '')}` : '<span class="mu">空席</span>'; }
 function plain(cfg, pid) { return pid ? `${cfg.members?.[pid]?.no ?? '?'} ${playerById(pid)?.last || ''}` : '空席'; }
 function outOf(fp, ev) { const w = seatWalk(fp)[ev.seat].segs.find((g) => g.endEv === ev.id); return w ? w.pid : null; }
+// 同じ場所の記録を、出場の並び（時刻、同じ秒は記録の順）で並べたもの。同じ秒の交代が2つあっても前後が分かる（記12）
+function seatOrder(fp, seat) { return fp.ev.filter((e) => e.seat === seat).sort((a, b) => a.at - b.at); }
 function onPitchAt(fp, at) { return seatWalk(fp).map((w) => { const g = w.segs.find((x) => x.from <= at && at < x.to) || w.segs[w.segs.length - 1]; return { seat: w.seat, pid: g.pid }; }); }
 function bounds(fp, ev) { // the time range this event can move in (between the neighbours on the same place)
   const same = fp.ev.filter((e) => e.seat === ev.seat).sort((a, b) => a.at - b.at);
@@ -176,11 +179,15 @@ function tabLineup(m, d, k, fp, cfg) {
 // ---------- 退場・空席 ----------
 function tabEject(m, d, k, fp, cfg) {
   const ej = fp.ev.filter((e) => e.kind === 'eject').sort((a, b) => a.at - b.at);
+  // 2分経過前の補充は、退場と補充の間に失点の記録があるときだけ「失点による補充」。なければ注意を出す（保存は止めない。spec 8章・記13）
+  const concs = watchEvents(m.id).list.filter((x) => !x.deleted && x.kind === 'conc' && x.period === k);
   const rows = ej.length ? ej.map((e) => {
     const fill = fp.ev.find((x) => x.kind === 'fill' && x.seat === e.seat && x.at >= e.at && !fp.ev.some((y) => y.kind === 'eject' && y.seat === e.seat && y.at > e.at && y.at <= x.at));
     const early = fill && fill.at - e.at < 120000;
+    const byGoal = early && concs.some((x) => x.at >= e.at && x.at <= fill.at);
+    const why = !early ? '' : byGoal ? ' <span class="tag">2分経過前（失点による補充）</span>' : ' <span class="tag warn">⚠ 2分経過前の補充です。間に失点の記録がありません（補充の時刻か、失点の記録を確かめてください）</span>';
     return `<tr><td>${remEl(fp, e.at)}</td><td>${nm(cfg, outOf(fp, e))}</td>
-      <td>${fill ? `${remEl(fp, fill.at)}<br>${nm(cfg, fill.in)}${early ? ' <span class="tag">2分経過前（失点による補充）</span>' : ''}` : '<span class="mu">補充なし（最後まで空席）</span>'}</td>
+      <td>${fill ? `${remEl(fp, fill.at)}<br>${nm(cfg, fill.in)}${why}` : '<span class="mu">補充なし（最後まで空席）</span>'}</td>
       <td class="fxact"><button class="btn sm" data-ejedit="${e.id}">直す</button><button class="btn sm dangerline" data-ejdel="${e.id}">退場を削除</button></td></tr>`;
   }).join('') : '<tr><td colspan="4" class="mu" style="text-align:center">このピリオドの退場はありません</td></tr>';
   return `<div class="card"><div class="row between"><h2 class="h" style="margin:0">${periodLabel(k)}の退場・空席</h2><button class="btn" id="fxAddEj">＋ 退場を追加</button></div>
@@ -196,7 +203,7 @@ function tabPP(m, d, k, fp, cfg) {
     : '<tr><td colspan="5" class="mu" style="text-align:center">このピリオドの5×4の時間帯はありません</td></tr>';
   return `<div class="card"><div class="row between"><h2 class="h" style="margin:0">${periodLabel(k)}の5×4の時間帯</h2><button class="btn" id="fxAddPP">＋ 5×4の時間帯を追加</button></div>
     <table class="fxtb"><tr><th>チーム</th><th>開始</th><th>終了</th><th>長さ</th><th></th></tr>${rows}</table>
-    <p class="mu">特殊局面（自チームのGKがいない区間）は交代の記録から計算されるので、「交代」タブで直します。</p></div>`;
+    <p class="mu">特殊局面（自チームがGKをフィールドの選手と入れ替えていた区間）は交代の記録から計算されるので、「交代」タブで直します。</p></div>`;
 }
 
 // ---------- 試合情報 ----------
@@ -208,8 +215,58 @@ function tabInfo(m, d) {
     <div><label for="fiCat">試合の区分（任意）</label><select id="fiCat" data-info="category">${optionTags(opts('matchCategories'), v.category, { blank: 'なし' })}</select></div>
     <div><label for="fiKo">キックオフ時刻（任意）</label><input id="fiKo" data-info="kickoff" type="time" value="${esc(v.kickoff)}"></div>
     <div class="span2"><label for="fiVenue">会場（任意）</label><input id="fiVenue" data-info="venue" value="${esc(v.venue)}"></div>
-    <div class="span2"><label for="fiMemo">メモ（任意）</label><textarea id="fiMemo" data-info="memo" rows="2">${esc(v.memo)}</textarea></div></div>
-    <p class="mu">前後半の長さ：${t.half || 20}分${t.extra ? `／延長 ${t.extraHalf || 5}分` : ''}（長さの直し方は次の版で入ります）。最終スコアとPK戦はイベント入力（④）で入れます。</p></div>`;
+    <div class="span2"><label for="fiMemo">メモ（任意）</label><textarea id="fiMemo" data-info="memo" rows="2">${esc(v.memo)}</textarea></div></div></div>
+    ${lenCard(m)}`;
+}
+// ピリオドの長さ（未5・2026-10-17 決定：試合が始まったあとは、長さはここでだけ変える）
+const hasExtra = (m) => !!(m.times?.extra || ctx.st?.extraDecided === true || ['E1', 'E2'].some((k) => ctx.st?.periods?.[k]?.status && ctx.st.periods[k].status !== 'none'));
+function lenCard(m) {
+  const t = m.times || {}; const ex = hasExtra(m);
+  return `<div class="card fxlen"><h2 class="h" style="margin-top:0">ピリオドの長さ</h2>
+    <div class="fxlenrow"><label>前半・後半 <input id="fiHalf" type="number" min="1" max="40" inputmode="numeric" value="${t.half || 20}"> 分</label>
+      ${ex ? `<label>延長前半・延長後半 <input id="fiExtra" type="number" min="1" max="20" inputmode="numeric" value="${t.extraHalf || 5}"> 分</label>` : '<span class="mu">延長なし</span>'}
+      <button class="btn" id="fiLen">長さを変える…</button></div>
+    <p class="mu">試合が始まったあとは、ピリオドの長さはここで変えます。変える前に、出場時間が変わる選手と、新しい長さの外に出てしまうイベントを確かめられます。</p></div>`;
+}
+// 長さを変えたときの影響：出場時間が変わる選手、長さの外になるイベント
+function lenEffect(m, times) {
+  const opsC = watchOps(m.id); const cfg0 = cfgOf(m); const cfg1 = { ...cfg0, times };
+  const sig = periodSig(opsC.list);
+  const st0 = replay(opsC.list, cfg0); st0.sig = sig; const st1 = replay(opsC.list, cfg1); st1.sig = sig;
+  const M0 = matchModel(st0, Date.now(), m.fix), M1 = matchModel(st1, Date.now(), m.fix);
+  const a = playerTable(M0), b = playerTable(M1);
+  const players = [...new Set([...Object.keys(a), ...Object.keys(b)])].map((pid) => ({ pid, from: a[pid]?.total || 0, to: b[pid]?.total || 0 })).filter((x) => x.from !== x.to);
+  const lenOfK = (k) => periodLen(cfg1, k);
+  const evs = watchEvents(m.id).list.filter((e) => !e.deleted && e.at > lenOfK(e.period));
+  const fixed = PERIODS.filter((p) => m.fix?.periods?.[p.key] && m.fix.periods[p.key].elapsed > lenOfK(p.key)).map((p) => p.label);
+  return { players, evs, fixed, M1 };
+}
+async function changeLen(m, d) {
+  const t = m.times || {}; const half = +($('#fiHalf')?.value); const ex = $('#fiExtra'); const extraHalf = ex ? +ex.value : (t.extraHalf || 5);
+  if (!(half >= 1 && half <= 40) || !(extraHalf >= 1 && extraHalf <= 20)) return toast('長さは分の数で入れてください（前半・後半は1〜40分、延長は1〜20分）');
+  if (half === (t.half || 20) && extraHalf === (t.extraHalf || 5)) return toast('長さが同じです');
+  const times = { ...t, half, extraHalf };
+  const ef = lenEffect(m, times);
+  const cfg = cfgOf(m); const KL = Object.fromEntries(PERIODS.map((p) => [p.key, p.label]));
+  const body = `<p>前半・後半 ${t.half || 20}分 → <b>${half}分</b>${hasExtra(m) ? `、延長 ${t.extraHalf || 5}分 → <b>${extraHalf}分</b>` : ''}</p>
+    <h3>出場時間が変わる選手</h3>${ef.players.length ? `<table class="fxtb">${ef.players.map((x) => `<tr><td>${nm(cfg, x.pid)}</td><td>${mmss(x.from)} → <b>${mmss(x.to)}</b></td></tr>`).join('')}</table>` : '<p class="mu">ありません</p>'}
+    <h3>新しい長さの外になるイベント</h3>${ef.evs.length ? `<p class="err">${ef.evs.length}件：${ef.evs.slice(0, 8).map((e) => `${esc(KL[e.period] || e.period)} 経過${mmss(e.at)}（${esc(evLabel(e))}）`).join('、')}${ef.evs.length > 8 ? ' ほか' : ''}。イベント入力で時刻を直してください。</p>` : '<p class="mu">ありません</p>'}
+    ${ef.fixed.length ? `<p class="err">${ef.fixed.join('・')}は記録の修正で直した記録が、新しい長さより長くなっています。交代タブで確かめてください。</p>` : ''}
+    <p class="mu">変えると、すぐに試合の記録に反映されます（マッチレビュー・分析・書き出しも新しい長さで数えます）。「1つ戻す」で前の長さに戻せます。</p>`;
+  if (!(await confirmBox({ title: 'ピリオドの長さを変えますか？', body, ok: '長さを変える' }))) return;
+  const before = clone({ periods: d.periods, info: d.info }); const now = Date.now();
+  addFixLog(m.id, { kind: 'step', seq: now * 100, saveT: now, devName: devName(), type: '試合情報', text: `ピリオドの長さ 前後半 ${t.half || 20}分 → ${half}分${hasExtra(m) && extraHalf !== (t.extraHalf || 5) ? `、延長 ${t.extraHalf || 5}分 → ${extraHalf}分` : ''}`, before, timesBefore: clone(t), timesFixedBefore: !!m.timesFixed });
+  put(teamPath('matches', m.id), { times, timesFixed: true });
+  Object.assign(m, { times, timesFixed: true });
+  const evC = watchEvents(m.id); if (evC.ready) recheckEvents(m, ef.M1, evC.list, { quiet: true });
+  toast('ピリオドの長さを変えました'); render();
+}
+const evLabel = (e) => KIND[e.kind]?.label || 'イベント';
+// 取り消す直しの中に長さの直しがあれば、いちばん古いものの前の長さに戻す
+function restoreTimes(m, undone) {
+  const s = undone.find((x) => x.timesBefore); if (!s) return;
+  const times = clone(s.timesBefore); const timesFixed = !!s.timesFixedBefore;
+  put(teamPath('matches', m.id), { times, timesFixed }); Object.assign(m, { times, timesFixed });
 }
 
 // ---------- 履歴 ----------
@@ -256,6 +313,7 @@ function infoKeysOf(m, undone) {
 }
 function undoOne(m) {
   const s = activeSteps(m).pop(); if (!s) return;
+  if (s.timesBefore) { restoreTimes(m, [s]); updFixLog(m.id, s.id, { undone: nowMark() }); toast('1つ戻しました（ピリオドの長さ）'); return render(); }
   writeState(m, s.before, false, infoKeysOf(m, [s]));
   updFixLog(m.id, s.id, { undone: nowMark() });
   toast(`1つ戻しました（${s.type}）`);
@@ -272,10 +330,12 @@ async function goTo(m, d, where) {
   const mark = nowMark();
   if (kind === 'origin') {
     const first = A[0]?.before.info || d.info;
+    restoreTimes(m, A);
     writeState(m, { periods: ctx.origin.periods, info: first }, true, infoKeysOf(m, A));
     addFixLog(m.id, { kind: 'note', seq: mark.t * 100, saveT: mark.t, devName: mark.devName, type: '戻す', text: 'MATCH PLAYの記録（修正する前）に戻した' });
     A.forEach((x) => updFixLog(m.id, x.id, { undone: mark }));
   } else {
+    restoreTimes(m, A.slice(i + 1));
     writeState(m, A[i + 1].before, false, infoKeysOf(m, A.slice(i + 1)));
     A.slice(i + 1).forEach((x) => updFixLog(m.id, x.id, { undone: mark }));
   }
@@ -300,15 +360,16 @@ function bindFix(root, m, d, k, cfg, st, sig) {
     if (b.dataset.per) { ui.period = b.dataset.per; return render(); }
     if (b.dataset.tab) { ui.tab = b.dataset.tab; return render(); }
     if (b.dataset.edit) return subModal(m, d, k, fp, cfg, b.dataset.edit, commit);
-    if (b.dataset.miss) return missPress(fp, cfg, b.dataset.miss, commit);
+    if (b.dataset.miss) return missPress(fp, cfg, b.dataset.miss, commit, bannedBefore(d, k));
     if (b.id === 'fxAddSub') return subModal(m, d, k, fp, cfg, null, commit);
     if (b.dataset.ejedit) return ejectModal(d, k, fp, cfg, b.dataset.ejedit, commit);
-    if (b.dataset.ejdel) return ejectDelete(fp, cfg, b.dataset.ejdel, commit);
+    if (b.dataset.ejdel) return ejectDelete(fp, cfg, b.dataset.ejdel, commit, bannedBefore(d, k));
     if (b.id === 'fxAddEj') return ejectModal(d, k, fp, cfg, null, commit);
     if (b.dataset.ppedit) return ppModal(fp, b.dataset.ppedit, commit);
     if (b.dataset.ppdel) { const x = fp.pp.find((y) => y.id === b.dataset.ppdel); return commit('パワープレー', `5×4（${x.team === 'own' ? '自' : '相手'}）残り${rem(fp, x.from)}〜${rem(fp, x.to)} を削除`, () => { fp.pp = fp.pp.filter((y) => y.id !== x.id); }); }
     if (b.id === 'fxAddPP') return ppModal(fp, null, commit);
     if (b.id === 'fxUndo') return undoOne(m);
+    if (b.id === 'fiLen') return changeLen(m, d);
     if (b.dataset.goto) return goTo(m, d, b.dataset.goto);
   });
   root.addEventListener('change', (e) => {
@@ -350,7 +411,9 @@ function subModal(m, d, k, fp, cfg, id, commit) {
     const f2 = clone(fp);
     if (ev) {
       const e2 = f2.ev.find((x) => x.id === ev.id); e2.at = at; e2.in = inPid;
-      const prev = f2.ev.filter((x) => x.seat === ev.seat && x.at <= ev.at && x.id !== ev.id && x.kind !== 'eject').sort((a, b) => a.at - b.at).pop();
+      // OUTの選手の区間を始めた記録＝並びで1つ前（同じ秒でも記録の順で決める）
+      const so = seatOrder(fp, ev.seat); const pi = so.findIndex((x) => x.id === ev.id) - 1;
+      const prev = pi >= 0 && so[pi].kind !== 'eject' ? f2.ev.find((x) => x.id === so[pi].id) : null;
       if (outPid && outPid !== out0) { if (prev) prev.in = outPid; else f2.lineup[ev.seat] = outPid; } // OUTを変える＝その前に座っていた選手を入れ替える
       return { f2, at, seat: ev.seat, inStart: ev.id, outStart: prev ? prev.id : null };
     }
@@ -399,7 +462,12 @@ function subModal(m, d, k, fp, cfg, id, commit) {
   refresh();
   md.querySelector('[data-c]').onclick = closeModal;
   const del = md.querySelector('[data-del]');
-  if (del) del.onclick = () => { closeModal(); commit('交代', `残り${rem(fp, ev.at)} ${plain(cfg, out0)} → ${plain(cfg, ev.in)} を削除`, () => { fp.ev = fp.ev.filter((x) => x.id !== ev.id); }); };
+  // 削除も、ほかの直しと同じく新しい矛盾ができるときは止める（記2）
+  if (del) del.onclick = () => {
+    const f2 = clone(fp); f2.ev = f2.ev.filter((x) => x.id !== ev.id);
+    const ne = newErrs(fp, f2, cfg, banned); if (ne.length) return toast(`削除できません：${ne[0]}`);
+    closeModal(); commit('交代', `残り${rem(fp, ev.at)} ${plain(cfg, out0)} → ${plain(cfg, ev.in)} を削除`, () => { fp.ev = fp.ev.filter((x) => x.id !== ev.id); });
+  };
   okBtn.onclick = () => {
     const r = check(); if (r.err) return toast(r.err);
     closeModal();
@@ -410,10 +478,14 @@ function subModal(m, d, k, fp, cfg, id, commit) {
 }
 
 // 押し間違い：この交代と、それを直すために押した逆の交代（同じ場所で同じ選手同士を戻した交代）をまとめて消す
-async function missPress(fp, cfg, id, commit) {
+async function missPress(fp, cfg, id, commit, banned = new Set()) {
   const ev = fp.ev.find((x) => x.id === id); const out = outOf(fp, ev);
-  const rev = fp.ev.filter((x) => x.kind === 'sub' && x.seat === ev.seat && x.at > ev.at).sort((a, b) => a.at - b.at)
+  // 戻しの交代：同じ場所で、並びがこの交代よりあと（同じ秒でも記録の順があと。記12）
+  const so = seatOrder(fp, ev.seat);
+  const rev = so.slice(so.findIndex((x) => x.id === ev.id) + 1).filter((x) => x.kind === 'sub')
     .find((x) => x.in === out && outOf(fp, x) === ev.in);
+  { const f2 = clone(fp); f2.ev = f2.ev.filter((x) => x.id !== ev.id && x.id !== rev?.id);
+    const ne = newErrs(fp, f2, cfg, banned); if (ne.length) return toast(`消せません：${ne[0]}`); } // 記2
   const body = rev
     ? `<p>残り${rem(fp, ev.at)}の「${esc(plain(cfg, out))} → ${esc(plain(cfg, ev.in))}」と、直すために押した残り${rem(fp, rev.at)}の「${esc(plain(cfg, ev.in))} → ${esc(plain(cfg, out))}」をまとめて消します。</p><p>${esc(plain(cfg, out))} は途切れずに出場し、${esc(plain(cfg, ev.in))} のこの間の出場は消えます。</p>`
     : `<p>このあとに、同じ選手同士を戻した交代が見つかりません。この交代（${esc(plain(cfg, out))} → ${esc(plain(cfg, ev.in))}）だけを消し、${esc(plain(cfg, out))} が次の交代まで出場していたことにしますか？</p>`;
@@ -486,9 +558,11 @@ function ejectModal(d, k, fp, cfg, id, commit) {
     commit('退場', `${ev ? '退場を直す' : '退場を追加'}：残り${rem(fp, r.at)} ${plain(cfg, who.value || outOf(fp, ev))}`, () => { fp.ev = r.f2.ev; });
   };
 }
-async function ejectDelete(fp, cfg, id, commit) {
+async function ejectDelete(fp, cfg, id, commit, banned = new Set()) {
   const ev = fp.ev.find((x) => x.id === id); const who = outOf(fp, ev);
   const fill = fp.ev.find((x) => x.kind === 'fill' && x.seat === ev.seat && x.at >= ev.at);
+  { const f2 = clone(fp); f2.ev = f2.ev.filter((x) => x.id !== ev.id); const fl = fill && f2.ev.find((x) => x.id === fill.id); if (fl) fl.kind = 'sub';
+    const ne = newErrs(fp, f2, cfg, banned); if (ne.length) return toast(`退場を削除できません：${ne[0]}`); } // 記2
   if (!(await confirmBox({ title: '退場を削除しますか？', body: `<p>${esc(plain(cfg, who))} は${fill ? `補充の時刻（残り${rem(fp, fill.at)}）まで` : '最後まで'}出場していたことになります。${fill ? `補充した選手はその時刻に交代で入ったことになります。` : ''}</p>`, ok: '削除する', danger: true }))) return;
   commit('退場', `${plain(cfg, who)} の退場（残り${rem(fp, ev.at)}）を削除`, () => {
     fp.ev = fp.ev.filter((x) => x.id !== ev.id);

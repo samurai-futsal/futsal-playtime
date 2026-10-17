@@ -253,6 +253,14 @@ export function saveEvent(matchId, ev) {
   emit();
   return data;
 }
+// 一部の項目だけを書き足す（⚠要確認とその理由、「このままにする」など）。文書のほかの項目・入れた端末（dev）は変えない
+export function patchEvent(matchId, id, data) {
+  const c = watchEvents(matchId);
+  c.list = c.list.map((x) => (x.id === id ? { ...x, ...data } : x));
+  const { setDoc, doc } = F.fsM;
+  setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'events', id), data, { merge: true }).catch(onErr);
+  emit();
+}
 export function deleteEvent(matchId, id) {
   const c = watchEvents(matchId); const ev = c.list.find((x) => x.id === id); if (!ev) return;
   saveEvent(matchId, { ...ev, deleted: true });
