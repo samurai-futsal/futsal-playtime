@@ -77,7 +77,6 @@ export function paceSection(c, o = {}) {
   order.forEach((pid, i) => {
     const y = top + i * rowH;
     if (o.tap) s += `<g class="prow" data-prow="${pid}"><rect class="phl" x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="${i % 2 === 0 ? '#EAF0F9' : 'transparent'}"/>`;
-    else if (o.pick) s += `<g class="prl ${rvHl.has('5:' + pid) ? 'on' : ''}" data-prl="${pid}" style="cursor:pointer"><rect class="phl" x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="${i % 2 === 0 ? '#EAF0F9' : '#FFFFFF'}"/>`;
     else if (i % 2 === 0) s += `<rect x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="#EAF0F9"/>`;
     for (const p of axis) s += `<rect x="${X[p.key]}" y="${y + 2}" width="${HW[p.key]}" height="${rowH - 4}" fill="#F3F5F9" opacity=".9"/>`;
     s += who(pid, X0 - 36 - nameW, y) + `<text x="${X0 - 6 - nameW}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`;
@@ -88,12 +87,12 @@ export function paceSection(c, o = {}) {
       s += `<rect x="${x1}" y="${y + 2}" width="${Math.max(0.8, x2 - x1)}" height="${rowH - 4}" fill="${mem(pid).pos === 'GK' ? '#C8312B' : '#1F5FBF'}" opacity=".85"/>`;
     }
     if (o.tap) s += `<rect class="pname" data-pname="${pid}" x="0" y="${y}" width="${X0 - 4}" height="${rowH}" fill="transparent" style="cursor:pointer"/></g>`;
-    else if (o.pick) s += `<rect class="pol" x="1" y="${y + 1}" width="${PW - 2}" height="${rowH - 2}" rx="4" fill="none" stroke="#F0A030" stroke-width="2"/></g>`;
   });
   for (const g of marks) { if (X[g.period] == null) continue; const gx = x(g.period, g.at); s += `<line x1="${gx}" x2="${gx}" y1="${top - 2}" y2="${yEnd}" stroke="${g.own ? GREEN : RED}" stroke-width="2"/>`; }
   // 下段：区切りごとの回数（上＝自チーム、下＝相手）
   let gy = yEnd + 10;
   const lowTop = gy;
+  const gaps = {}; // 区切りごとの、棒と数字がある高さ（縦の線をそこだけあける）
   for (const [lab, sub, fo, fp, upL, dnL] of groups) {
     // 区切りごとの回数を先に数え、一番多い数でも隣のグラフにかからない高さにする
     const bins = axis.map((p) => {
@@ -115,6 +114,7 @@ export function paceSection(c, o = {}) {
       const bw0 = HW[p.key] / nMin;
       for (let i = 0; i < nMin; i++) {
         const bx = X[p.key] + i * bw0 + (BIN < 60000 ? 1 : 2), bw = bw0 - (BIN < 60000 ? 2 : 4);
+        const gk = `${p.key}:${i}`; if (bo[i]) (gaps[gk] = gaps[gk] || []).push(`${(mid - bo[i] * unitU - 13).toFixed(1)}-${mid.toFixed(1)}`); if (bp[i]) (gaps[gk] = gaps[gk] || []).push(`${mid.toFixed(1)}-${(mid + bp[i] * unitD + 13).toFixed(1)}`);
         if (bo[i]) s += `<rect x="${bx}" y="${mid - bo[i] * unitU}" width="${bw}" height="${bo[i] * unitU}" fill="#1F5FBF"/><text x="${bx + bw / 2}" y="${mid - bo[i] * unitU - 2}" font-size="10" text-anchor="middle" fill="#1F5FBF">${bo[i]}</text>`;
         if (bp[i]) s += `<rect x="${bx}" y="${mid}" width="${bw}" height="${bp[i] * unitD}" fill="#E04A3A"/><text x="${bx + bw / 2}" y="${mid + bp[i] * unitD + 11}" font-size="10" text-anchor="middle" fill="#E04A3A">${bp[i]}</text>`;
       }
@@ -137,14 +137,14 @@ export function paceSection(c, o = {}) {
       for (let i = 0; i < nMin; i++) {
         const a = i * BIN, b = Math.min(p.len, (i + 1) * BIN), tc = (a + b) / 2;
         const ys = order.map((pid, k) => (M0.stints.some((q) => q.pid === pid && q.period === p.key && q.from <= tc && q.to > tc) ? top + k * rowH + rowH / 2 : null)).filter((v) => v != null);
-        s += `<rect class="pbk" data-k="${p.key}:${i}" data-x="${x(p.key, tc).toFixed(1)}" data-ys="${ys.join(',')}" data-lab="${esc(p.label)} ${mmss(a)}〜${mmss(b)}" data-c="${mmss(tc)}" x="${X[p.key] + i * bw0}" y="${lowTop}" width="${bw0}" height="${gy - lowTop}" fill="transparent" style="cursor:pointer"/>`;
+        s += `<rect class="pbk" data-k="${p.key}:${i}" data-x="${x(p.key, tc).toFixed(1)}" data-ys="${ys.join(',')}" data-gaps="${(gaps[`${p.key}:${i}`] || []).join(',')}" data-lab="${esc(p.label)} ${mmss(a)}〜${mmss(b)}" data-c="${mmss(tc)}" x="${X[p.key] + i * bw0}" y="${lowTop}" width="${bw0}" height="${gy - lowTop}" fill="transparent" style="cursor:pointer"/>`;
       }
     }
     s += `<g class="pmk" data-top="${top - 2}" data-bot="${gy}"></g>`;
   }
   s += '</svg>';
   if (o.svgOnly) return s;
-  if (o.pick) return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯と得点（緑）・失点（赤）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）。行を押すと強調・下のグラフを押すと●</span></div><div class="rvbox">${s}<p class="rvhint pinfo" id="paceInfo"></p></div></section>`;
+  if (o.pick) return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯と得点（緑）・失点（赤）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）。下のグラフを押すと、その時間にピッチにいた選手に●</span></div><div class="rvbox">${s}<p class="rvhint pinfo" id="paceInfo"></p></div></section>`;
   return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯と得点（緑）・失点（赤）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）</span></div><div class="rvbox">${s}</div></section>`;
 }
 
@@ -198,7 +198,7 @@ export function playerSection(c) {
   const tot = (side) => Object.values(R.score[side]).reduce((a, b) => a + b, 0);
   const goalsN = tot('own');
   return `<section class="rvsec" id="rv8"><div class="rvtt"><b>8. スタッツまとめ</b><span>選手ごと（背番号順、GKは一番下）。関与＝ピッチにいる間の数。±＝得点−失点</span></div>
-<div class="rvbox"><table class="rvtb rvs8"><tr><th>選手</th><th>出場</th><th>シュート<br><small>（SZ内）</small></th><th class="w">シュート<br>関与</th><th class="o">被シュート<br>関与</th><th>枠内</th><th>得点</th><th>アシスト</th><th>進入関与</th><th>パス<br>出し手</th><th>パス<br>受け手</th><th>リカバリー</th><th>ロスト</th><th>ファール</th><th>得失点±</th></tr>${rows}
+<div class="rvbox"><table class="rvtb rvs8 rveq" style="--nmw:${Math.max(2, ...P.rows.map((r) => last(r.pid).length))}"><colgroup><col class="c1"></colgroup><tr><th>選手</th><th>出場</th><th>シュート<br><small>（SZ内）</small></th><th class="w">シュート<br>関与</th><th class="o">被シュート<br>関与</th><th>枠内</th><th>得点</th><th>アシスト</th><th>進入関与</th><th>パス<br>出し手</th><th>パス<br>受け手</th><th>リカバリー</th><th>ロスト</th><th>ファール</th><th>得失点±</th></tr>${rows}
 <tr class="tot"><td>チーム合計</td><td>${mmss(played)}</td><td>${R.A.shots}<small>（${R.A.sz}）</small></td><td class="w">${R.A.shots}</td><td class="o">${R.B.shots}</td><td>${R.A.in}</td><td>${goalsN}</td><td>${sum('assists')}${P.assistMiss ? `<div class="miss">未入力 ${P.assistMiss}</div>` : ''}</td><td>${sum('inv')}</td><td>${sum('passFrom')}</td><td>${sum('passTo')}</td><td>${R.rec}</td><td>${R.lost}</td><td>${R.A.foul}</td><td>${goalsN - tot('opp') > 0 ? '+' : ''}${goalsN - tot('opp')}</td></tr></table>
 <p class="rvhint">シュートは得点を含む。進入関与＝Z4進入・SZ進入に選手（パスの出し手・受け手を含む）として付いている回数。チーム合計のシュート・リカバリーなどは、選手が「不明」や未入力のものも含むので、選手の合計と合わないことがあります。得点には相手OGを含む</p></div></section>`;
 }
@@ -210,7 +210,7 @@ export function scoreBadge(c, R) {
 }
 export { teamStats };
 
-// マッチ・ペースの操作：行を押すと強調（何人でも）、下のグラフの区切りを押すと縦の線と●（同じ区切りをもう一度押すと消す）
+// マッチ・ペースの操作：下のグラフの区切りを押すと縦の線と●（同じ区切りをもう一度押すと消す）
 let paceSel = null;
 export function bindPacePick(root) {
   const svg = root.querySelector('#rv5 svg.pace'); if (!svg) return;
@@ -220,14 +220,17 @@ export function bindPacePick(root) {
     if (!b) { if (info) info.textContent = ''; return; }
     b.classList.add('on');
     const x = b.dataset.x, top = mk.dataset.top, bot = mk.dataset.bot, ys = b.dataset.ys ? b.dataset.ys.split(',') : [];
-    mk.innerHTML = `<line x1="${x}" x2="${x}" y1="${top}" y2="${bot}" stroke="#F08C00" stroke-width="2.5"/>` + ys.map((y) => `<circle cx="${x}" cy="${y}" r="6" fill="#F08C00" stroke="#fff" stroke-width="2"/>`).join('');
+    // 縦の線は、下のグラフの棒と数字があるところだけあける
+    const gp = (b.dataset.gaps ? b.dataset.gaps.split(',') : []).map((g) => g.split('-').map(Number)).sort((a, c) => a[0] - c[0]);
+    let seg = '', y0 = +top;
+    for (const [g1, g2] of gp) { if (g1 > y0) seg += `<line x1="${x}" x2="${x}" y1="${y0}" y2="${g1}" stroke="#F08C00" stroke-width="2.5"/>`; y0 = Math.max(y0, g2); }
+    if (+bot > y0) seg += `<line x1="${x}" x2="${x}" y1="${y0}" y2="${bot}" stroke="#F08C00" stroke-width="2.5"/>`;
+    mk.innerHTML = seg + ys.map((y) => `<circle cx="${x}" cy="${y}" r="6" fill="#F08C00" stroke="#fff" stroke-width="2"/>`).join('');
     if (info) info.textContent = `${b.dataset.lab} の真ん中（${b.dataset.c}）にピッチにいた選手に●を付けています（${ys.length}人）。同じところをもう一度押すと消えます`;
   };
   if (paceSel) draw(svg.querySelector(`.pbk[data-k="${paceSel}"]`));
   svg.addEventListener('click', (e) => {
     const b = e.target.closest('.pbk');
-    if (b) { paceSel = paceSel === b.dataset.k ? null : b.dataset.k; draw(paceSel ? b : null); return; }
-    const r = e.target.closest('[data-prl]');
-    if (r) { const k = '5:' + r.dataset.prl; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); r.classList.toggle('on', rvHl.has(k)); }
+    if (b) { paceSel = paceSel === b.dataset.k ? null : b.dataset.k; draw(paceSel ? b : null); }
   });
 }

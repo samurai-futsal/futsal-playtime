@@ -1052,14 +1052,29 @@ body.playmode #toast.show{transform:translateX(-50%) translateY(0)}
 .rvtb tr.hl td{background:#FFE9A8!important;box-shadow:inset 0 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
 .rvtb tr.hl td:first-child{box-shadow:inset 2px 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
 .rvtb tr.hl td:last-child{box-shadow:inset -2px 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
-svg.pace .prl .pol{display:none}svg.pace .prl.on .pol{display:inline}svg.pace .prl.on .phl{fill:#FFE9A8}
 svg.pace .pbk:hover{fill:rgba(240,140,0,.08)}svg.pace .pbk.on{fill:rgba(240,140,0,.14)}
 .pinfo{color:#B5600F;font-weight:700;min-height:1em}
 /* セットの表：4人を同じ幅の枠で縦にそろえ、表は中身の幅にして数字をセットのすぐ横に */
-.rvset,.rvset2{width:auto}
-.rvset .setn,.rvset2 .setn{display:flex;gap:4px;flex-wrap:nowrap;align-items:center}
 .setn .sp{display:inline-flex;align-items:center;gap:4px;width:calc(34px + var(--nmw,3) * 13px)}
 .setn .sp small{margin:0!important;font-size:13px;color:#3A4558}
 .rvset td{padding-left:14px;padding-right:14px}
 @media print{.rvtb tr.hl td{background:none!important;box-shadow:none!important}svg.pace .pmk{display:none}svg.pace .prl.on .phl{fill:transparent}svg.pace .prl .pol{display:none}}
 svg.pace .pmk{pointer-events:none}
+/* マッチレビューの表：名前（セット）の列は中身の幅、数字の列は残りを等分して真ん中にそろえる。表の幅は 1〜8 で同じ（2026-10-17） */
+.rvtb.rveq{width:100%;table-layout:fixed}
+.rvtb.rveq th,.rvtb.rveq td{text-align:center}
+.rvtb.rveq th:first-child,.rvtb.rveq td:first-child{text-align:left}
+.rvtb.rveq col.c1{width:calc(56px + var(--nmw,3) * 17px)}
+.rvtb.rveq col.c0{width:64px}
+.rvtb.rveq col.cset{width:calc(4 * (34px + var(--nmw,3) * 13px) + 40px)}
+.rvtb.rveq td.setn{text-align:left}
+.rvw.compact .rvtb.rveq col.c1{width:calc(40px + var(--nmw,3) * 12px)}
+/* マッチ・ペース：どの端末でも1画面に入る高さに（横幅は高さに合わせて縮める） */
+#rv5 svg.pace{display:block;width:100%;height:auto;max-height:calc(100dvh - var(--barh,60px) - var(--rvhh,0px) - 110px);margin:0 auto}
+.rvtb.rveq th{white-space:normal;line-height:1.25}
+.rvtb.rveq tbody tr:nth-child(even):not(.ex):not(.tot) td,.rvtb.rveq tr:nth-child(even):not(.ex):not(.tot) td{background-color:#F6F8FC}
+.rvset.rveq col.cset{width:58%}
+.setn .spw{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;align-items:center}
+.rvset2.rveq th{font-size:12px;padding-left:4px;padding-right:4px}
+.rvtb.rveq tr:nth-child(even):not(.ex):not(.tot):not(.hl) td:not(.w):not(.o){background:#F6F8FC!important}
+.rvtb.rveq tr.hl td{background:#FFE9A8!important}
