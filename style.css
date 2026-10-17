@@ -1029,3 +1029,7 @@ body.playmode #toast.show{transform:translateX(-50%) translateY(0)}
 .rpopt span{display:flex;flex-direction:column;gap:2px}.rpopt small{color:#5F6B80;font-size:13px}
 .rpopt:has(input:checked){border-color:#1F5FBF;background:#F2F6FD}
 .sthd td.gm{font-weight:800;letter-spacing:.05em}
+/* 分析の出場時間：表は全選手を出す（表の中ではスクロールしない）。グラフと表をまとめて動かす */
+.antime{overflow:auto}
+.antime>.antbl{flex:none;min-height:0;overflow:visible}
+.prrep .antime{overflow:visible}
