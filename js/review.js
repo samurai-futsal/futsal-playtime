@@ -2,10 +2,9 @@
 // 5〜8 はイベントが必要（今あるのは 6 セットごとのシュート…。マッチ・ペース・スコア・スタッツは後の工程）。
 // 番号は1〜8で固定（出ていない項目は飛ぶ。上部に理由を書く）。ランニングタイムの切り替えは 1〜4 に効く。
 import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvents, opts, activityById } from './store.js';
-import { setEventTable } from './events.js';
 import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
-import { matchModel, toRunning, playerTable, setTable, playedTime, periodSig, entryOrder } from './model.js';
-import { ppWindows, windowsOf, clipModel } from './teamstats.js';
+import { matchModel, toRunning, playerTable, playedTime, periodSig, entryOrder } from './model.js';
+import { ppWindows, setSplit, setCountTable, asOfLabel } from './teamstats.js';
 import { esc, fmtShort, fmtDate, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge } from './review58.js';
@@ -83,7 +82,7 @@ export function vReview(m) {
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
 
   // PDFで書き出すとき（印刷）だけ出す見出し：どの試合の、どこまでの記録か
-  const asOf = st.matchOver ? '試合終了時点' : M.live ? `${periodLabel(st.current)} 残り ${mmssUp(periodLen(cfg, st.current) - nowElapsed(st))} 時点` : (pDone('1H') && !pDone('2H')) ? '前半終了時点' : pDone('2H') ? '後半終了時点' : '';
+  const asOf = asOfLabel(M0); // マッチスタッツ・マッチレポートと同じ（最後に終わったピリオドから）
   const act = activityById(m.activityId);
   const printHead = `<div class="rvprint"><div class="rvpt">マッチレビュー（${TT}）　${esc(S.team?.name || '')} vs ${esc(m.opponent || '')}</div>
     <div class="rvps">${esc(fmtDate(m.date))}${m.kickoff ? ' ' + esc(m.kickoff) + 'キックオフ' : ''}　${esc(m.venue || '')}　${esc(act?.name || '')}${m.category ? '　' + esc(m.category) : ''}　<b>${asOf}</b>　（MATCH PLAYの記録から作成${M.fixed.length ? '・記録の修正を反映' : ''}）</div></div>`;
@@ -189,29 +188,33 @@ export function vReview(m) {
     <div class="rvbox rvtl">${tlHead}${tlRows}</div></section>`;
 
   // ---------- 4. セットの出場時間 ----------
-  const sets = setTable(M);
-  // 4 の表：5×4・4×5の時間帯を除き、出場時間が短いセット（設定、初めは1分未満）は出さない（2026-10-16 決定。6 は全部のセットのまま）
+  // 4・6 の表：数的同数の時間帯だけで数える（5×4・4×5と、両チームの退場の時間帯を除く）。出場時間が短いセット（設定、初めは1分未満）は
+  // 下の行にまとめる。除いた時間も下の行に出すので、全部足すと試合の時間になる（2026-10-16・17 決定）
   const setMin = (teamSettings().setMin ?? 60) * 1000;
-  const setsAll4 = setTable(clipModel(M, windowsOf(M, ppWindows(M), 'ex')));
-  const sets4 = setsAll4.filter((x) => x.time >= setMin), shortS = setsAll4.filter((x) => x.time < setMin);
-  const setRows = sets4.length ? sets4.map((s, i) => `<tr><td>${i + 1}位</td><td class="setn">${s.pids.map((pid) => `${badge(pid)}<small>${esc(last(pid))}</small>`).join('')}</td><td><b>${mmss(s.time)}</b></td><td>${s.count}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="na" style="text-align:center">GKが1人・FPが4人そろった時間がまだありません</td></tr>';
-  const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>4. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。パワープレー（5×4・4×5）の時間帯、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは除く。出場時間が${mmss(setMin)}未満のセットは最後の行にまとめる（基準は設定画面で変えられる）</span></div>
-    <div class="rvbox"><table class="rvtb rvset"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}${shortS.length ? `<tr class="ex"><td></td><td class="setn">出場時間が${mmss(setMin)}未満のセット（${shortS.length}組）</td><td>${mmss(shortS.reduce((t, x) => t + x.time, 0))}</td><td>${shortS.reduce((t, x) => t + x.count, 0)}</td></tr>` : ''}</table></div></section>`;
+  const SP4 = setSplit(M, ppWindows(M, evs));
+  const sets4 = SP4.sets.filter((x) => x.time >= setMin), shortS = SP4.sets.filter((x) => x.time < setMin);
+  const exRow = (label, t, n = '') => `<tr class="ex"><td></td><td class="setn">${label}</td><td>${mmss(t)}</td><td>${n}</td></tr>`;
+  const setRows = (sets4.length ? sets4.map((s, i) => `<tr><td>${i + 1}位</td><td class="setn">${s.pids.map((pid) => `${badge(pid)}<small>${esc(last(pid))}</small>`).join('')}</td><td><b>${mmss(s.time)}</b></td><td>${s.count}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="na" style="text-align:center">GKが1人・FPが4人そろった時間がまだありません</td></tr>')
+    + (shortS.length ? exRow(`出場時間が${mmss(setMin)}未満のセット（${shortS.length}組）`, shortS.reduce((t, x) => t + x.time, 0), shortS.reduce((t, x) => t + x.count, 0)) : '')
+    + (SP4.time.ex ? exRow('5×4・4×5と退場の時間帯', SP4.time.ex) : '') + (SP4.time.special ? exRow('GK1人・FP4人がそろっていない区間', SP4.time.special) : '') + (SP4.time.other ? exRow('交代の瞬間の3秒未満の組み合わせ', SP4.time.other) : '')
+    + `<tr class="tot"><td></td><td style="text-align:left">合計</td><td>${mmss(SP4.time.played)}</td><td></td></tr>`;
+  const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>4. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。数的同数の時間帯だけで数える（パワープレー（5×4・4×5）と、両チームの退場の時間帯は除く）。出場時間が${mmss(setMin)}未満のセット（基準は設定画面で変えられる）、除いた時間帯、GKがそろっていない区間、交代の瞬間の3秒未満の組み合わせは下の行にまとめる（全部足すと試合の時間）</span></div>
+    <div class="rvbox"><table class="rvtb rvset"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}</table></div></section>`;
 
   // ---------- 6. セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントがあるときだけ） ----------
   let s4b = '';
   if (evs.length) {
-    const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
-    const sets0 = runMode ? setTable(M0) : sets; // 回数はイベントの時刻（試合の時計）で数えるので、ここは時計の時間のセット
-    const et = setEventTable(M0, sets0, evs, goalName);
+    // 回数はイベントの時刻（試合の時計）で数えるので、ここは時計の時間のセット。決め方は 4 と同じ
+    const et = setCountTable(M0, ppWindows(M0, evs), evs, goalName, { setMin });
     const cell = (v, i) => `<td class="${i % 2 ? 'o' : 'w'}">${v ? `<b>${v}</b>` : '<span class="z">0</span>'}</td>`;
     const fpl = (pids) => pids.slice().sort((a, b) => (parseInt(mem(a).no, 10) || 999) - (parseInt(mem(b).no, 10) || 999)).map((pid) => `${badge(pid)}<small>${esc(last(pid))}</small>`).join('');
+    const sum = (label, r) => (!r.time && !r.c.some(Boolean) ? '' : `<tr class="ex"><td></td><td class="setn">${label}</td><td>${mmss(r.time)}</td>${r.c.map(cell).join('')}</tr>`);
     const body = et.rows.map((r, i) => `<tr><td>${i + 1}位</td><td class="setn">${fpl(r.pids)}</td><td>${mmss(r.time)}</td>${r.c.map(cell).join('')}</tr>`).join('')
-      + `<tr class="ex"><td></td><td class="setn">GKがいない区間・退場で空席の区間</td><td class="na">—</td>${et.special.map(cell).join('')}</tr>`
-      + `<tr class="ex"><td></td><td class="setn">交代の瞬間の3秒未満の組み合わせ</td><td class="na">—</td>${et.other.map(cell).join('')}</tr>`
-      + `<tr class="tot"><td></td><td class="setn">合計</td><td>${mmss(sets0.reduce((a, x) => a + x.time, 0))}</td>${et.total.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b></td>`).join('')}</tr>`;
-    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>6. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>FP4人のセットがピッチにいる間に起きた回数（並びと出場時間は「4. セットの出場時間」のプレーイングタイム）。青＝自チーム、赤＝相手。シュートはSZ内シュートと得点を含む（OGは除く）。FSP＝FINISH SET PLAY</span></div>
+      + (et.short.n ? sum(`出場時間が${mmss(setMin)}未満のセット（${et.short.n}組）`, et.short) : '')
+      + sum('5×4・4×5と退場の時間帯', et.ex) + sum('GK1人・FP4人がそろっていない区間', et.special) + sum('交代の瞬間の3秒未満の組み合わせ', et.other)
+      + `<tr class="tot"><td></td><td style="text-align:left">合計</td><td>${mmss(et.total.time)}</td>${et.total.c.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b></td>`).join('')}</tr>`;
+    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>6. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>FP4人のセットがピッチにいる間に起きた回数（数的同数の時間帯だけ。決め方は「4. セットの出場時間」と同じで、時間はプレーイングタイム）。青＝自チーム、赤＝相手。シュートはSZ内シュートと得点を含む（OGは除く）。FSP＝FINISH SET PLAY。下の行まで足すと合計になる</span></div>
     <div class="rvbox"><table class="rvtb rvset2"><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l}</th>`).join('')}</tr>${body}</table></div></section>`;
   }
 

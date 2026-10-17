@@ -893,3 +893,8 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .fxlenrow{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .fxlenrow label{display:flex;align-items:center;gap:6px;font-weight:700;white-space:nowrap}
 .fxlenrow input{width:84px}
+/* 2026-10-17：試合中の試合を含めない知らせ、過去所属の印、パワープレー表の合計の列、セットの表の合計の行 */
+.anlive{background:#EEF2F8;color:#3A4558;border:1px solid #C9D3E3;border-radius:6px;font-size:12px;font-weight:800;padding:2px 8px;white-space:nowrap}
+.anpast{display:inline-block;margin-left:4px;padding:0 4px;border-radius:4px;background:#EEF0F4;color:#6B7486;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap}
+.anpp2 td.antot{background:#F3F5F9;font-weight:800}
+.anset tr.tot td,.rvset tr.tot td{font-weight:800;border-top:2px solid #8A93A6}
