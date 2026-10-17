@@ -3,7 +3,7 @@ import { S, watchOps, watchEvents, opts, teamSettings, activityById } from './st
 import { modelOf } from './model.js';
 import { datasheetSheets } from './datasheet.js';
 import { buildXLSX } from './xlsx.js';
-import { esc, toast } from './ui.js';
+import { esc, toast, openModal, closeModal } from './ui.js';
 
 // 選んだ試合のデータシートを作ってダウンロードする（押したときに呼ぶ。記録の読み込みがまだなら知らせる）
 export async function downloadDatasheet(ms) {
@@ -16,13 +16,19 @@ export async function downloadDatasheet(ms) {
     const gts = opts('goalTypes', true);
     list.push({ m, M, st, evs: evC.list.filter((e) => !e.deleted), goalName: (id) => gts.find((o) => o.id === id)?.name || '', players: S.players, activity: activityById(m.activityId)?.name || '', setMin: (teamSettings().setMin ?? 60) * 1000 });
   }
+  const t0 = Date.now();
   const bytes = await buildXLSX(datasheetSheets(list, S.team?.name || '自チーム'));
   const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   const one = list.length === 1 ? list[0].m : null;
   a.download = one ? `データシート_vs${one.opponent || ''}_${(one.date || '').replace(/-/g, '')}.xlsx` : `データシート_${list.length}試合_${(list[0]?.m.date || '').replace(/-/g, '')}-${(list[list.length - 1]?.m.date || '').replace(/-/g, '')}.xlsx`;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  toast(`データシート（Excel）を書き出しました（${list.length}試合）`);
+  const go = () => { document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); toast(`データシート（Excel）を書き出しました（${list.length}試合）`); };
+  // 作るのに時間がかかったときは、iPad が押した操作と見なさずダウンロードを止めることがあるので、もう一度押してもらう
+  if (Date.now() - t0 > 700) {
+    const md = openModal(`<h2>データシートができました</h2><div class="mbody"><p>${list.length}試合分のファイルができました。下のボタンで保存してください。</p></div><div class="mfoot"><button class="btn" data-x>やめる</button><button class="btn pri" data-dl>ダウンロード</button></div>`);
+    md.querySelector('[data-x]').onclick = closeModal;
+    md.querySelector('[data-dl]').onclick = () => { closeModal(); go(); };
+  } else go();
   return true;
 }
 
