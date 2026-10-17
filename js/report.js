@@ -3,27 +3,32 @@
 // 複数試合：試合ごとの結果と合計・1試合平均 → 合計のページ → 試合ごとのページ
 import { S, watchOps, watchEvents } from './store.js';
 import { reportPages } from './analysis.js';
-import { printPages } from './stats.js';
+import { savePdfPages, safeName, preloadPdf } from './pdfsave.js';
 import { esc, toast, openModal, closeModal } from './ui.js';
 
 // 2試合以上のときは、まとめのページだけか、試合ごとのページも入れるかを聞く（2026-10-17 決11）。
 // 初めの選択：6試合以上は「まとめだけ」（試合ごとのページは1試合で約12ページ。47試合だと約570ページ）
 export function printReport(ms, agg = 'sum') {
   if (!ms.length) return;
+  preloadPdf();
   if (ms.length < 2) { go(ms, agg, true); return; }
   const def = ms.length > 5 ? 'sum' : 'all';
   const opt = (v, t, sub) => `<label class="rpopt"><input type="radio" name="rpMode" value="${v}" ${v === def ? 'checked' : ''}><span><b>${t}</b><small>${sub}</small></span></label>`;
   const md = openModal(`<h2>マッチレポート（${ms.length}試合）</h2><div class="mbody">
     ${opt('sum', 'まとめのページだけ', `試合ごとの結果と、${ms.length}試合の${agg === 'avg' ? '1試合平均' : '合計'}のページ（約10ページ）`)}
     ${opt('all', 'まとめ＋試合ごとのページ', `まとめのあとに、1試合ずつのページ（1試合で約12ページ、ぜんぶで約${10 + ms.length * 12}ページ）`)}
-    </div><div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-go>書き出す</button></div>`);
+    </div><div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-go>PDFで保存</button></div>`);
   md.querySelector('[data-c]').onclick = closeModal;
   md.querySelector('[data-go]').onclick = () => { const v = md.querySelector('input[name="rpMode"]:checked')?.value || def; closeModal(); go(ms, agg, v === 'all'); };
 }
 function go(ms, agg, perMatch) {
   const pages = reportPages(ms, agg, { perMatch });
   if (!pages) { toast('記録を読み込んでいます。少し待ってからもう一度押してください'); ms.forEach((m) => { watchOps(m.id); watchEvents(m.id); }); return; }
-  printPages(reportHTML(pages), 'prrep', fitPages);
+  const day = (m) => (m.date || '').replace(/-/g, '');
+  const name = ms.length === 1 ? `マッチレポート_vs${ms[0].opponent || ''}_${day(ms[0])}` : `マッチレポート_${ms.length}試合_${[...ms.map(day)].sort()[0]}-${[...ms.map(day)].sort().pop()}`;
+  // ページを組んで（分かれ目で切れないように振り分けて、用紙いっぱいに広げる）、1枚ずつPDFのページに
+  savePdfPages((stage) => { stage.innerHTML = reportHTML(pages); fitPages(stage); const els = [...stage.querySelectorAll('.rpw')]; els.forEach((e) => e.setAttribute('data-pdfpg', '')); return els; },
+    `${safeName(name)}.pdf`, { stageCls: 'prrep', quality: ms.length > 5 ? 0.8 : 0.88 });
 }
 
 // A4横（余白8mm）＝ 約1062×733px。見出しと下の一行はそのままの大きさで、中身だけを用紙いっぱいに広げる：
@@ -172,13 +177,17 @@ export function vReport(m) {
     active: 'acts',
     html: `<div class="scw"><div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › マッチレポート（PDF）</div>
       <h1>マッチレポート（PDF）</h1>
-      <p class="mu">この試合のすべてを A4横 で書き出します。印刷の画面で「PDFとして保存」を選びます（iPadは共有 → 「ファイルに保存」）。試合中（ハーフタイムなど）は、その時点までの記録で作ります。複数の試合をまとめるときは、分析画面の「書き出し」から書き出せます。</p>
-      <div class="card"><div class="scrow"><button class="btn pri" id="rpGo">マッチレポートを書き出す（PDF）</button></div>
+      <p class="mu">この試合のすべてを A4横 のPDFにして保存します。PCはそのままダウンロード、iPadは共有の画面で「ファイルに保存」を選びます。試合中（ハーフタイムなど）は、その時点までの記録で作ります。複数の試合をまとめるときは、分析画面の「書き出し」から書き出せます。</p>
+      <div class="card"><div class="scrow"><button class="btn pri" id="rpGo">マッチレポートをPDFで保存</button></div>
       <ol class="dsl"><li><b>試合情報・スコア・チームスタッツ</b>：得点者・アシスト、両チームの比較（SZ内シュート・FINISH SET PLAYの内訳つき）</li>
       <li><b>出場時間と出場回数</b>（上に棒グラフ、下に表）</li><li><b>出場タイムライン</b></li><li><b>マッチ・ペース</b>（1分ごと）</li>
       ${has ? `<li><b>スタッツ（まとめ）</b>：進入関与・パスの出し手・受け手を含む</li><li><b>セットの集計</b></li><li><b>パワープレー</b></li><li><b>種類別</b></li>
       <li><b>進入</b>（方法、パスの出し手・受け手）</li><li><b>リカバリーとロスト</b>（ゾーン別）</li><li><b>FINISH SET PLAY の内訳</b></li><li><b>ファールとカード</b></li>` : '<li class="mu">スタッツなどのページは、イベントを入力すると入ります</li>'}</ol>
       <p class="mu sm">中身は分析画面と同じ計算です（前半・後半とパワープレーは分けず、試合全体）。</p></div></div>`,
-    bind: (root) => { root.querySelector('#rpGo').onclick = () => printReport([m]); },
+    bind: (root) => {
+      preloadPdf(); root.querySelector('#rpGo').onclick = () => printReport([m]);
+      // 試合ページの「マッチレポート（PDF）」から来たときは、すぐ保存する
+      if (location.hash.endsWith('/pdf')) { history.replaceState(null, '', `#/m/${m.id}/report`); setTimeout(() => printReport([m]), 300); }
+    },
   };
 }

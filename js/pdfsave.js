@@ -59,15 +59,16 @@ async function renderItem(h2c, stage, it, widths) {
     for (const o of ['L', 'P']) {
       const [pw, ph] = PT[o]; const aw = pw - MG * 2, ah = ph - MG * 2;
       stage.style.width = W + 'px';
+      if (it.shrink) el.style.width = it.shrink(el) + 'px'; // 中身の幅だけ（左右の余白を作らない）
       if (it.fix) it.fix(el, W, aw, ah);
-      const H = el.offsetHeight, Wr = Math.max(W, el.scrollWidth); // 表が幅からはみ出すときは、はみ出した分も入れる
+      const H = el.offsetHeight, Wr = it.shrink ? el.offsetWidth : Math.max(W, el.scrollWidth); // 表が幅からはみ出すときは、はみ出した分も入れる
       const s = Math.min(aw / Wr, ah / H);
       if (!best || s > best.s * 1.02) best = { W, o, s, aw, ah };
     }
   }
   stage.style.width = best.W + 'px';
   if (it.fix) it.fix(el, best.W, best.aw, best.ah);
-  const H = el.offsetHeight, Wr = Math.max(best.W, el.scrollWidth);
+  const H = el.offsetHeight, Wr = it.shrink ? el.offsetWidth : Math.max(best.W, el.scrollWidth);
   best.s = Math.min(best.aw / Wr, best.ah / H);
   // 1pt あたり 2.5px くらいの細かさ（印刷してもにじまない）
   const scale = Math.min(2.5, Math.max(1.5, 2.2 * best.s));
@@ -78,6 +79,48 @@ async function renderItem(h2c, stage, it, widths) {
   const [pw, ph] = PT[best.o];
   const dw = Wr * best.s, dh = H * best.s;
   return { jpg, iw: cv.width, ih: cv.height, pw, ph, x: (pw - dw) / 2, y: ph - MG - dh, dw, dh };
+}
+
+// 組み終わったページを、そのまま1枚ずつ PDF のページにする（マッチレポート：A4横、余白8mm）。
+// build(stage)：stage の中にページを組み、ページの要素の一覧を返す（測って振り分けるのもここで）
+export async function savePdfPages(build, fileName, { stageCls = '', orient = 'L', margin = 22.7, quality = 0.88 } = {}) {
+  const md = openModal(`<h2>PDFを作っています</h2><p class="mu" id="pdfMsg">ページを組んでいます…</p><div class="pdfbar"><i id="pdfBar"></i></div>`);
+  const msg = (t, f) => { const m = md.querySelector('#pdfMsg'); if (m) m.textContent = t; const b = md.querySelector('#pdfBar'); if (b && f != null) b.style.width = Math.round(f * 100) + '%'; };
+  const stage = document.createElement('div');
+  stage.className = 'pdfstage ' + stageCls;
+  document.body.appendChild(stage);
+  try {
+    const h2c = await loadH2C();
+    await document.fonts?.ready;
+    await new Promise((r) => setTimeout(r, 30)); // 「組んでいます」を先に出す
+    const els = build(stage);
+    const [pw, ph] = PT[orient]; const aw = pw - margin * 2, ah = ph - margin * 2;
+    const pages = [];
+    for (let i = 0; i < els.length; i++) {
+      msg(`${i + 1} / ${els.length} ページ目を作っています`, i / els.length);
+      await new Promise((r) => setTimeout(r, 0));
+      const el = els[i]; const W = el.offsetWidth, H = el.offsetHeight;
+      const s = Math.min(aw / W, ah / H);
+      const scale = Math.min(2.4, Math.max(1.4, 2.2 * s));
+      el.setAttribute('data-pdfnow', '1');
+      const cv = await h2c(el, { scale, backgroundColor: '#ffffff', logging: false, width: W, height: H, windowWidth: Math.max(W, stage.offsetWidth),
+        // ほかのページと画面の本体は写し取らない（速くするため）
+        ignoreElements: (n) => n.id === 'main' || n.id === 'update' || n.id === 'toast' || n.classList?.contains('modal-bg') || (n.hasAttribute?.('data-pdfpg') && !n.hasAttribute('data-pdfnow')) });
+      el.removeAttribute('data-pdfnow');
+      const jpg = new Uint8Array(await (await new Promise((r) => cv.toBlob(r, 'image/jpeg', quality))).arrayBuffer());
+      const iw = cv.width, ih = cv.height; cv.width = cv.height = 0; // メモリを早く返す
+      const dw = W * s, dh = H * s;
+      pages.push({ jpg, iw, ih, pw, ph, x: (pw - dw) / 2, y: ph - margin - dh, dw, dh });
+    }
+    msg('ファイルにまとめています', 1);
+    const blob = pdfBlob(pages);
+    stage.remove();
+    await deliver(blob, fileName, md);
+  } catch (e) {
+    stage.remove(); closeModal();
+    console.error(e);
+    toast('PDFを作れませんでした。もう一度押してください');
+  }
 }
 
 // JPEG を1枚ずつ載せた PDF

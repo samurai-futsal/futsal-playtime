@@ -600,9 +600,9 @@ function vMatch(r) {
     </div>
     <div class="grp">書き出す（ハーフタイムでも、その時点までの記録で）</div>
     <div class="acts acts3">
-      ${btn('マッチスタッツ（PDF）', 'いつものシートの形\nA4縦1枚', `#/m/${m.id}/stats/print`, { kind: 'out' })}
+      ${btn('マッチスタッツ（PDF）', 'いつものシートの形\n上の表・下の表で2ページ', `#/m/${m.id}/stats/print`, { kind: 'out' })}
       ${btn('マッチレビュー（PDF）', '出場時間だけ（1〜4）\nまたは すべて（1〜8）', `#/m/${m.id}/review/pdf`, { kind: 'out' })}
-      ${btn('マッチレポート（PDF）', 'A4横・試合のすべて', `#/m/${m.id}/report`, { kind: 'out' })}
+      ${btn('マッチレポート（PDF）', 'A4横・試合のすべて', `#/m/${m.id}/report/pdf`, { kind: 'out' })}
       ${btn('データシート（Excel）', 'イベント一覧・選手スタッツ\n数式で集計', `#/m/${m.id}/datasheet`, { kind: 'out' })}
       ${btn('Sportscode（XML・CSV）', '出場の帯とイベント\nSportscode・Excel用', `#/m/${m.id}/sportscode`, { kind: 'out' })}
     </div>

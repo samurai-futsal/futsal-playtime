@@ -1119,3 +1119,6 @@ svg.pace .prl.on rect[fill="#F3F5F9"]{fill:#FFE9A8}@media print{svg.pace .prl.on
 .pdfstage .rvbox{flex-grow:0}
 .pdfstage .rvsec svg{max-height:none!important}
 .pdfbar{height:10px;background:#E4E9F2;border-radius:6px;overflow:hidden;margin:6px 0 4px}.pdfbar i{display:block;height:100%;width:0;background:#1F5FBF;transition:width .2s}
+.pdfstage .stpage{max-width:none;border-radius:0;padding:6px}
+.pdfstage .stpage .stft{width:0;min-width:100%}
+.pdfstage .sthd{font-size:10px}.pdfstage .sthd td.w{width:34%}.pdfstage .stsc .sttm{font-size:14px;white-space:nowrap}

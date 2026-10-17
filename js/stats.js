@@ -14,24 +14,39 @@ import { savePdf, safeName, preloadPdf } from './pdfsave.js';
 let range = 'all';
 
 
-// 書き出し（印刷）：選んだ試合のマッチスタッツを1試合1ページで出す（分析画面・試合ページから）
+// PDFで保存：1試合を2ページに（上の表＝シュート・進入・FINISH SET PLAY の中身、下の表＝時間帯）。各ページいっぱいに大きく
+export function statsItems(sheet, foot) {
+  const d = document.createElement('div'); d.innerHTML = `<div class="stpage">${sheet}${foot}</div>`;
+  const n = d.querySelectorAll('.sttier').length;
+  return Array.from({ length: Math.max(1, n) }, (_, i) => {
+    const c = d.firstElementChild.cloneNode(true);
+    c.querySelectorAll('.sttier').forEach((t, k) => { if (k !== i) t.remove(); });
+    return { html: c.outerHTML, widths: [900], shrink: sheetW, fix: stretchRows };
+  });
+}
+// ページの幅：真ん中の表（.stt）の幅に、左右の少しの余白を足す
+function sheetW(el) { el.style.width = '900px'; return Math.max(...[...el.querySelectorAll('.stt')].map((t) => t.offsetWidth)) + 40; }
+// 下が余るときは、表の行を少しずつ高くしてページの縦いっぱいに（1行につき最大14px）
+function stretchRows(el, W, aw, ah) {
+  const rows = [...el.querySelectorAll('.stt tr')];
+  rows.forEach((r) => { r.style.height = ''; });
+  const spare = el.offsetWidth * ah / aw - el.offsetHeight - 4;
+  if (!rows.length || spare < 8) return;
+  const add = Math.min(14, spare / rows.length);
+  const hs = rows.map((r) => r.getBoundingClientRect().height);
+  rows.forEach((r, k) => { r.style.height = (hs[k] + add).toFixed(1) + 'px'; });
+}
+export function statsFileName(ms, range = 'all') {
+  const day = (m) => (m.date || '').replace(/-/g, '');
+  if (ms.length === 1) return `${safeName(`マッチスタッツ_vs${ms[0].opponent || ''}_${day(ms[0])}${range === 'all' ? '' : '_' + periodLabel(range)}`)}.pdf`;
+  return `${safeName(`マッチスタッツ_${ms.length}試合_${day(ms[ms.length - 1])}-${day(ms[0])}`)}.pdf`;
+}
+// 分析画面から：選んだ試合を1試合2ページずつ
 export function printStats(ms) {
   const pages = ms.map((m) => calc(m, 'all'));
   if (pages.some((x) => !x)) { toast('記録を読み込んでいます。少し待ってからもう一度押してください'); ms.forEach((m) => { watchOps(m.id); watchEvents(m.id); }); return; }
-  printPages(pages.map((x) => `<div class="stw"><div class="stpage">${x.sheet}${x.foot}</div></div>`).join(''), 'prstats');
+  savePdf(pages.flatMap((x) => statsItems(x.sheet, x.foot)), statsFileName(ms), { stageCls: 'stw' });
 }
-// 画面の内容とは別に、印刷用のページだけを出す
-// prep(d)：印刷の前に、ページの大きさを測って整えるとき（マッチレポート）
-export function printPages(html, cls, prep = null) {
-  document.querySelector('#prArea')?.remove();
-  const d = document.createElement('div'); d.id = 'prArea'; d.className = cls; d.innerHTML = html; document.body.appendChild(d);
-  if (prep) { d.classList.add('measure'); prep(d); d.classList.remove('measure'); }
-  document.body.classList.add('printing');
-  const done = () => { document.body.classList.remove('printing'); d.remove(); removeEventListener('afterprint', done); };
-  addEventListener('afterprint', done);
-  setTimeout(() => window.print(), 60);
-}
-
 function calc(m, range0) {
   let range = range0;
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
@@ -75,7 +90,7 @@ export function vStats(m) {
     bind: (root) => {
       root.querySelectorAll('[data-range]').forEach((b) => b.onclick = () => { range = b.dataset.range; render(); });
       preloadPdf();
-      const save = () => savePdf([{ html: root.querySelector('.stpage').outerHTML }], `${safeName(`マッチスタッツ_vs${m.opponent || ''}_${(m.date || '').replace(/-/g, '')}${range === 'all' ? '' : '_' + periodLabel(range)}`)}.pdf`, { stageCls: 'stw', widths: [1100, 1250, 1400] });
+      const save = () => savePdf(statsItems(sheet, foot), statsFileName([m], range), { stageCls: 'stw' });
       root.querySelector('#stPdf').onclick = save;
       // 試合ページの「マッチスタッツ（PDF）」から来たときは、すぐ保存する
       if (location.hash.endsWith('/print')) { history.replaceState(null, '', `#/m/${m.id}/stats`); setTimeout(save, 300); }
