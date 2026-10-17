@@ -335,8 +335,16 @@ export function timelineHTML(o) {
 
 // ---------- 5. マッチ・ペースの横幅：ほかの項目と同じ幅で、高さは1画面に入るように（2026-10-17） ----------
 // 画面の幅と高さから、グラフの横の長さ（tw）を決める。描いたあとに実際の枠の大きさを測り、比率が違えば描き直す
-let paceRatio = null;
+let paceRatio = null, paceC = null;
+// ratio（横÷縦）に合わせたマッチ・ペースの svg（大きく表示のときにも使う）
+function paceSvgFor(ratio) {
+  if (!paceC) return null;
+  const o = { pick: true, rowH: 20, gh: 96, svgOnly: true };
+  const vb = (paceSection(paceC, o).match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/) || []).slice(1).map(Number); if (!vb.length) return null;
+  return paceSection(paceC, { ...o, tw: Math.max(600, ratio * vb[1] - (vb[0] - 840)) });
+}
 function paceFit(C) {
+  paceC = C;
   const o = { pick: true, rowH: 20, gh: 96 };
   if (!paceRatio) return paceSection(C, o);
   const vb = (paceSection(C, { ...o, svgOnly: true }).match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/) || []).slice(1).map(Number);
@@ -367,6 +375,8 @@ function bindFull(root) {
   const secs = [...root.querySelectorAll('.rvbody > .rvsec:not(.rvwait)')].filter((x) => x.id && x.querySelector('.rvbox'));
   if (!secs.length) return;
   const open = (id) => {
+    // マッチ・ペースを大きく表示用に描き直していたので、閉じる（ほかへ移る）ときは画面を描き直して元の形に戻す
+    if (fsId === 'rv5' && id !== 'rv5' && document.querySelector('#rv5.rvfull')) { fsId = id; document.body.classList.toggle('rvfsmode', !!id); render(); return; }
     secs.forEach((x) => { x.classList.remove('rvfull'); x.querySelector('.rvfsbar')?.remove(); const b = x.querySelector('.rvbox'); if (b) { b.style.zoom = ''; b.style.width = ''; } });
     document.body.classList.toggle('rvfsmode', !!id);
     fsId = id;
@@ -382,6 +392,12 @@ function bindFull(root) {
     const box = sec.querySelector('.rvbox'); const bar = sec.querySelector('.rvfsbar'); if (!box) return;
     const availW = sec.clientWidth - 32, availH = window.innerHeight - (bar?.offsetHeight || 0) - 28;
     box.style.zoom = ''; box.style.width = '';
+    // マッチ・ペースは、大きく表示した画面の縦横に合わせて描き直し、上下もいっぱいに使う
+    if (sec.id === 'rv5') {
+      const old = box.querySelector('svg.pace'); const pad = 36 + (box.querySelector('.pinfo')?.offsetHeight || 20) + 8;
+      const svg = paceSvgFor((availW - 36) / (availH - pad));
+      if (old && svg) { old.outerHTML = svg; box.style.width = `${availW}px`; box.style.zoom = '1'; bindPacePick(sec.closest('.rvw')?.parentElement || document); return; }
+    }
     // 列の多い表は、細くしすぎると数字が重なるので、横幅の下限を決める
     const cols = Math.max(0, ...[...box.querySelectorAll('table')].map((t) => t.rows[0]?.cells.length || 0));
     const minW = cols > 6 ? Math.min(availW, 1100) : cols ? 640 : 320;

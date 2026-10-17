@@ -1101,3 +1101,7 @@ body.rvfsmode{overflow:hidden}
 svg.pace .prl .pol{display:none}svg.pace .prl.on .pol{display:inline}svg.pace .prl.on .phl{fill:#FFE9A8}
 @media print{svg.pace .prl.on .phl{fill:transparent}svg.pace .prl .pol{display:none}}
 svg.pace .prl.on rect[fill="#F3F5F9"]{fill:#FFE9A8}@media print{svg.pace .prl.on rect[fill="#F3F5F9"]{fill:#F3F5F9}}
+/* 大きく表示：iPadの上の時刻・電池の表示とボタンが重ならないように、上と左右をあける。ボタンは押しやすい大きさに */
+.rvsec.rvfull{padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right));padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+.rvfsbar{padding-top:calc(10px + env(safe-area-inset-top))}
+.rvfsbar .btn{min-height:46px;padding:0 18px;font-size:16px}
