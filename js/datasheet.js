@@ -124,6 +124,7 @@ export function datasheetSheets(ms, teamName) {
     [{ v: '会場', s: 'bold' }, ...ms.map((x) => x.m.venue || '')], [{ v: 'キックオフ', s: 'bold' }, ...ms.map((x) => x.m.kickoff || '')],
     [{ v: '試合時間（プレーイングタイム）', s: 'bold' }, ...ms.map((x) => ({ v: day(x.M.periods.reduce((t, p) => t + (p.status === 'none' ? 0 : p.elapsed), 0)), s: 'time' })), ...(multi ? [{ f: `SUM(B9:${colName(ms.length)}9)`, s: 'timeb' }] : [])],
     [{ v: 'PK戦（自チーム−相手）', s: 'bold' }, ...ms.map((x) => (x.m.pk ? `${x.m.pk.own ?? 0}−${x.m.pk.opp ?? 0}` : ''))],
+    [{ v: 'PK戦のキッカー（自チーム）', s: 'bold' }, ...ms.map((x) => (x.m.pk?.kicks || []).map((k, i) => `${i + 1}.${fullName(x.players || [], k.pid) || '—'} ${({ goal: '○', saved: '×(GK)', missed: '×(枠外)' })[k.res] || ''}`).join('　'))],
     [{ v: 'ポゼッション率（自チーム）', s: 'bold' }, ...ms.map((x) => (x.m.possession != null ? x.m.possession / 100 : '')).map((v) => (v === '' ? '' : { v, s: 'pct' }))],
     [],
     [H('チームの数字（イベント一覧から計算）'), ...infoCols.map(H), ...(multi ? [H('合計')] : [])],

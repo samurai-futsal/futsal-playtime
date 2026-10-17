@@ -131,6 +131,12 @@ export function paceSection(c, o = {}) {
 }
 
 // ---------- 7. スコアとチームスタッツ ----------
+// PK戦のキッカー（自チーム、蹴った順）：「1 甲斐 ○　2 水谷 ×（GKが止めた）」
+const PKR = { goal: '○', saved: '×（GKが止めた）', missed: '×（枠外・ポスト）' };
+function pkLine(c) {
+  const k = c.pk?.kicks || []; if (!k.length) return '';
+  return `<div class="rvpk"><b>PK戦のキッカー</b>${k.map((x, i) => `<span>${i + 1}人目 ${x.pid ? `${c.badge(x.pid)}${esc(c.last(x.pid))}` : '<span class="na">—</span>'} ${PKR[x.res] || '<span class="na">結果なし</span>'}</span>`).join('')}</div>`;
+}
 export function teamSection(c, o = {}) {
   const { R, badge, last, own, opp, goalName, M0 } = c;
   const { A, B } = R;
@@ -149,7 +155,7 @@ export function teamSection(c, o = {}) {
   const cmp = (label, a, b, sub = null) => `<tr><td class="xb l"><i style="width:${a == null ? 0 : Math.round(a / cmpMax * 170)}px"></i></td><td class="cv">${a == null ? '<span class="na">—</span>' : a}${sub && a != null ? `<small>${sub[0]}</small>` : ''}</td><td class="cl">${label}</td><td class="cv">${b == null ? '<span class="na">—</span>' : b}${sub && b != null ? `<small>${sub[1]}</small>` : ''}</td><td class="xb r"><i style="width:${b == null ? 0 : Math.round(b / cmpMax * 170)}px"></i></td></tr>`;
   const fspSub = (s) => `CK ${s.fspT[0]}・CK-KI ${s.fspT[1]}・KI ${s.fspT[2]}・FK ${s.fspT[3]}`;
   const cardSub = (s) => `イエロー${s.cards.yellow}・2枚目${s.cards.y2}・レッド${s.cards.red}`;
-  const inner = `<div class="rvscore7"><span class="tn">${esc(own)}</span><span class="sv">${tot('own')} − ${tot('opp')}</span><span class="tn">${esc(opp)}</span><span class="hv">${per}</span></div>
+  const inner = `<div class="rvscore7"><span class="tn">${esc(own)}</span><span class="sv">${tot('own')} − ${tot('opp')}</span><span class="tn">${esc(opp)}</span><span class="hv">${per}</span></div>${pkLine(c)}
 <table class="rvtb rvflow"><tr><th>時間</th><th>チーム</th><th style="text-align:left">得点者</th><th style="text-align:left">アシスト</th><th>得点の種類</th><th>スコア</th></tr>${flow}</table>
 <table class="rvcmp"><tr><th></th><th class="own">${esc(own)}</th><th></th><th class="opp">${esc(opp)}</th><th></th></tr>
 ${cmp('シュート', A.shots, B.shots, [`SZ内 ${A.sz}`, `SZ内 ${B.sz}`])}${cmp('枠内', A.in, B.in)}${cmp('Z4進入', A.z4, B.z4)}${cmp('SZ進入', A.szE, B.szE)}${cmp('FINISH SET PLAY', A.fsp, B.fsp, [fspSub(A), fspSub(B)])}${cmp('ファール', A.foul, B.foul)}${cmp('カード', A.cardN, B.cardN, [cardSub(A), cardSub(B)])}${cmp('退場', R.ejOwn, R.ejOpp)}${cmp('タイムアウト', R.timeouts.own, R.timeouts.opp)}</table>

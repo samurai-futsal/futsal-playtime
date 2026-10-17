@@ -921,3 +921,8 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .note.info{background:var(--soft);border:1px solid var(--line);color:var(--ink)}
 #setupForm input:disabled{background:var(--soft);color:var(--mute)}
 .stpk{text-align:center;font-weight:800;font-size:15px;color:#0B2D6B;margin-top:2px}
+.postin .pkk{margin-top:8px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.postin .pktb{border-collapse:collapse}.postin .pktb td{padding:3px 6px}.postin .pktb select{font:inherit;font-size:14px;padding:5px 6px;border-radius:7px;border:1.5px solid #C9D3E3}
+.postin .pktb select.ok{border-color:#1E7A3C;color:#1E7A3C;font-weight:700}.postin .pktb select.ng{border-color:#C42A1F;color:#C42A1F;font-weight:700}
+.postin .pkno{font-weight:800;color:#0B2D6B;white-space:nowrap}.postin .pkauto{font-size:18px;min-width:40px;text-align:center}
+.rvpk{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:14px;margin:0 0 8px;grid-column:1}.rvpk>b{color:#0B2D6B}
