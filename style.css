@@ -1098,3 +1098,6 @@ body.rvfsmode{overflow:hidden}
 @media print{.rvmax,.rvfsbar{display:none!important}}
 .rvsec.rvfull{display:block;min-height:0;border-top:0}
 .rvsec.rvfull .rvbox{flex-grow:0}
+svg.pace .prl .pol{display:none}svg.pace .prl.on .pol{display:inline}svg.pace .prl.on .phl{fill:#FFE9A8}
+@media print{svg.pace .prl.on .phl{fill:transparent}svg.pace .prl .pol{display:none}}
+svg.pace .prl.on rect[fill="#F3F5F9"]{fill:#FFE9A8}@media print{svg.pace .prl.on rect[fill="#F3F5F9"]{fill:#F3F5F9}}

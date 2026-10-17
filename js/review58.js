@@ -77,6 +77,7 @@ export function paceSection(c, o = {}) {
   order.forEach((pid, i) => {
     const y = top + i * rowH;
     if (o.tap) s += `<g class="prow" data-prow="${pid}"><rect class="phl" x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="${i % 2 === 0 ? '#EAF0F9' : 'transparent'}"/>`;
+    else if (o.pick) s += `<g class="prl ${rvHl.has('5:' + pid) ? 'on' : ''}" data-prl="${pid}" style="cursor:pointer"><rect class="phl" x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="${i % 2 === 0 ? '#EAF0F9' : '#FFFFFF'}"/>`;
     else if (i % 2 === 0) s += `<rect x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="#EAF0F9"/>`;
     for (const p of axis) s += `<rect x="${X[p.key]}" y="${y + 2}" width="${HW[p.key]}" height="${rowH - 4}" fill="#F3F5F9" opacity=".9"/>`;
     s += who(pid, X0 - 36 - nameW, y) + `<text x="${X0 - 6 - nameW}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`;
@@ -87,6 +88,7 @@ export function paceSection(c, o = {}) {
       s += `<rect x="${x1}" y="${y + 2}" width="${Math.max(0.8, x2 - x1)}" height="${rowH - 4}" fill="${mem(pid).pos === 'GK' ? '#C8312B' : '#1F5FBF'}" opacity=".85"/>`;
     }
     if (o.tap) s += `<rect class="pname" data-pname="${pid}" x="0" y="${y}" width="${X0 - 4}" height="${rowH}" fill="transparent" style="cursor:pointer"/></g>`;
+    else if (o.pick) s += `<rect class="pol" x="1" y="${y + 1}" width="${PW - 2}" height="${rowH - 2}" rx="4" fill="none" stroke="#F0A030" stroke-width="2"/></g>`;
   });
   for (const g of marks) { if (X[g.period] == null) continue; const gx = x(g.period, g.at); s += `<line x1="${gx}" x2="${gx}" y1="${top - 2}" y2="${yEnd}" stroke="${g.own ? GREEN : RED}" stroke-width="2"/>`; }
   // 下段：区切りごとの回数（上＝自チーム、下＝相手）
@@ -144,7 +146,7 @@ export function paceSection(c, o = {}) {
   }
   s += '</svg>';
   if (o.svgOnly) return s;
-  if (o.pick) return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯と得点（緑）・失点（赤）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）。下のグラフを押すと、その時間にピッチにいた選手に●</span></div><div class="rvbox">${s}<p class="rvhint pinfo" id="paceInfo"></p></div></section>`;
+  if (o.pick) return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯と得点（緑）・失点（赤）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）。行を押すと強調・下のグラフを押すと●</span></div><div class="rvbox">${s}<p class="rvhint pinfo" id="paceInfo"></p></div></section>`;
   return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯と得点（緑）・失点（赤）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）</span></div><div class="rvbox">${s}</div></section>`;
 }
 
@@ -210,7 +212,7 @@ export function scoreBadge(c, R) {
 }
 export { teamStats };
 
-// マッチ・ペースの操作：下のグラフの区切りを押すと縦の線と●（同じ区切りをもう一度押すと消す）
+// マッチ・ペースの操作：選手の行を押すと強調、下のグラフの区切りを押すと縦の線と●（同じ区切りをもう一度押すと消す）
 let paceSel = null;
 export function bindPacePick(root) {
   const svg = root.querySelector('#rv5 svg.pace'); if (!svg) return;
@@ -231,6 +233,9 @@ export function bindPacePick(root) {
   if (paceSel) draw(svg.querySelector(`.pbk[data-k="${paceSel}"]`));
   svg.addEventListener('click', (e) => {
     const b = e.target.closest('.pbk');
-    if (b) { paceSel = paceSel === b.dataset.k ? null : b.dataset.k; draw(paceSel ? b : null); }
+    if (b) { paceSel = paceSel === b.dataset.k ? null : b.dataset.k; draw(paceSel ? b : null); return; }
+    // 選手の行を押すと強調（黄色＋オレンジの枠。何人でも。もう一度押すと戻す）
+    const r = e.target.closest('[data-prl]');
+    if (r) { const k = '5:' + r.dataset.prl; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); r.classList.toggle('on', rvHl.has(k)); }
   });
 }
