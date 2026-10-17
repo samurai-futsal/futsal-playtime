@@ -1078,3 +1078,11 @@ svg.pace .pmk{pointer-events:none}
 .rvset2.rveq th{font-size:12px;padding-left:4px;padding-right:4px}
 .rvtb.rveq tr:nth-child(even):not(.ex):not(.tot):not(.hl) td:not(.w):not(.o){background:#F6F8FC!important}
 .rvtb.rveq tr.hl td{background:#FFE9A8!important}
+/* 4の表：順位とセットを出場時間のほうへ寄せる（列を4つに分け、順位とセットも真ん中に） */
+.rvset.rveq col.c0{width:16%}.rvset.rveq col.cset{width:44%}
+.rvset.rveq th:first-child,.rvset.rveq td:first-child{text-align:center}
+.rvset.rveq th:nth-child(2){text-align:center}
+.rvset .setn .spw{grid-template-columns:repeat(4,calc(34px + var(--nmw,3) * 13px));justify-content:center}
+.rvset tr.ex td.setn,.rvset tr.tot td:nth-child(2){text-align:center!important}
+.rvtb.rveq td.setn{display:table-cell}
+.rvset.rveq th:nth-child(2){text-align:center!important}
