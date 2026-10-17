@@ -4,7 +4,7 @@ import { initStore } from './js/store.js';
 import { startApp, render, onPlayScreen, confirmUpdate } from './js/views.js';
 import { $, esc } from './js/ui.js';
 
-const APP_VERSION = '0.6.39';
+const APP_VERSION = '0.6.40';
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const firebaseConfig = {
   apiKey: 'AIzaSyC0r2kAsSyq9HCcj9IT4WsRMlC8mleBoV4',
