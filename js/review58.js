@@ -9,6 +9,21 @@ const GREEN = '#13A10E', RED = '#E00000';
 // マッチレビューの表・マッチ・ペースの行を押して強調する（黄色＋オレンジの枠。もう一度押すと戻す。2026-10-17）。開いている間だけ覚える
 export const rvHl = new Set();
 export const hlc = (k) => (rvHl.has(k) ? 'hl' : '');
+// 6・8の表の並べ替え（見出しを押す：多い順→少ない順→元の並び）。表ごとに覚える
+export const tSort = { 6: { col: '', dir: 'desc' }, 8: { col: '', dir: 'desc' } };
+export function tSortNext(t, col) {
+  const s = tSort[t];
+  tSort[t] = !col ? { col: '', dir: 'desc' } : s.col !== col ? { col, dir: 'desc' } : s.dir === 'desc' ? { col, dir: 'asc' } : { col: '', dir: 'desc' };
+}
+// 見出し（押すと並べ替え）
+export const tsh = (t, col, label, cls = '') => { const s = tSort[t]; const on = s.col === col; return `<th class="srt ${on ? 'on' : ''} ${cls}" data-tsort="${t}:${col}">${label}<i>${on ? (s.dir === 'asc' ? '▲' : '▼') : '⇅'}</i></th>`; };
+// 並べ替え。同じ数なら元の並び。last(r) が true の行はいつも下（出場していない選手など）
+export function tSorted(t, rows, val, last = () => false) {
+  const s = tSort[t]; const ix = new Map(rows.map((r, i) => [r, i]));
+  if (!s.col) return rows.slice();
+  const k = s.dir === 'asc' ? 1 : -1;
+  return rows.slice().sort((a, b) => (last(a) - last(b)) || (val(a, s.col) - val(b, s.col)) * k || ix.get(a) - ix.get(b));
+}
 
 // 得点・失点の一覧（時刻順）。label＝線の上に出す短い文字
 export function goalMarks(R, c) {
@@ -193,14 +208,14 @@ export function playerSection(c) {
   const P = playerStats(M0, evs, goalName, gkLast(byNo), T0);
   const played = M0.periods.reduce((a, p) => a + p.elapsed, 0);
   const sum = (k) => P.rows.reduce((a, r) => a + r[k], 0);
-  const rows = P.rows.map((r) => {
+  const rows = tSorted(8, P.rows, (r, k) => r[k], (r) => !r.time).map((r) => {
     const z = (v) => (r.time ? v : `<span class="na">${v}</span>`);
     return `<tr class="${r.time ? '' : 'zero'} ${hlc('8:' + r.pid)}" data-hlk="8:${r.pid}"><td>${badge(r.pid)} ${esc(last(r.pid))}</td><td>${mmss(r.time)}</td><td>${z(r.shots)}<small>（${r.sz}）</small></td><td class="w">${z(r.shotOn)}</td><td class="o">${z(r.oshotOn)}</td><td>${z(r.in)}</td><td>${z(r.goals)}</td><td>${z(r.assists)}</td><td>${z(r.inv)}</td><td>${z(r.passFrom)}</td><td>${z(r.passTo)}</td><td>${z(r.rec)}</td><td>${z(r.lost)}</td><td>${z(r.foul)}</td><td><b>${r.time ? (r.pm > 0 ? '+' + r.pm : r.pm) : '<span class="na">0</span>'}</b></td></tr>`;
   }).join('');
   const tot = (side) => Object.values(R.score[side]).reduce((a, b) => a + b, 0);
   const goalsN = tot('own');
-  return `<section class="rvsec" id="rv8"><div class="rvtt"><b>8. スタッツまとめ</b><span>選手ごと（背番号順、GKは一番下）。関与＝ピッチにいる間の数。±＝得点−失点</span></div>
-<div class="rvbox"><table class="rvtb rvs8 rveq" style="--nmw:${Math.max(2, ...P.rows.map((r) => last(r.pid).length))}"><colgroup><col class="c1"></colgroup><tr><th>選手</th><th>出場</th><th>シュート<br><small>（SZ内）</small></th><th class="w">シュート<br>関与</th><th class="o">被シュート<br>関与</th><th>枠内</th><th>得点</th><th>アシスト</th><th>進入関与</th><th>パス<br>出し手</th><th>パス<br>受け手</th><th>リカバリー</th><th>ロスト</th><th>ファール</th><th>得失点±</th></tr>${rows}
+  return `<section class="rvsec" id="rv8"><div class="rvtt"><b>8. スタッツまとめ</b><span>選手ごと（背番号順、GKは一番下）。見出しを押すと並べ替え。関与＝ピッチにいる間の数。±＝得点−失点</span></div>
+<div class="rvbox"><table class="rvtb rvs8 rveq" style="--nmw:${Math.max(2, ...P.rows.map((r) => last(r.pid).length))}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${tSort[8].col ? '' : 'on'}" data-tsort="8:">選手<i>${tSort[8].col ? '' : '背番号順'}</i></th>${tsh(8, 'time', '出場')}${tsh(8, 'shots', 'シュート<br><small>（SZ内）</small>')}${tsh(8, 'shotOn', 'シュート<br>関与', 'w')}${tsh(8, 'oshotOn', '被シュート<br>関与', 'o')}${tsh(8, 'in', '枠内')}${tsh(8, 'goals', '得点')}${tsh(8, 'assists', 'アシスト')}${tsh(8, 'inv', '進入関与')}${tsh(8, 'passFrom', 'パス<br>出し手')}${tsh(8, 'passTo', 'パス<br>受け手')}${tsh(8, 'rec', 'リカバリー')}${tsh(8, 'lost', 'ロスト')}${tsh(8, 'foul', 'ファール')}${tsh(8, 'pm', '得失点±')}</tr>${rows}
 <tr class="tot"><td>チーム合計</td><td>${mmss(played)}</td><td>${R.A.shots}<small>（${R.A.sz}）</small></td><td class="w">${R.A.shots}</td><td class="o">${R.B.shots}</td><td>${R.A.in}</td><td>${goalsN}</td><td>${sum('assists')}${P.assistMiss ? `<div class="miss">未入力 ${P.assistMiss}</div>` : ''}</td><td>${sum('inv')}</td><td>${sum('passFrom')}</td><td>${sum('passTo')}</td><td>${R.rec}</td><td>${R.lost}</td><td>${R.A.foul}</td><td>${goalsN - tot('opp') > 0 ? '+' : ''}${goalsN - tot('opp')}</td></tr></table>
 <p class="rvhint">シュートは得点を含む。進入関与＝Z4進入・SZ進入に選手（パスの出し手・受け手を含む）として付いている回数。チーム合計のシュート・リカバリーなどは、選手が「不明」や未入力のものも含むので、選手の合計と合わないことがあります。得点には相手OGを含む</p></div></section>`;
 }

@@ -7,7 +7,7 @@ import { matchModel, toRunning, playerTable, playedTime, periodSig, entryOrder }
 import { ppWindows, setSplit, setCountTable, asOfLabel } from './teamstats.js';
 import { esc, fmtShort, fmtDate, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
-import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge, rvHl, hlc, bindPacePick } from './review58.js';
+import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge, rvHl, hlc, bindPacePick, tSort, tSortNext, tsh, tSorted } from './review58.js';
 import { ensureChecks } from './evinput.js';
 
 const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
@@ -218,12 +218,13 @@ export function vReview(m) {
     const cell = (v, i) => `<td class="${i % 2 ? 'o' : 'w'}">${v ? `<b>${v}</b>` : '<span class="z">0</span>'}</td>`;
     const fpl = chips;
     const sum = (label, r) => (!r.time && !r.c.some(Boolean) ? '' : `<tr class="ex"><td></td><td class="setn">${label}</td><td>${mmss(r.time)}</td>${r.c.map(cell).join('')}</tr>`);
-    const body = et.rows.map((r, i) => `<tr class="${hlc('6:' + setKey(r.pids))}" data-hlk="6:${setKey(r.pids)}"><td>${i + 1}位</td><td class="setn">${fpl(r.pids)}</td><td>${mmss(r.time)}</td>${r.c.map(cell).join('')}</tr>`).join('')
+    const rank = new Map(et.rows.map((r, i) => [r, i + 1])); // 順位は出場時間の順位のまま
+    const body = tSorted(6, et.rows, (r, k) => (k === 'time' ? r.time : r.c[+k])).map((r) => `<tr class="${hlc('6:' + setKey(r.pids))}" data-hlk="6:${setKey(r.pids)}"><td>${rank.get(r)}位</td><td class="setn">${fpl(r.pids)}</td><td>${mmss(r.time)}</td>${r.c.map(cell).join('')}</tr>`).join('')
       + (et.short.n ? sum(`出場時間が${mmss(setMin)}未満のセット（${et.short.n}組）`, et.short) : '')
       + sum('5×4・4×5と退場の時間帯', et.ex) + sum('GK1人・FP4人がそろっていない区間', et.special) + sum('交代の瞬間の3秒未満の組み合わせ', et.other)
       + `<tr class="tot"><td></td><td style="text-align:left">合計</td><td>${mmss(et.total.time)}</td>${et.total.c.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b></td>`).join('')}</tr>`;
-    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>6. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>セットがピッチにいる間の回数（数的同数の時間帯だけ）。青＝自チーム、赤＝相手</span></div>
-    <div class="rvbox"><table class="rvtb rvset2 rveq" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l.replace('FINISH SET PLAY ', 'FINISH SET PLAY<br>')}</th>`).join('')}</tr>${body}</table></div></section>`;
+    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>6. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>セットがピッチにいる間の回数（数的同数の時間帯だけ）。青＝自チーム、赤＝相手。見出しを押すと並べ替え</span></div>
+    <div class="rvbox"><table class="rvtb rvset2 rveq" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th class="srt ${tSort[6].col ? '' : 'on'}" data-tsort="6:">順位</th><th style="text-align:left">FP4人のセット</th>${tsh(6, 'time', '出場時間')}${et.cols.map(([, l], i) => tsh(6, String(i), l.replace('FINISH SET PLAY ', 'FINISH SET PLAY<br>'), i % 2 ? 'o' : 'w')).join('')}</tr>${body}</table></div></section>`;
   }
 
   return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${evs.length ? paceFit(C) + s4b + teamSection(C) + playerSection(C) : waitSections(m)}</div></div>`, bind: bindReview(m) };
@@ -257,6 +258,7 @@ function bindReview(m) {
       else sortState = { col: '', dir: 'desc' };
       render();
     });
+    root.querySelectorAll('[data-tsort]').forEach((th) => th.onclick = () => { const [t, col] = th.dataset.tsort.split(':'); tSortNext(t, col); render(); });
     root.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => { runPref = b.dataset.mode === 'run'; try { localStorage.setItem(modeKey, b.dataset.mode); } catch {} render(); });
     const pdf = root.querySelector('#rvPdf'); if (pdf) pdf.onclick = () => pdfChoice(m);
     if (location.hash.endsWith('/pdf')) { history.replaceState(null, '', `#/m/${m.id}/review`); setTimeout(() => pdfChoice(m), 200); } // 印刷の画面で「PDFとして保存」（iPadは共有→「ファイルに保存」）

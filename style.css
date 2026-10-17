@@ -400,6 +400,7 @@ body.playmode{background:#0B1E46;overscroll-behavior:none}
 .mfoot .sp{flex:1}
 .rvtb th.srt{cursor:pointer;user-select:none}.rvtb th.srt i{font-style:normal;font-size:11px;margin-left:4px;opacity:.6}
 .rvtb th.srt.on{background:#1F5FBF}.rvtb th.srt.on i{opacity:1}
+.rvtb th.srt.on.w{background:#123F86}.rvtb th.srt.on.o{background:#8E1F1A}.rvtb th.srt.on.w i,.rvtb th.srt.on.o i{color:#FFD24A}
 .rvhint{font-size:12px;color:#8A94A6;margin:6px 0 0}
 .fxorig{margin:0 0 8px;width:100%;min-height:40px;border-color:#E3A21C;color:#6A4A00;background:#FFF8E6}
 /* 記録の修正：履歴 */
@@ -1105,3 +1106,7 @@ svg.pace .prl.on rect[fill="#F3F5F9"]{fill:#FFE9A8}@media print{svg.pace .prl.on
 .rvsec.rvfull{padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right));padding-bottom:calc(16px + env(safe-area-inset-bottom))}
 .rvfsbar{padding-top:calc(10px + env(safe-area-inset-top))}
 .rvfsbar .btn{min-height:46px;padding:0 18px;font-size:16px}
+/* 6・8の表：見出しの文字は途中で折り返さず、並べ替えの印は下の行に */
+.rvs8 th.srt{vertical-align:middle;font-size:12px;padding-left:2px;padding-right:2px;letter-spacing:-.02em}@media (min-width:1000px){.rvs8 th.srt{white-space:nowrap}}.rvfull .rvs8 th.srt{white-space:nowrap}.rvset2 th.srt{vertical-align:middle}.rvs8 th.srt i,.rvset2 th.srt i{display:block;margin:2px 0 0;line-height:1}
+.rvs8 th.srt:first-child i{display:inline;margin-left:4px}
+@media (max-width:999px){.rvs8 td{padding-left:2px!important;padding-right:2px!important;font-size:13px}.rvs8 td small{font-size:10px;letter-spacing:-.04em}}
