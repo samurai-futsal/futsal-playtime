@@ -1047,3 +1047,19 @@ body.playmode #toast.show{transform:translateX(-50%) translateY(0)}
 .siadj summary{cursor:pointer;font-size:14px;font-weight:700;color:#1F5FBF;padding:4px 0}.siadj[open] summary{margin-bottom:6px}
 .sinear{background:#EEF3FB;border:1px solid #C9D8F0;border-radius:10px;padding:8px 12px;margin:10px 0;font-size:13.5px;color:#24406E}
 .sidone .sidrow{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid #EEF1F6}.sidone .sidrow b{min-width:64px;color:#0B2D6B}.sidone .sidrow .btn{margin-left:auto}
+/* マッチレビュー：表の行・マッチ・ペースの行を押して強調（2026-10-17） */
+.rvtb tr[data-hlk]{cursor:pointer}
+.rvtb tr.hl td{background:#FFE9A8!important;box-shadow:inset 0 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
+.rvtb tr.hl td:first-child{box-shadow:inset 2px 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
+.rvtb tr.hl td:last-child{box-shadow:inset -2px 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
+svg.pace .prl .pol{display:none}svg.pace .prl.on .pol{display:inline}svg.pace .prl.on .phl{fill:#FFE9A8}
+svg.pace .pbk:hover{fill:rgba(240,140,0,.08)}svg.pace .pbk.on{fill:rgba(240,140,0,.14)}
+.pinfo{color:#B5600F;font-weight:700;min-height:1em}
+/* セットの表：4人を同じ幅の枠で縦にそろえ、表は中身の幅にして数字をセットのすぐ横に */
+.rvset,.rvset2{width:auto}
+.rvset .setn,.rvset2 .setn{display:flex;gap:4px;flex-wrap:nowrap;align-items:center}
+.setn .sp{display:inline-flex;align-items:center;gap:4px;width:calc(34px + var(--nmw,3) * 13px)}
+.setn .sp small{margin:0!important;font-size:13px;color:#3A4558}
+.rvset td{padding-left:14px;padding-right:14px}
+@media print{.rvtb tr.hl td{background:none!important;box-shadow:none!important}svg.pace .pmk{display:none}svg.pace .prl.on .phl{fill:transparent}svg.pace .prl .pol{display:none}}
+svg.pace .pmk{pointer-events:none}

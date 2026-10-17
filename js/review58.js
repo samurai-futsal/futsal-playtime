@@ -6,6 +6,9 @@ import { teamStats, playerStats } from './teamstats.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const GREEN = '#13A10E', RED = '#E00000';
+// マッチレビューの表・マッチ・ペースの行を押して強調する（黄色＋オレンジの枠。もう一度押すと戻す。2026-10-17）。開いている間だけ覚える
+export const rvHl = new Set();
+export const hlc = (k) => (rvHl.has(k) ? 'hl' : '');
 
 // 得点・失点の一覧（時刻順）。label＝線の上に出す短い文字
 export function goalMarks(R, c) {
@@ -74,6 +77,7 @@ export function paceSection(c, o = {}) {
   order.forEach((pid, i) => {
     const y = top + i * rowH;
     if (o.tap) s += `<g class="prow" data-prow="${pid}"><rect class="phl" x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="${i % 2 === 0 ? '#EAF0F9' : 'transparent'}"/>`;
+    else if (o.pick) s += `<g class="prl ${rvHl.has('5:' + pid) ? 'on' : ''}" data-prl="${pid}" style="cursor:pointer"><rect class="phl" x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="${i % 2 === 0 ? '#EAF0F9' : '#FFFFFF'}"/>`;
     else if (i % 2 === 0) s += `<rect x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="#EAF0F9"/>`;
     for (const p of axis) s += `<rect x="${X[p.key]}" y="${y + 2}" width="${HW[p.key]}" height="${rowH - 4}" fill="#F3F5F9" opacity=".9"/>`;
     s += who(pid, X0 - 36 - nameW, y) + `<text x="${X0 - 6 - nameW}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`;
@@ -84,6 +88,7 @@ export function paceSection(c, o = {}) {
       s += `<rect x="${x1}" y="${y + 2}" width="${Math.max(0.8, x2 - x1)}" height="${rowH - 4}" fill="${mem(pid).pos === 'GK' ? '#C8312B' : '#1F5FBF'}" opacity=".85"/>`;
     }
     if (o.tap) s += `<rect class="pname" data-pname="${pid}" x="0" y="${y}" width="${X0 - 4}" height="${rowH}" fill="transparent" style="cursor:pointer"/></g>`;
+    else if (o.pick) s += `<rect class="pol" x="1" y="${y + 1}" width="${PW - 2}" height="${rowH - 2}" rx="4" fill="none" stroke="#F0A030" stroke-width="2"/></g>`;
   });
   for (const g of marks) { if (X[g.period] == null) continue; const gx = x(g.period, g.at); s += `<line x1="${gx}" x2="${gx}" y1="${top - 2}" y2="${yEnd}" stroke="${g.own ? GREEN : RED}" stroke-width="2"/>`; }
   // 下段：区切りごとの回数（上＝自チーム、下＝相手）
@@ -125,8 +130,21 @@ export function paceSection(c, o = {}) {
       s += `<rect class="pbin" data-bin="${esc(p.label)} ${mmss(a)}〜${mmss(b)}（残り ${mmss(p.len - a)}〜${mmss(p.len - b)}）" data-on="${on.join(',')}" x="${X[p.key] + i * bw0}" y="${top - 2}" width="${bw0}" height="${gy - top + 2}" fill="transparent"/>`;
     }
   }
+  // マッチレビュー：下のグラフの区切りを押すと、その区切りの真ん中に縦の線を引き、そのときピッチにいた選手の帯に●を付ける（2026-10-17）
+  if (o.pick) {
+    for (const p of axis) {
+      const nMin = Math.ceil(p.len / BIN), bw0 = HW[p.key] / nMin;
+      for (let i = 0; i < nMin; i++) {
+        const a = i * BIN, b = Math.min(p.len, (i + 1) * BIN), tc = (a + b) / 2;
+        const ys = order.map((pid, k) => (M0.stints.some((q) => q.pid === pid && q.period === p.key && q.from <= tc && q.to > tc) ? top + k * rowH + rowH / 2 : null)).filter((v) => v != null);
+        s += `<rect class="pbk" data-k="${p.key}:${i}" data-x="${x(p.key, tc).toFixed(1)}" data-ys="${ys.join(',')}" data-lab="${esc(p.label)} ${mmss(a)}〜${mmss(b)}" data-c="${mmss(tc)}" x="${X[p.key] + i * bw0}" y="${lowTop}" width="${bw0}" height="${gy - lowTop}" fill="transparent" style="cursor:pointer"/>`;
+      }
+    }
+    s += `<g class="pmk" data-top="${top - 2}" data-bot="${gy}"></g>`;
+  }
   s += '</svg>';
   if (o.svgOnly) return s;
+  if (o.pick) return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯と得点（緑）・失点（赤）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）。行を押すと強調・下のグラフを押すと●</span></div><div class="rvbox">${s}<p class="rvhint pinfo" id="paceInfo"></p></div></section>`;
   return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯と得点（緑）・失点（赤）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）</span></div><div class="rvbox">${s}</div></section>`;
 }
 
@@ -175,7 +193,7 @@ export function playerSection(c) {
   const sum = (k) => P.rows.reduce((a, r) => a + r[k], 0);
   const rows = P.rows.map((r) => {
     const z = (v) => (r.time ? v : `<span class="na">${v}</span>`);
-    return `<tr class="${r.time ? '' : 'zero'}"><td>${badge(r.pid)} ${esc(last(r.pid))}</td><td>${mmss(r.time)}</td><td>${z(r.shots)}<small>（${r.sz}）</small></td><td class="w">${z(r.shotOn)}</td><td class="o">${z(r.oshotOn)}</td><td>${z(r.in)}</td><td>${z(r.goals)}</td><td>${z(r.assists)}</td><td>${z(r.inv)}</td><td>${z(r.passFrom)}</td><td>${z(r.passTo)}</td><td>${z(r.rec)}</td><td>${z(r.lost)}</td><td>${z(r.foul)}</td><td><b>${r.time ? (r.pm > 0 ? '+' + r.pm : r.pm) : '<span class="na">0</span>'}</b></td></tr>`;
+    return `<tr class="${r.time ? '' : 'zero'} ${hlc('8:' + r.pid)}" data-hlk="8:${r.pid}"><td>${badge(r.pid)} ${esc(last(r.pid))}</td><td>${mmss(r.time)}</td><td>${z(r.shots)}<small>（${r.sz}）</small></td><td class="w">${z(r.shotOn)}</td><td class="o">${z(r.oshotOn)}</td><td>${z(r.in)}</td><td>${z(r.goals)}</td><td>${z(r.assists)}</td><td>${z(r.inv)}</td><td>${z(r.passFrom)}</td><td>${z(r.passTo)}</td><td>${z(r.rec)}</td><td>${z(r.lost)}</td><td>${z(r.foul)}</td><td><b>${r.time ? (r.pm > 0 ? '+' + r.pm : r.pm) : '<span class="na">0</span>'}</b></td></tr>`;
   }).join('');
   const tot = (side) => Object.values(R.score[side]).reduce((a, b) => a + b, 0);
   const goalsN = tot('own');
@@ -191,3 +209,25 @@ export function scoreBadge(c, R) {
   return `<span class="rvscore">${esc(c.own)} <b>${tot('own')}−${tot('opp')}</b> ${esc(c.opp)}</span>`;
 }
 export { teamStats };
+
+// マッチ・ペースの操作：行を押すと強調（何人でも）、下のグラフの区切りを押すと縦の線と●（同じ区切りをもう一度押すと消す）
+let paceSel = null;
+export function bindPacePick(root) {
+  const svg = root.querySelector('#rv5 svg.pace'); if (!svg) return;
+  const info = root.querySelector('#paceInfo'); const mk = svg.querySelector('.pmk');
+  const draw = (b) => {
+    mk.innerHTML = ''; svg.querySelectorAll('.pbk.on').forEach((x) => x.classList.remove('on'));
+    if (!b) { if (info) info.textContent = ''; return; }
+    b.classList.add('on');
+    const x = b.dataset.x, top = mk.dataset.top, bot = mk.dataset.bot, ys = b.dataset.ys ? b.dataset.ys.split(',') : [];
+    mk.innerHTML = `<line x1="${x}" x2="${x}" y1="${top}" y2="${bot}" stroke="#F08C00" stroke-width="2.5"/>` + ys.map((y) => `<circle cx="${x}" cy="${y}" r="6" fill="#F08C00" stroke="#fff" stroke-width="2"/>`).join('');
+    if (info) info.textContent = `${b.dataset.lab} の真ん中（${b.dataset.c}）にピッチにいた選手に●を付けています（${ys.length}人）。同じところをもう一度押すと消えます`;
+  };
+  if (paceSel) draw(svg.querySelector(`.pbk[data-k="${paceSel}"]`));
+  svg.addEventListener('click', (e) => {
+    const b = e.target.closest('.pbk');
+    if (b) { paceSel = paceSel === b.dataset.k ? null : b.dataset.k; draw(paceSel ? b : null); return; }
+    const r = e.target.closest('[data-prl]');
+    if (r) { const k = '5:' + r.dataset.prl; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); r.classList.toggle('on', rvHl.has(k)); }
+  });
+}
