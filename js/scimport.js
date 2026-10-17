@@ -92,7 +92,7 @@ export function buildImportFiles(files, o) {
   return {
     periods: rs.flatMap((x) => x.periods), dup, events: rs.flatMap((x) => x.r.events),
     unknownCodes: sum(rs.map((x) => x.r.unknownCodes)), unknownLabels: sum(rs.map((x) => x.r.unknownLabels)),
-    unmatched: sum(rs.map((x) => x.r.unmatched)), warnings: sum(rs.map((x) => x.r.warnings)),
+    unmatched: sum(rs.map((x) => x.r.unmatched)), warnings: sum(rs.map((x) => x.r.warnings)), near: sum(rs.map((x) => x.r.near || [])),
   };
 }
 
@@ -102,21 +102,33 @@ export function buildImportFiles(files, o) {
 // seqBase：入力の順（seq）の始まり。取り込む時刻を入れると、同じ秒のイベントも取り込んだ順に並ぶ（アプリで入れたものとも混ざらない）
 export function buildImport(o) {
   const lead = { ...DEFAULT_LEAD, ...(o.lead || {}) };
-  const unknownCodes = new Map(), unknownLabels = new Map(), unmatched = new Map(), warnings = new Map();
+  const unknownCodes = new Map(), unknownLabels = new Map(), unmatched = new Map(), warnings = new Map(), near = new Map();
   const warn = (w) => warnings.set(w, (warnings.get(w) || 0) + 1);
   const mem = o.members || {};
   const byNo = new Map(Object.entries(mem).map(([pid, m]) => [String(m.no), pid]));
   const P = (id) => o.players.find((p) => p.id === id);
   const full = (pid) => { const p = P(pid); return p ? `${p.last || ''} ${p.first || ''}`.trim() : ''; };
-  const norm = (s) => String(s).replace(/[\s　]+/g, '');
+  // 見た目がそっくりなカタカナと漢字（ニ／二 など）は同じ字とみなす（2026-10-17）
+  const LOOK = { ニ: '二', ロ: '口', カ: '力', エ: '工', ト: '卜', タ: '夕', ハ: '八', ー: '一', 'ｰ': '一', '－': '一', '―': '一' };
+  const norm = (s) => String(s).normalize('NFKC').replace(/[\s　]+/g, '').replace(/[ニロカエトタハーｰ－―]/g, (c) => LOOK[c] || c);
   // 名前で探すのは、ちょうど1人に決まるときだけ（同じ名字が2人・名字の前だけ合う、は「見つからない」にして一覧で知らせる）
   const pidOf = (v) => {
     if (!v) return null;
     const m = String(v).match(/^#?\s*(\d+)$/); if (m) return byNo.get(m[1]) || null;
     const n = norm(v); const ids = Object.keys(mem);
     const one = (f) => { const h = ids.filter(f); return h.length === 1 ? h[0] : h.length > 1 ? false : null; };
-    const a = one((pid) => norm(full(pid)) === n); if (a !== null) return a || null;
-    const b = one((pid) => norm(P(pid)?.last || '') === n); return b || null;
+    // 似た字（ニ／二 など）で合ったときも、そのまま合わせて知らせる
+    const plain = (s) => String(s).normalize('NFKC').replace(/[\s　]+/g, '');
+    const note = (pid) => { const k = `${v} → ${mem[pid]?.no ?? ''} ${full(pid)}`; near.set(k, (near.get(k) || 0) + 1); return pid; };
+    const a = one((pid) => norm(full(pid)) === n); if (a !== null) return a ? (plain(full(a)) === plain(v) ? a : note(a)) : null;
+    const b = one((pid) => norm(P(pid)?.last || '') === n); if (b !== null) return b ? (plain(P(b)?.last || '') === plain(v) ? b : note(b)) : null;
+    // 名前が少し違う（下の名前の打ち間違いなど）：最初の言葉（名字）が試合メンバーの1人の名字とぴったり合えば、その選手にして知らせる（2026-10-17）
+    const sur = String(v).normalize('NFKC').trim().split(/[\s　]+/)[0];
+    if (sur && norm(sur) !== n) {
+      const c = one((pid) => norm(P(pid)?.last || '') === norm(sur));
+      if (c) return note(c);
+    }
+    return null;
   };
   const gtId = (name) => goalTypeIdOf(o.goalTypes, name); // 種類の名前を変えても、初めからある種類は id で見つける（記15）
   const events = []; let seq = +o.seqBase || 0;
@@ -195,7 +207,7 @@ export function buildImport(o) {
     }
     for (const [ev, cls] of later) { const n = goalTypeOf(cls, ev, fsps, per, W(o, per.key)); if (n && gtId(n)) ev.gtype = gtId(n); }
   }
-  return { events, unknownCodes: [...unknownCodes], unknownLabels: [...unknownLabels], unmatched: [...unmatched], warnings: [...warnings] };
+  return { events, unknownCodes: [...unknownCodes], unknownLabels: [...unknownLabels], unmatched: [...unmatched], warnings: [...warnings], near: [...near] };
 }
 // 得点の種類：局面から。セットプレーは直前の FINISH SET PLAY の種類、特殊局面は自チームの5x4ならパワープレー・相手の5x4ならパワープレー返し
 function goalTypeOf(cls, ev, fsps, per, Wk) {

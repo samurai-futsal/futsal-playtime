@@ -96,8 +96,15 @@ export function vScImport(m) {
         ...(res.events.some((e) => e.impWhy) ? [`同じグループに2つ以上のラベルが付いたイベント：${res.events.filter((e) => e.impWhy).length}件（1つ目のラベルで取り込み、「要確認」にします。イベント入力で確かめてください）`] : []),
       ];
       const leadT = `<table class="sctb"><tr><th>コード</th><th>コードの開始から何秒後がプレーの瞬間か</th></tr>${Object.keys(DEFAULT_LEAD).map((k) => `<tr><td>${LEAD_LABEL[k]}</td><td><input data-ld="${k}" value="${lead[k]}" inputmode="decimal"> 秒</td></tr>`).join('')}</table>`;
-      body = `<div class="card"><h3>2. ピリオドと時刻合わせ</h3>${per}</div>
+      // ピリオドと時刻はアプリが自動で合わせる（ファイル名→ピリオド、Kick Off の印＋MATCH PLAY の時計→試合の時刻）。
+      // ふだんは1行だけ出し、直す欄は「ずれているとき」を開いたときだけ（2026-10-17）
+      const shifted = rows.some((r) => +st8.shift[r.key]);
+      const auto = rows.map((r) => `${files.length > 1 || kickOffs(r.f.parsed.instances).length > 1 ? `${esc(r.f.name)}${kickOffs(r.f.parsed.instances).length > 1 ? ` の Kick Off ${r.i + 1}` : ''} → ` : ''}${periodLabel(r.key)}${+st8.shift[r.key] ? `（${st8.shift[r.key]}秒ずらす）` : ''}`).join('、');
+      const adj = `<details class="siadj" id="siAdj" ${st8.adjOpen || shifted ? 'open' : ''}><summary>ピリオドや時刻を直す（ずれているときだけ）</summary>${per}
+        <p class="mu sm">時刻は、ファイルの Kick Off の印をキックオフとして、MATCH PLAY の時計の記録（時計が止まっていた時間も含む）から自動で直しています。Sportscode で Kick Off の印を付けた位置がずれていたときだけ、「全体をずらす」で直します。</p></details>`;
+      body = `<div class="card"><h3>2. ピリオドと時刻合わせ</h3><p class="siauto">✓ ピリオドと時刻は自動で合わせました：${auto}</p>${adj}</div>
         <div class="card"><h3>3. 取り込むイベント ${res.events.length}件</h3>${cntT}${gT}
+          ${res.near?.length ? `<div class="sinear">ℹ 名前が少し違いますが、名字で合わせました（違っていたら、選手の登録か Sportscode のラベルを直して取り込み直してください）：${res.near.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}</div>` : ''}
           ${warn.length ? `<div class="siwarn">${warn.map((w) => `<div>⚠ ${w}</div>`).join('')}</div>` : ''}
           <p class="mu sm">${[...keys].map((k) => periodLabel(k)).join('・')}：前回 Sportscode から取り込んだイベント ${old.length}件を、この${res.events.length}件に置き換えます${edited.length ? `（そのうち <b>${edited.length}件はアプリで直してあります</b>）` : ''}。アプリで入力したイベント ${appMade}件と MATCH PLAY の記録はそのまま残ります。アシスト・進入の方法などファイルにない項目は未入力のまま残るので、あとでイベント入力で埋められます。</p>
           <div class="row end"><button class="btn pri" id="siGo" ${res.events.length ? '' : 'disabled'}>取り込む（${res.events.length}件）</button></div></div>
@@ -132,6 +139,7 @@ export function vScImport(m) {
         dz.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) dz.classList.remove('over'); });
         dz.addEventListener('drop', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.stopPropagation(); depth = 0; dz.classList.remove('over'); if (e.dataTransfer.files?.length) loadAll(e.dataTransfer.files); });
       }
+      const ad = root.querySelector('#siAdj'); if (ad) ad.addEventListener('toggle', () => { st8.adjOpen = ad.open; });
       root.querySelectorAll('[data-fdel]').forEach((b) => b.onclick = () => { st8.files = st8.files.filter((x) => x.id !== b.dataset.fdel); render(); });
       root.querySelectorAll('[data-asg]').forEach((sel) => sel.onchange = () => { const [fid, i] = sel.dataset.asg.split(':'); const x = st8.files.find((y) => y.id === fid); if (x) { x.assign[+i] = sel.value; x.guess = null; } render(); });
       root.querySelectorAll('[data-sh]').forEach((i) => i.onchange = () => { const v = i.value.trim(); st8.shift[i.dataset.sh] = v === '' ? 0 : +v || 0; render(); });

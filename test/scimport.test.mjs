@@ -93,6 +93,19 @@ eq([r2.events[0].kind, r2.events[0].pid], ['goal', OPP_OG], 'their own goal = ou
   const og = buildImport({ instances: [{ code: '被シュート', start: 20, end: 37, labels: [['シュート分類', 'オウンゴール'], ['スコアゾーン進入人数', '2']] }], periods: [{ key: '1H', ko: 10, from: -1e9, to: 1e9 }], R: R0, M: M2, members, players, goalTypes: gts });
   eq([og.events[0].kind, og.events[0].gtype, og.events[0].sz, og.events[0].n], ['conc', 'o11_OG', undefined, undefined], 'renamed OG type found by id; OG ignores SZ (決5)');
 }
+// 名前が少し違うとき（2026-10-17）：名字が試合メンバーの1人とだけ合えばその選手にして知らせる。似た字（ニ／二）も同じとみなす
+{
+  const R0 = { elOfRel: (k, rel) => rel };
+  const M1 = { periods: [{ key: '1H', elapsed: 1200000, len: 1200000 }] };
+  const members = { a: { no: '6' }, b: { no: '3' }, c: { no: '7' }, d: { no: '8' } };
+  const players = [{ id: 'a', last: '菅谷', first: '和寿' }, { id: 'b', last: '伊集', first: '龍ニ' }, { id: 'c', last: '山田', first: '太郎' }, { id: 'd', last: '山田', first: '次郎' }];
+  const sh = (s, who) => ({ code: 'シュート', start: s, end: s + 17, labels: [['シュート分類', '枠内'], ['選手', who]] });
+  const inst = [{ code: 'Kick Off', start: 0, end: 1, labels: [] }, sh(100, '菅谷 知寿'), sh(200, '伊集 龍二'), sh(300, '山田 三郎'), sh(400, '菅谷 和寿'), sh(500, '伊集 龍ニ')];
+  const r = buildImport({ instances: inst, periods: [{ key: '1H', ko: 0, from: -1e9, to: 1e9 }], R: R0, M: M1, members, players, goalTypes: [] });
+  eq(r.events.map((e) => e.pid), ['a', 'b', undefined, 'a', 'b'], 'first-name typo → by surname; ニ/二 → same; two 山田 → not matched');
+  eq(r.near.map(([k, n]) => [k, n]), [['菅谷 知寿 → 6 菅谷 和寿', 1], ['伊集 龍二 → 3 伊集 龍ニ', 1]], 'near matches are listed (exact names are not)');
+  eq(r.unmatched, [['山田 三郎', 1]], 'ambiguous surname stays unmatched');
+}
 // ファイル名からピリオド（SCI-01）
 eq(['vsペルー_1P.xml', 'peru-2P.xml', 'U19 2H.csv', 'match_1h.XML', '20261017前半.xml', '後半_peru.csv', 'peru_E1.xml', 'peru_ET2.xml', '延長前半.csv', '延長後半.xml', 'peru.xml', '2026_1017.xml', 'TEAM12P.xml', 'peru_１Ｐ.xml', 'P1.xml'].map(periodFromName),
   ['1H', '2H', '2H', '1H', '1H', '2H', 'E1', 'E2', 'E1', 'E2', null, null, null, '1H', null], 'period from file name');
