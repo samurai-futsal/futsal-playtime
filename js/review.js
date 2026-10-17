@@ -226,7 +226,7 @@ export function vReview(m) {
     <div class="rvbox"><table class="rvtb rvset2 rveq" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th>${et.cols.map(([, l], i) => `<th class="${i % 2 ? 'o' : 'w'}">${l.replace('FINISH SET PLAY ', 'FINISH SET PLAY<br>')}</th>`).join('')}</tr>${body}</table></div></section>`;
   }
 
-  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${evs.length ? paceSection(C, { pick: true, rowH: 20, gh: 96 }) + s4b + teamSection(C) + playerSection(C) : waitSections(m)}</div></div>`, bind: bindReview(m) };
+  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${evs.length ? paceFit(C) + s4b + teamSection(C) + playerSection(C) : waitSections(m)}</div></div>`, bind: bindReview(m) };
 }
 
 // タイムラインの帯の上の小さな数字：となりと重なるものは隠す（帯を押さえると時間が出る）。画面の幅で重なり方が変わるので、描いたあとに確かめる
@@ -247,6 +247,7 @@ function bindReview(m) {
     root.querySelectorAll('tr[data-hlk]').forEach((tr) => tr.onclick = () => { const k = tr.dataset.hlk; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); tr.classList.toggle('hl', rvHl.has(k)); });
     bindPacePick(root);
     bindFull(root);
+    paceMeasure(root);
     root.querySelectorAll('[data-tl]').forEach((r) => r.onclick = () => { const id = r.dataset.tl; if (tlHl.has(id)) tlHl.delete(id); else tlHl.add(id); r.classList.toggle('hl', tlHl.has(id)); });
     root.querySelectorAll('[data-sort]').forEach((th) => th.onclick = () => {
       const col = th.dataset.sort;
@@ -330,6 +331,31 @@ export function timelineHTML(o) {
     return `<div class="tlgoal" style="height:${n * 15 + 2}px">${ls.map((l) => `<span class="${l.own ? 'own' : 'opp'} ${l.x > 88 ? 'r' : l.x < 12 ? 'l' : ''}" style="left:${l.x}%;top:${l.row * 15}px">${esc(l.label)}</span>`).join('')}</div>`; };
   const tlHead = `<div class="tlr tlhead" ${tlStyle}><span></span>${axis.map((p, i) => (i ? '<span></span>' : '') + `<div class="tlaxw">${lane(p)}<div class="tlax">${ticksOf(p)}</div></div>`).join('')}<span>合計</span></div>`;
   return { tlHead, tlRows };
+}
+
+// ---------- 5. マッチ・ペースの横幅：ほかの項目と同じ幅で、高さは1画面に入るように（2026-10-17） ----------
+// 画面の幅と高さから、グラフの横の長さ（tw）を決める。描いたあとに実際の枠の大きさを測り、比率が違えば描き直す
+let paceRatio = null;
+function paceFit(C) {
+  const o = { pick: true, rowH: 20, gh: 96 };
+  if (!paceRatio) return paceSection(C, o);
+  const vb = (paceSection(C, { ...o, svgOnly: true }).match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/) || []).slice(1).map(Number);
+  if (!vb.length) return paceSection(C, o);
+  const fixed = vb[0] - 840;
+  return paceSection(C, { ...o, tw: Math.max(600, paceRatio * vb[1] - fixed) });
+}
+function paceMeasure(root) {
+  const sec = root.querySelector('#rv5:not(.rvfull)'); const box = sec?.querySelector('.rvbox'); const svg = box?.querySelector('svg.pace'); if (!svg) return;
+  const W = box.clientWidth - 36, H = window.innerHeight - (document.querySelector('.bar')?.offsetHeight || 60) - (root.querySelector('.rvhead')?.offsetHeight || 0) - 110;
+  if (W < 300 || H < 200) return;
+  const want = W / H; const vb = svg.viewBox.baseVal; const have = vb.width / vb.height;
+  // 一度その比率で描いたら、それ以上は描き直さない（縦向きなどで比率に届かないときに繰り返さないように）
+  if (paceRatio && Math.abs(paceRatio - want) / want < 0.04) return;
+  if (Math.abs(have - want) / want > 0.04) { paceRatio = want; render(); }
+}
+if (typeof window !== 'undefined' && !window.__paceResize) {
+  window.__paceResize = true;
+  let t = null; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { if (location.hash.includes('/review') && !document.querySelector('.rvfull')) { const r = document.querySelector('.rvw'); if (r) paceMeasure(r.parentElement || document); } }, 250); });
 }
 
 // ---------- 項目を画面いっぱいに大きく表示（1〜8のどれでも。2026-10-17） ----------
