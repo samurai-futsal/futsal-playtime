@@ -72,7 +72,7 @@ async function renderItem(h2c, stage, it, widths) {
   best.s = Math.min(best.aw / Wr, best.ah / H);
   // 1pt あたり 2.5px くらいの細かさ（印刷してもにじまない）
   const scale = Math.min(2.5, Math.max(1.5, 2.2 * best.s));
-  const cv = await h2c(el, { scale, backgroundColor: '#ffffff', logging: false, useCORS: true, width: Wr, height: H, windowWidth: Wr,
+  const cv = await h2c(el, { scale, backgroundColor: '#ffffff', logging: false, useCORS: true, width: Wr, height: H, windowWidth: window.innerWidth, windowHeight: window.innerHeight, // 画面と同じ幅として組む（測ったときと同じ見た目に）
     // 画面の本体は写し取らない（ページ全体を写し取ると遅くなる）
     ignoreElements: (n) => n.id === 'main' || n.id === 'update' || n.classList?.contains('modal-bg') || n.id === 'toast' });
   const jpg = new Uint8Array(await (await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.9))).arrayBuffer());
@@ -103,7 +103,7 @@ export async function savePdfPages(build, fileName, { stageCls = '', orient = 'L
       const s = Math.min(aw / W, ah / H);
       const scale = Math.min(2.4, Math.max(1.4, 2.2 * s));
       el.setAttribute('data-pdfnow', '1');
-      const cv = await h2c(el, { scale, backgroundColor: '#ffffff', logging: false, width: W, height: H, windowWidth: Math.max(W, stage.offsetWidth),
+      const cv = await h2c(el, { scale, backgroundColor: '#ffffff', logging: false, width: W, height: H, windowWidth: window.innerWidth, windowHeight: window.innerHeight,
         // ほかのページと画面の本体は写し取らない（速くするため）
         ignoreElements: (n) => n.id === 'main' || n.id === 'update' || n.id === 'toast' || n.classList?.contains('modal-bg') || (n.hasAttribute?.('data-pdfpg') && !n.hasAttribute('data-pdfnow')) });
       el.removeAttribute('data-pdfnow');

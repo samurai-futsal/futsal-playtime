@@ -7,7 +7,7 @@ import { matchModel, toRunning, playerTable, playedTime, periodSig, entryOrder }
 import { ppWindows, setSplit, setCountTable, asOfLabel } from './teamstats.js';
 import { esc, fmtShort, fmtDate, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
-import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge, rvHl, hlc, bindPacePick, tSort, tSortNext, tsh, tSorted } from './review58.js';
+import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge, rvHl, hlc, bindPacePick, bandTip, tSort, tSortNext, tsh, tSorted } from './review58.js';
 import { ensureChecks } from './evinput.js';
 import { savePdf, safeName, preloadPdf } from './pdfsave.js';
 
@@ -79,7 +79,7 @@ export function vReview(m) {
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn ${started ? 'pri' : ''}" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a><span class="rvstate">${state}</span><span class="rvctl">${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
-        <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで保存</button></span></div>
+        <button class="btn" id="rvCompact">${isCompact() ? '通常の表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで保存</button><button class="btn ${fullAll ? 'pri' : ''}" id="rvFull">${fullAll ? '× 閉じる' : '⛶ 大きく表示'}</button></span></div>
       <div class="rvjumps">${jumps}${evs.length ? '' : '<span class="rvnote">5〜8 はイベントを入力すると表示されます</span>'}
         ${M.fixed.length ? `<span class="rvfix">記録の修正を反映：${M.fixed.map((k) => periodLabel(k)).join('・')}</span>` : ''}
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
@@ -202,29 +202,48 @@ export function vReview(m) {
   const setKey = (pids) => pids.slice().sort().join('+');
   const SP4 = setSplit(M, ppWindows(M, evs));
   const sets4 = SP4.sets.filter((x) => x.time >= setMin), shortS = SP4.sets.filter((x) => x.time < setMin);
-  const exRow = (label, t, n = '') => `<tr class="ex"><td></td><td class="setn">${label}</td><td>${mmss(t)}</td><td>${n}</td></tr>`;
-  const setRows = (sets4.length ? sets4.map((s, i) => `<tr class="${hlc('4:' + setKey(s.pids))}" data-hlk="4:${setKey(s.pids)}"><td>${i + 1}位</td><td class="setn">${chips(s.pids)}</td><td><b>${mmss(s.time)}</b></td><td>${s.count}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="na" style="text-align:center">GKが1人・FPが4人そろった時間がまだありません</td></tr>')
-    + (shortS.length ? exRow(`出場時間が${mmss(setMin)}未満のセット（${shortS.length}組）`, shortS.reduce((t, x) => t + x.time, 0), shortS.reduce((t, x) => t + x.count, 0)) : '')
-    + (SP4.time.ex ? exRow('5×4・4×5と退場の時間帯', SP4.time.ex) : '') + (SP4.time.special ? exRow('GK1人・FP4人がそろっていない区間', SP4.time.special) : '') + (SP4.time.other ? exRow('交代の瞬間の3秒未満の組み合わせ', SP4.time.other) : '')
-    + `<tr class="tot"><td></td><td style="text-align:left">合計</td><td>${mmss(SP4.time.played)}</td><td></td></tr>`;
-  const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>4. セットの出場時間</b><span>FP4人の組み合わせ（長い順）。数的同数の時間帯だけ。${mmss(setMin)}未満のセットや除いた時間は下の行に</span></div>
-    <div class="rvbox"><table class="rvtb rvset rveq" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th>順位</th><th style="text-align:left">FP4人のセット</th><th>出場時間</th><th>回数</th></tr>${setRows}</table></div></section>`;
+  // ピリオドごと（前半・後半…）の時間と回数。見出しを押すと、その時間で並べ替え（2026-10-17）
+  const SPp = Object.fromEntries(shownP.filter((p) => p.status !== 'none').map((p) => [p.key, setSplit(M, ppWindows(M, evs), [p.key])]));
+  const perOf = (k, key) => SPp[k]?.sets.find((x) => x.key === key) || null;
+  const pcell = (p, t, n) => (p.status === 'none' ? '<td class="na">—</td><td class="na">—</td>' : `<td>${t ? mmss(t) : '<span class="z">0:00</span>'}</td><td>${n || '<span class="z">0</span>'}</td>`);
+  const exRow = (label, f, n = null) => `<tr class="ex"><td></td><td class="setn">${label}</td>${shownP.map((p) => (p.status === 'none' ? '<td class="na">—</td><td class="na">—</td>' : `<td>${mmss(f(SPp[p.key]) || 0)}</td><td>${n ? n(SPp[p.key]) : ''}</td>`)).join('')}<td><b>${mmss(f(SP4))}</b></td><td>${n ? n(SP4) : ''}</td></tr>`;
+  const rank4 = new Map(sets4.map((x, i) => [x, i + 1])); // 順位は合計の出場時間の順位のまま
+  const val4 = (x, col) => (col === 'tot' ? x.time : perOf(col, x.key)?.time || 0);
+  const shortKeys = new Set(shortS.map((x) => x.key));
+  const shortOf = (S) => S.sets.filter((x) => shortKeys.has(x.key));
+  const setRows = (sets4.length ? tSorted(4, sets4, val4).map((s) => `<tr class="${hlc('4:' + setKey(s.pids))}" data-hlk="4:${setKey(s.pids)}"><td>${rank4.get(s)}位</td><td class="setn">${chips(s.pids)}</td>${shownP.map((p) => { const q = perOf(p.key, s.key); return pcell(p, q?.time, q?.count); }).join('')}<td class="sum"><b>${mmss(s.time)}</b></td><td class="sum">${s.count}</td></tr>`).join('')
+    : `<tr><td colspan="${4 + shownP.length * 2}" class="na" style="text-align:center">GKが1人・FP4人がそろった時間がまだありません</td></tr>`)
+    + (shortS.length ? exRow(`出場時間が${mmss(setMin)}未満のセット（${shortS.length}組）`, (S) => shortOf(S).reduce((t, x) => t + x.time, 0), (S) => shortOf(S).reduce((t, x) => t + x.count, 0)) : '')
+    + (SP4.time.ex ? exRow('5×4・4×5と退場の時間帯', (S) => S.time.ex) : '') + (SP4.time.special ? exRow('GK1人・FP4人がそろっていない区間', (S) => S.time.special) : '') + (SP4.time.other ? exRow('交代の瞬間の3秒未満の組み合わせ', (S) => S.time.other) : '')
+    + `<tr class="tot"><td></td><td style="text-align:left">合計</td>${shownP.map((p) => (p.status === 'none' ? '<td class="na">—</td><td></td>' : `<td>${mmss(SPp[p.key].time.played)}</td><td></td>`)).join('')}<td>${mmss(SP4.time.played)}</td><td></td></tr>`;
+  const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>4. セットの出場時間</b><span>FP4人の組み合わせ（合計の長い順）。数的同数の時間帯だけ。${mmss(setMin)}未満のセットや除いた時間は下の行に。見出しを押すと並べ替え</span></div>
+    <div class="rvbox"><table class="rvtb rvset rvset4 rveq" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th class="srt ${tSort[4].col ? '' : 'on'}" data-tsort="4:">順位</th><th style="text-align:left">FP4人のセット</th>${shownP.map((p) => tsh(4, p.key, p.label) + '<th>回数</th>').join('')}${tsh(4, 'tot', '合計', 'sum')}<th class="sum">回数</th></tr>${setRows}</table></div></section>`;
 
   // ---------- 6. セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントがあるときだけ） ----------
   let s4b = '';
   if (evs.length) {
     // 回数はイベントの時刻（試合の時計）で数えるので、ここは時計の時間のセット。決め方は 4 と同じ
     const et = setCountTable(M0, ppWindows(M0, evs), evs, goalName, { setMin });
-    const cell = (v, i) => `<td class="${i % 2 ? 'o' : 'w'}">${v ? `<b>${v}</b>` : '<span class="z">0</span>'}</td>`;
+    // 前半・後半…の内訳（数字の下に小さく。2026-10-17）
+    const W0 = ppWindows(M0, evs);
+    const pls = M0.periods.filter((p) => p.status !== 'none');
+    const per = pls.length > 1 ? pls.map((p) => ({ p, t: setCountTable(M0, W0, evs, goalName, { keys: [p.key], setMin: 0 }) })) : [];
+    const shortK = new Set(setSplit(M0, W0).sets.filter((x) => x.time < setMin).map((x) => x.key));
+    const pl = (p) => p.label.replace('延長', '延').replace('半', '');
+    const rowOf = (t, key) => t.rows.find((x) => x.key === key);
+    const shortSum = (t) => { const c = t.cols.map(() => 0); let time = 0; t.rows.filter((x) => shortK.has(x.key)).forEach((x) => { time += x.time; x.c.forEach((v, i) => { c[i] += v; }); }); return { time, c }; };
+    const pick = (kind, key) => per.map(({ p, t }) => ({ p, r: kind === 'set' ? rowOf(t, key) : kind === 'short' ? shortSum(t) : t[kind] }));
+    const brk = (parts, f) => (parts.length ? `<small class="pb">${parts.map(({ p, r }) => `<span><i>${pl(p)}</i>${f(r)}</span>`).join(' ')}</small>` : '');
+    const cell = (v, i, parts) => `<td class="${i % 2 ? 'o' : 'w'}">${v ? `<b>${v}</b>` : '<span class="z">0</span>'}${brk(parts, (r) => r?.c[i] || 0)}</td>`;
+    const tcell = (t, parts, bold) => `<td>${bold ? `<b>${mmss(t)}</b>` : mmss(t)}${brk(parts, (r) => mmss(r?.time || 0))}</td>`;
     const fpl = chips;
-    const sum = (label, r) => (!r.time && !r.c.some(Boolean) ? '' : `<tr class="ex"><td></td><td class="setn">${label}</td><td>${mmss(r.time)}</td>${r.c.map(cell).join('')}</tr>`);
+    const sum = (label, r, kind) => { if (!r.time && !r.c.some(Boolean)) return ''; const parts = pick(kind); return `<tr class="ex"><td></td><td class="setn">${label}</td>${tcell(r.time, parts)}${r.c.map((v, i) => cell(v, i, parts)).join('')}</tr>`; };
     const rank = new Map(et.rows.map((r, i) => [r, i + 1])); // 順位は出場時間の順位のまま
-    const body = tSorted(6, et.rows, (r, k) => (k === 'time' ? r.time : r.c[+k])).map((r) => `<tr class="${hlc('6:' + setKey(r.pids))}" data-hlk="6:${setKey(r.pids)}"><td>${rank.get(r)}位</td><td class="setn">${fpl(r.pids)}</td><td>${mmss(r.time)}</td>${r.c.map(cell).join('')}</tr>`).join('')
-      + (et.short.n ? sum(`出場時間が${mmss(setMin)}未満のセット（${et.short.n}組）`, et.short) : '')
-      + sum('5×4・4×5と退場の時間帯', et.ex) + sum('GK1人・FP4人がそろっていない区間', et.special) + sum('交代の瞬間の3秒未満の組み合わせ', et.other)
-      + `<tr class="tot"><td></td><td style="text-align:left">合計</td><td>${mmss(et.total.time)}</td>${et.total.c.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b></td>`).join('')}</tr>`;
-    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>6. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>セットがピッチにいる間の回数（数的同数の時間帯だけ）。青＝自チーム、赤＝相手。見出しを押すと並べ替え</span></div>
+    const body = tSorted(6, et.rows, (r, k) => (k === 'time' ? r.time : r.c[+k])).map((r) => { const parts = pick('set', r.key); return `<tr class="${hlc('6:' + setKey(r.pids))}" data-hlk="6:${setKey(r.pids)}"><td>${rank.get(r)}位</td><td class="setn">${fpl(r.pids)}</td>${tcell(r.time, parts)}${r.c.map((v, i) => cell(v, i, parts)).join('')}</tr>`; }).join('')
+      + (et.short.n ? sum(`出場時間が${mmss(setMin)}未満のセット（${et.short.n}組）`, et.short, 'short') : '')
+      + sum('5×4・4×5と退場の時間帯', et.ex, 'ex') + sum('GK1人・FP4人がそろっていない区間', et.special, 'special') + sum('交代の瞬間の3秒未満の組み合わせ', et.other, 'other')
+      + (() => { const parts = pick('total'); return `<tr class="tot"><td></td><td style="text-align:left">合計</td>${tcell(et.total.time, parts, true)}${et.total.c.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b>${brk(parts, (r) => r?.c[i] || 0)}</td>`).join('')}</tr>`; })();
+    s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>6. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>セットがピッチにいる間の回数（数的同数の時間帯だけ）。青＝自チーム、赤＝相手。大きい数字＝合計、下の小さい数字＝前半・後半。見出しを押すと並べ替え</span></div>
     <div class="rvbox"><table class="rvtb rvset2 rveq" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th class="srt ${tSort[6].col ? '' : 'on'}" data-tsort="6:">順位</th><th style="text-align:left">FP4人のセット</th>${tsh(6, 'time', '出場時間')}${et.cols.map(([, l], i) => tsh(6, String(i), l.replace('FINISH SET PLAY ', 'FINISH SET PLAY<br>'), i % 2 ? 'o' : 'w')).join('')}</tr>${body}</table></div></section>`;
   }
 
@@ -250,7 +269,9 @@ function bindReview(m) {
     bindPacePick(root);
     bindFull(root);
     paceMeasure(root);
-    root.querySelectorAll('[data-tl]').forEach((r) => r.onclick = () => { const id = r.dataset.tl; if (tlHl.has(id)) tlHl.delete(id); else tlHl.add(id); r.classList.toggle('hl', tlHl.has(id)); });
+    // タイムラインの帯：カーソルを合わせる（iPadは触れる）と、帯の上に選手名（2026-10-17）
+    const tlb = root.querySelector('.rvtl'); const tlTip = tlb ? bandTip(tlb, tlb, '.tlb', (b) => b.closest('[data-tln]')?.dataset.tln || '') : null;
+    root.querySelectorAll('[data-tl]').forEach((r) => r.onclick = (e) => { if (tlTip?.touch() && e.target.closest('.tlb')) return; const id = r.dataset.tl; if (tlHl.has(id)) tlHl.delete(id); else tlHl.add(id); r.classList.toggle('hl', tlHl.has(id)); });
     root.querySelectorAll('[data-sort]').forEach((th) => th.onclick = () => {
       const col = th.dataset.sort;
       if (!col) sortState = { col: '', dir: 'desc' };
@@ -345,14 +366,14 @@ export function timelineHTML(o) {
         const d = s.to - s.from, l = pp(p, s.from), w = pp(p, d);
         const small = d / p.len < (o.compact ? 0.16 : 0.09);
         const cx = +l + +w / 2; const show = !small || cx - lastX >= gap; if (small && show) lastX = cx;
-        return `<span class="tlb ${mem(pid).pos === 'GK' ? 'gk' : ''}" style="left:${l}%;width:${w}%" title="${mmss(d)}">${small ? '' : mmss(d)}</span>${small && show ? `<span class="tls" style="left:${cx.toFixed(3)}%">${mmss(d)}</span>` : ''}`;
+        return `<span class="tlb ${mem(pid).pos === 'GK' ? 'gk' : ''}" style="left:${l}%;width:${w}%">${small ? '' : mmss(d)}</span>${small && show ? `<span class="tls" style="left:${cx.toFixed(3)}%">${mmss(d)}</span>` : ''}`;
       }).join('');
       const zeros = (M.zero || []).filter((s) => s.pid === pid && s.period === p.key)
         .map((s) => `<i class="tlz" style="left:${pp(p, s.from)}%" title="時計が止まっている間だけの出場"></i><span class="tlzl" style="left:${pp(p, s.from)}%">0:00</span>`).join('');
       const gl = marks.filter((g) => g.period === p.key).map((g) => `<i class="tlgl ${g.own ? 'own' : 'opp'}" style="left:${pp(p, gAt(g))}%"></i>`).join('');
       return (i ? who(pid, 'tlmid') : '') + `<div class="tlt">${futureOf(p)}${bands}${zeros}${gl}</div>`;
     }).join('');
-    return `<div class="tlr ${o.hl?.has(pid) ? 'hl' : ''}" data-tl="${pid}" ${tlStyle}>${who(pid, 'tlnm')}${tracks}<b class="tlend">${badge(pid)}<span class="tlsum">${mmss(T[pid]?.total || 0)}</span></b></div>`;
+    return `<div class="tlr ${o.hl?.has(pid) ? 'hl' : ''}" data-tl="${pid}" data-tln="${esc(String(mem(pid).no ?? ''))} ${esc(last(pid))}" ${tlStyle}>${who(pid, 'tlnm')}${tracks}<b class="tlend">${badge(pid)}<span class="tlsum">${mmss(T[pid]?.total || 0)}</span></b></div>`;
   }).join('');
   // 得点・失点のラベル：目盛りの上の段（重なるときは段をずらす）。時刻は経過時間
   const lane = (p) => { const ls = stagger(marks.filter((g) => g.period === p.key).map((g) => ({ ...g, x: +pp(p, gAt(g)) })), o.compact ? 44 : 26);
@@ -396,68 +417,20 @@ if (typeof window !== 'undefined' && !window.__paceResize) {
   let t = null; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { if (location.hash.includes('/review') && !document.querySelector('.rvfull')) { const r = document.querySelector('.rvw'); if (r) paceMeasure(r.parentElement || document); } }, 250); });
 }
 
-// ---------- 項目を画面いっぱいに大きく表示（1〜8のどれでも。2026-10-17） ----------
-// 見出しの右の「⛶ 大きく表示」で、その項目だけを画面全体に出す。1画面に入る大きさに自動で拡大・縮小する
-// （選手の多い表は文字が小さくなりすぎないところで止めて、上下に動かして見る）。「‹ 前の項目」「次の項目 ›」「× 閉じる」。
-// 画面を描き直しても（並べ替えなど）、開いていた項目はそのまま
-let fsId = null;
+// ---------- 大きく表示：マッチレビュー全体（1〜8）を画面いっぱいに出し、上下に動かして見る（2026-10-17） ----------
+// アプリの上の帯を隠し、横幅の上限をはずす。項目の番号（1〜8）で移動できる。「× 閉じる」か Esc で戻す
+let fullAll = false;
+function setFull(on) {
+  fullAll = on; document.body.classList.toggle('rvall', on);
+  paceRatio = null; // マッチ・ペースは新しい画面の大きさに合わせて描き直す
+  render();
+}
 function bindFull(root) {
-  const secs = [...root.querySelectorAll('.rvbody > .rvsec:not(.rvwait)')].filter((x) => x.id && x.querySelector('.rvbox'));
-  if (!secs.length) return;
-  const open = (id) => {
-    // マッチ・ペースを大きく表示用に描き直していたので、閉じる（ほかへ移る）ときは画面を描き直して元の形に戻す
-    if (fsId === 'rv5' && id !== 'rv5' && document.querySelector('#rv5.rvfull')) { fsId = id; document.body.classList.toggle('rvfsmode', !!id); render(); return; }
-    secs.forEach((x) => { x.classList.remove('rvfull'); x.querySelector('.rvfsbar')?.remove(); const b = x.querySelector('.rvbox'); if (b) { b.style.zoom = ''; b.style.width = ''; } });
-    document.body.classList.toggle('rvfsmode', !!id);
-    fsId = id;
-    const sec = secs.find((x) => x.id === id); if (!sec) { fsId = null; document.body.classList.remove('rvfsmode'); return; }
-    const i = secs.indexOf(sec);
-    const title = sec.querySelector('.rvtt b')?.textContent || '';
-    sec.classList.add('rvfull');
-    sec.insertAdjacentHTML('afterbegin', `<div class="rvfsbar"><button class="btn" data-fs="prev" ${i ? '' : 'disabled'}>‹ 前の項目</button><b>${esc(title)}</b><button class="btn" data-fs="next" ${i < secs.length - 1 ? '' : 'disabled'}>次の項目 ›</button><button class="btn pri" data-fs="close">× 閉じる</button></div>`);
-    sec.scrollTop = 0;
-    fit(sec);
-  };
-  const fit = (sec) => {
-    const box = sec.querySelector('.rvbox'); const bar = sec.querySelector('.rvfsbar'); if (!box) return;
-    const availW = sec.clientWidth - 32, availH = window.innerHeight - (bar?.offsetHeight || 0) - 28;
-    box.style.zoom = ''; box.style.width = '';
-    // マッチ・ペースは、大きく表示した画面の縦横に合わせて描き直し、上下もいっぱいに使う
-    if (sec.id === 'rv5') {
-      const old = box.querySelector('svg.pace'); const pad = 36 + (box.querySelector('.pinfo')?.offsetHeight || 20) + 8;
-      const svg = paceSvgFor((availW - 36) / (availH - pad));
-      if (old && svg) { old.outerHTML = svg; box.style.width = `${availW}px`; box.style.zoom = '1'; bindPacePick(sec.closest('.rvw')?.parentElement || document); return; }
-    }
-    // 列の多い表は、細くしすぎると数字が重なるので、横幅の下限を決める
-    const cols = Math.max(0, ...[...box.querySelectorAll('table')].map((t) => t.rows[0]?.cells.length || 0));
-    const minW = cols > 6 ? Math.min(availW, 1100) : cols ? 640 : 320;
-    for (let z = 1.8; z >= 0.75; z -= 0.05) {
-      if (availW / z < minW) continue;
-      box.style.width = `${availW / z}px`;
-      if (box.offsetHeight * z <= availH) { box.style.zoom = z.toFixed(2); return; }
-    }
-    // 1画面に入らないとき：グラフだけの項目は横幅を縮めて入れる。表は等倍で上下に動かして見る
-    box.style.width = `${availW}px`;
-    const onlyGraph = !box.querySelector('table') && box.querySelector('svg');
-    if (onlyGraph) { const h = box.offsetHeight; box.style.width = `${Math.max(320, availW * availH / h)}px`; }
-    box.style.zoom = '1';
-  };
-  secs.forEach((sec) => {
-    const tt = sec.querySelector('.rvtt'); if (!tt || tt.querySelector('.rvmax')) return;
-    tt.insertAdjacentHTML('beforeend', `<button class="btn sm rvmax" data-max="${sec.id}">⛶ 大きく表示</button>`);
-  });
-  root.querySelectorAll('[data-max]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); open(b.dataset.max); });
-  root.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-fs]'); if (!b) return;
-    const i = secs.findIndex((x) => x.id === fsId);
-    if (b.dataset.fs === 'close') open(null); else if (b.dataset.fs === 'prev' && i > 0) open(secs[i - 1].id); else if (b.dataset.fs === 'next' && i < secs.length - 1) open(secs[i + 1].id);
-  });
-  if (!window.__rvfsKeys) {
-    window.__rvfsKeys = true;
-    document.addEventListener('keydown', (e) => { if (!fsId || !document.querySelector('.rvfull')) return; const t = { Escape: 'close', ArrowLeft: 'prev', ArrowRight: 'next' }[e.key]; if (t) document.querySelector(`.rvfull [data-fs="${t}"]`)?.click(); });
-    window.addEventListener('resize', () => { const sec = document.querySelector('.rvfull'); if (sec) sec.dispatchEvent(new Event('rvrefit')); });
-    window.addEventListener('hashchange', () => { if (!location.hash.includes('/review')) { fsId = null; document.body.classList.remove('rvfsmode'); } });
+  document.body.classList.toggle('rvall', fullAll);
+  const b = root.querySelector('#rvFull'); if (b) b.onclick = () => setFull(!fullAll);
+  if (!window.__rvallKeys) {
+    window.__rvallKeys = true;
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && fullAll && location.hash.includes('/review')) setFull(false); });
+    window.addEventListener('hashchange', () => { if (!location.hash.includes('/review') && fullAll) { fullAll = false; document.body.classList.remove('rvall'); } });
   }
-  secs.forEach((sec) => sec.addEventListener('rvrefit', () => fit(sec)));
-  if (fsId && secs.some((x) => x.id === fsId)) open(fsId); else { fsId = null; document.body.classList.remove('rvfsmode'); }
 }

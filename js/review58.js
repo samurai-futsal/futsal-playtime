@@ -10,7 +10,7 @@ const GREEN = '#13A10E', RED = '#E00000';
 export const rvHl = new Set();
 export const hlc = (k) => (rvHl.has(k) ? 'hl' : '');
 // 6・8の表の並べ替え（見出しを押す：多い順→少ない順→元の並び）。表ごとに覚える
-export const tSort = { 6: { col: '', dir: 'desc' }, 8: { col: '', dir: 'desc' } };
+export const tSort = { 4: { col: '', dir: 'desc' }, 6: { col: '', dir: 'desc' }, 8: { col: '', dir: 'desc' } };
 export function tSortNext(t, col) {
   const s = tSort[t];
   tSort[t] = !col ? { col: '', dir: 'desc' } : s.col !== col ? { col, dir: 'desc' } : s.dir === 'desc' ? { col, dir: 'asc' } : { col: '', dir: 'desc' };
@@ -100,7 +100,9 @@ export function paceSection(c, o = {}) {
     for (const z of (M0.zero || []).filter((q) => q.pid === pid && X[q.period] != null)) s += `<rect x="${x(z.period, z.from) - 1.5}" y="${y + 1}" width="3" height="${rowH - 2}" fill="#E0832B"/>`;
     for (const st of M0.stints.filter((q) => q.pid === pid && X[q.period] != null)) {
       const x1 = x(st.period, st.from), x2 = x(st.period, st.to);
-      s += `<rect x="${x1}" y="${y + 2}" width="${Math.max(0.8, x2 - x1)}" height="${rowH - 4}" fill="${mem(pid).pos === 'GK' ? '#C8312B' : '#1F5FBF'}" opacity=".85"/>`;
+      // 帯にカーソルを合わせる（iPadは指で触れる）と、帯の上に名前と時間を出す（2026-10-17）
+      const pt = `${mem(pid).no ?? ''} ${last(pid)}　${mmss(st.to - st.from)}`;
+      s += `<rect class="pst" data-pt="${esc(pt)}" x="${x1}" y="${y + 2}" width="${Math.max(0.8, x2 - x1)}" height="${rowH - 4}" fill="${mem(pid).pos === 'GK' ? '#C8312B' : '#1F5FBF'}" opacity=".85"/>`;
     }
     if (o.tap) s += `<rect class="pname" data-pname="${pid}" x="0" y="${y}" width="${X0 - 4}" height="${rowH}" fill="transparent" style="cursor:pointer"/></g>`;
     else if (o.pick) s += `<rect class="pol" x="1" y="${y + 1}" width="${PW - 2}" height="${rowH - 2}" rx="4" fill="none" stroke="#F0A030" stroke-width="2"/></g>`;
@@ -246,11 +248,33 @@ export function bindPacePick(root) {
     if (info) info.textContent = `${b.dataset.lab} の真ん中（${b.dataset.c}）にピッチにいた選手に●を付けています（${ys.length}人）。同じところをもう一度押すと消えます`;
   };
   if (paceSel) draw(svg.querySelector(`.pbk[data-k="${paceSel}"]`));
+  // 帯の名前：PCはカーソルを合わせている間、iPadは触れたときに出す（ほかを触ると消える）
+  const tipper = bandTip(svg.closest('.rvbox'), svg, '.pst', (r) => r.dataset.pt);
   svg.addEventListener('click', (e) => {
+    if (tipper.touch() && e.target.closest('.pst')) return; // iPad で帯に触れたときは名前を出すだけ（行の強調はしない）
     const b = e.target.closest('.pbk');
     if (b) { paceSel = paceSel === b.dataset.k ? null : b.dataset.k; draw(paceSel ? b : null); return; }
     // 選手の行を押すと強調（黄色＋オレンジの枠。何人でも。もう一度押すと戻す）
     const r = e.target.closest('[data-prl]');
     if (r) { const k = '5:' + r.dataset.prl; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); r.classList.toggle('on', rvHl.has(k)); }
   });
+}
+
+// 帯の上に名前を出す（マッチ・ペース、出場タイムライン）。box：位置の基準（position:relative）、area：帯のある所
+// PC：カーソルを合わせている間。iPad：触れたとき（4秒か、ほかを触ると消える）
+export function bandTip(box, area, sel, textOf) {
+  let tip = null, touch = false, t = null;
+  const show = (r) => {
+    if (!box) return;
+    if (!tip) { tip = document.createElement('div'); tip.className = 'ptip'; box.appendChild(tip); }
+    tip.textContent = textOf(r); tip.style.display = 'block';
+    const bb = box.getBoundingClientRect(), rr = r.getBoundingClientRect();
+    const tw = tip.offsetWidth; let lx = rr.left + rr.width / 2 - bb.left - tw / 2; lx = Math.max(4, Math.min(bb.width - tw - 4, lx));
+    tip.style.left = lx + 'px'; tip.style.top = (rr.top - bb.top - tip.offsetHeight - 4) + 'px';
+  };
+  const hide = () => { if (tip) tip.style.display = 'none'; };
+  area.addEventListener('pointerdown', (e) => { touch = e.pointerType === 'touch' || e.pointerType === 'pen'; if (touch) { const r = e.target.closest(sel); if (r) { show(r); clearTimeout(t); t = setTimeout(hide, 4000); } else hide(); } });
+  area.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse') return; const r = e.target.closest(sel); if (r) show(r); else hide(); });
+  area.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hide(); });
+  return { touch: () => touch };
 }
