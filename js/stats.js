@@ -87,7 +87,7 @@ export function sheetHTML({ R, M, keys, own, opp, game, place, day, possession, 
   const v = (x) => (has ? x : null);
   // スコアの行：選んだ範囲（試合全体／前半／後半）のピリオドだけ。まだ行っていないピリオドは空欄
   const ps = M.periods.filter((p) => (!p.extra || p.status !== 'none') && (!keys || keys.includes(p.key)));
-  const hd = `<table class="sthd"><tr><td class="g">GAME</td><td class="w">${esc(game)}</td><td class="g">PLACE</td><td>${esc(place)}</td><td class="g">DAY</td><td>${esc(day)}</td></tr></table>`;
+  const hd = `<table class="sthd"><tr><td class="g gm">GAME</td><td class="g">TM</td><td class="w">${esc(game)}</td><td class="g">PLACE</td><td>${esc(place)}</td><td class="g">DAY</td><td>${esc(day)}</td></tr></table>`;
   const sc = (p, side) => (!has ? '<span class="na">—</span>' : p.status === 'none' ? '' : R.score[side][p.key] ?? 0);
   const scTot = (side) => (has ? (keys ? R.rangeScore[side] : Object.values(R.score[side]).reduce((a, b) => a + b, 0)) : '<span class="na">—</span>');
   const scRows = ps.map((p, i) => `<tr>${i === 0 ? `<td class="sttm" rowspan="${ps.length}">${esc(own)}</td><td class="stbig" rowspan="${ps.length}">${scTot('own')}</td>` : ''}<td class="stp">${sc(p, 'own')}</td><td class="stp">${p.label}</td><td class="stp">${sc(p, 'opp')}</td>${i === 0 ? `<td class="stbig" rowspan="${ps.length}">${scTot('opp')}</td><td class="sttm" rowspan="${ps.length}">${esc(opp)}</td>` : ''}</tr>`).join('');

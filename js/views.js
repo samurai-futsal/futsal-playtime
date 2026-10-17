@@ -2,7 +2,7 @@
 import {
   S, onChange, selectTeam, newId, put, del, now, teamPath, teamSettings, opts, playerById, activityById,
   matchById, playerName, sortPlayers, matchesOf, matchStatus, playedPlayerIds, inAnyMatch, today,
-  DEFAULT_TIMES, DEFAULT_TEAM_SETTINGS, lastError, renameOption, addOption, moveOption, saveOptions, optName, watchOps, deviceId,
+  DEFAULT_TIMES, DEFAULT_TEAM_SETTINGS, lastError, renameOption, addOption, moveOption, saveOptions, deleteOption, watchEvents, optName, watchOps, deviceId,
 } from './store.js';
 import { replay } from './engine.js';
 import { exportBackup, promptBackup, restoreFromFile, lastBackupAt, setBackupVersion } from './backup.js';
@@ -819,13 +819,18 @@ function vSearch() {
 function vSettings() {
   const ts = teamSettings();
   const lb = lastBackupAt();
+  // 消せる選択肢：活動の種類・試合の区分は、どの活動・試合でも使っていないもの。得点・失点の種類は、足した種類だけ（初めからある種類は分類の判定に使うので消さない）。使っているかは押したときに確かめる
+  const builtin = (o) => /^o\d+_/.test(o.id);
+  const usedIn = (key, o) => (key === 'activityTypes' ? S.activities.some((a) => a.typeId === o.id || (!a.typeId && a.type === o.name))
+    : key === 'matchCategories' ? S.matches.some((m) => m.categoryId === o.id || (!m.categoryId && m.category === o.name)) : false);
+  const canDel = (key, o) => (key === 'goalTypes' ? !builtin(o) : !usedIn(key, o));
   const optEditor = (key, title) => {
     const list = S.global[key];
     return `<div class="opted"><h3>${title}</h3>${list.map((o, i) => `<div class="optrow ${o.hidden ? 'hid' : ''}">
       <input id="opt_${key}_${esc(o.id)}" data-ok="${key}" data-oid="${esc(o.id)}" value="${esc(o.name)}" aria-label="${esc(title)}：${esc(o.name)}">
       <button class="btn xs opb" data-up="${key}:${esc(o.id)}" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
       <button class="btn xs opb" data-down="${key}:${esc(o.id)}" ${i === list.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
-      <button class="btn xs opb" data-hide="${key}:${esc(o.id)}">${o.hidden ? '表示する' : '非表示'}</button></div>`).join('')}
+      <button class="btn xs opb" data-hide="${key}:${esc(o.id)}">${o.hidden ? '表示する' : '非表示'}</button>${canDel(key, o) ? `<button class="btn xs opb" data-odel="${key}:${esc(o.id)}" title="一度も使っていない選択肢だけ消せます">消す</button>` : ''}</div>`).join('')}
       <div class="row"><input id="optnew_${key}" placeholder="追加する名前"><button class="btn sm" data-add="${key}">追加</button></div></div>`;
   };
   return {
@@ -935,8 +940,18 @@ function vSettings() {
         if (!renameOption(k, o.id, v)) { e.target.value = o.name; return toast(`「${v}」はすでにあります。別の名前にしてください`); }
         toast('名前を変えました');
       });
-      root.addEventListener('click', (e) => {
+      root.addEventListener('click', async (e) => {
         const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.odel) {
+          const [k, id] = b.dataset.odel.split(':'); const o = S.global[k].find((x) => x.id === id); if (!o) return;
+          if (k === 'goalTypes') { // すべての試合のイベントを確かめる（読み込みがまだなら、少し待ってもらう）
+            const cs = S.matches.map((m) => watchEvents(m.id));
+            if (cs.some((c) => !c.ready)) return toast('記録を確かめています。少し待ってからもう一度押してください');
+            if (cs.some((c) => c.list.some((e) => e.gtype === id))) return toast(`「${o.name}」は記録で使っているので消せません。使わないときは「非表示」にしてください`);
+          } else if (usedIn(k, o)) return toast(`「${o.name}」は使っているので消せません。使わないときは「非表示」にしてください`);
+          if (await confirmBox({ title: `「${o.name}」を消しますか？`, body: '<p>一度も使っていない選択肢です。消すと元に戻せません。</p>', ok: '消す', danger: true })) { deleteOption(k, id); toast('消しました'); }
+          return;
+        }
         const spec = b.dataset.up || b.dataset.down || b.dataset.hide; const add = b.dataset.add;
         if (add) {
           const inp = $('#optnew_' + add); const v = inp.value.trim(); if (!v) return;

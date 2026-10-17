@@ -10,7 +10,9 @@ import { OPP_OG, UNKNOWN } from './events.js';
 // ---------- 画面（試合ページ「Sportscode（XML）」） ----------
 
 const LKEY = 'fpt.scLead';
-const loadLead = () => { try { return { ...DEFAULT_LEAD, ...JSON.parse(localStorage.getItem(LKEY) || '{}') }; } catch { return { ...DEFAULT_LEAD }; } };
+// イベントの長さはチームで覚える（team settings の scExpLead。iPadとPCで同じ長さになる）。前にこの端末で覚えた値があれば、それを初めの値にする
+const loadLead = () => { let dev = {}; try { dev = JSON.parse(localStorage.getItem(LKEY) || '{}'); } catch {} return { ...DEFAULT_LEAD, ...dev, ...(teamSettings().scExpLead || {}) }; };
+const saveLead = (L) => { put(['teams', S.teamId], { settings: { scExpLead: L } }); };
 const parseT = (v) => { const s = String(v ?? '').trim(); if (!s) return null; const m = s.match(/^(\d+):(\d{1,2}(?:\.\d+)?)$/); if (m) return +m[1] * 60 + +m[2]; return Number.isFinite(+s) ? +s : null; };
 const fmtT = (sec) => (sec == null ? '' : `${Math.floor(sec / 60)}:${(sec % 60).toFixed(1).padStart(4, '0')}`);
 let opt = { players: true, events: true };
@@ -45,13 +47,13 @@ export function vSportscode(m) {
     <div class="card"><div class="scrow"><label class="ck"><input type="checkbox" id="scP" ${opt.players ? 'checked' : ''}>出場の帯（#背番号の行。時計が動いていた区間ごと）</label>
       <label class="ck"><input type="checkbox" id="scE" ${opt.events ? 'checked' : ''}>イベント（今のコードウィンドウと同じコード名：シュート、ゾーン4進入、SETPLAY AT、ROBO、ファウルなど）${evs.length ? `　${evs.length}件` : '　（まだありません）'}</label></div></div>
     ${ps.length ? cards : '<div class="card empty">キックオフを押したピリオドがありません</div>'}
-    <details class="card"><summary><b>イベントの長さ（コードごとの前後の秒数）</b>　今のコーディングと同じ長さにします</summary>${leadT}<p class="mu sm">この端末で覚えます。イベントの時刻は試合の時計（1秒単位）から求めるので、時計が止まっている間に起きたイベント（ボールが外に出た直後など）は、動画とずれることがあります。シュートなどは時計が止まった瞬間、SETPLAY は再開の瞬間に合わせています</p></details>`;
+    <details class="card"><summary><b>イベントの長さ（コードごとの前後の秒数）</b>　今のコーディングと同じ長さにします</summary>${leadT}<p class="mu sm">チームで覚えます（iPadとPCで同じ長さになります）。イベントの時刻は試合の時計（1秒単位）から求めるので、時計が止まっている間に起きたイベント（ボールが外に出た直後など）は、動画とずれることがあります。シュートなどは時計が止まった瞬間、SETPLAY は再開の瞬間に合わせています</p></details>`;
   return {
     active: 'acts', html: `<div class="scw">${html}</div>`,
     bind: (root) => {
       root.querySelector('#scP').onchange = (e) => { opt.players = e.target.checked; };
       root.querySelector('#scE').onchange = (e) => { opt.events = e.target.checked; };
-      root.querySelectorAll('[data-lead]').forEach((i) => i.onchange = () => { const [k, j] = i.dataset.lead.split(':'); const L = loadLead(); L[k] = [...L[k]]; L[k][+j] = +i.value || 0; try { localStorage.setItem(LKEY, JSON.stringify(L)); } catch {} });
+      root.querySelectorAll('[data-lead]').forEach((i) => i.onchange = () => { const [k, j] = i.dataset.lead.split(':'); const L = loadLead(); L[k] = [...L[k]]; L[k][+j] = +i.value || 0; saveLead(L); toast('イベントの長さを保存しました（チームで共通）'); });
       root.querySelectorAll('[data-dl]').forEach((b) => b.onclick = () => {
         const k = b.dataset.dl; const p = ps.find((x) => x.key === k);
         const r = buildXML({ M, R, st, members: m.members || {}, events: evs, goalName: gn, key: k, ko: ko[k], shift: shift[k], lead: loadLead(), name, withPlayers: opt.players, withEvents: opt.events });

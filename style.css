@@ -1028,3 +1028,4 @@ body.playmode #toast.show{transform:translateX(-50%) translateY(0)}
 .rpopt input{margin-top:4px;width:20px;height:20px}
 .rpopt span{display:flex;flex-direction:column;gap:2px}.rpopt small{color:#5F6B80;font-size:13px}
 .rpopt:has(input:checked){border-color:#1F5FBF;background:#F2F6FD}
+.sthd td.gm{font-weight:800;letter-spacing:.05em}

@@ -173,6 +173,12 @@ export function addOption(k, name) {
   const order = Math.max(-1, ...S.global[k].map((o, i) => (Number.isFinite(o.order) && o.order < 1e9 ? o.order : i))) + 1;
   saveOptions(k, { ['o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)]: { name, hidden: false, order } }); return true;
 }
+// 消す（一度も使っていない選択肢だけ。使ったかどうかは呼ぶ側で確かめる）
+export function deleteOption(k, id) {
+  const base = hasMap(S.globalRaw, k) ? {} : fullMap(S.global[k]);
+  base[id] = del();
+  put(['config', 'global'], { optMap: { [k]: base } });
+}
 export function moveOption(k, from, to) {
   const list = [...S.global[k]]; const [x] = list.splice(from, 1); list.splice(to, 0, x);
   saveOptions(k, Object.fromEntries(list.map((o, i) => [o.id, { order: i }])));
