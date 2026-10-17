@@ -1,6 +1,6 @@
 // Sportscode からの取り込み（spec 9章）：XML と CSV が同じ結果になること、コード・ラベルの読み方、時刻の直し方。
 // Run: node test/scimport.test.mjs
-import { parseSC, buildImport, kickOffs } from '../js/scimport.js';
+import { parseSC, buildImport, kickOffs, periodFromName } from '../js/scimport.js';
 import { OPP_OG } from '../js/events.js';
 let pass = 0, fail = 0;
 const eq = (a, b, msg) => { const ok = JSON.stringify(a) === JSON.stringify(b); ok ? pass++ : (fail++, console.log('FAIL', msg, '\n  got', JSON.stringify(a), '\n  want', JSON.stringify(b))); };
@@ -80,5 +80,8 @@ eq([r2.events[0].kind, r2.events[0].pid], ['goal', OPP_OG], 'their own goal = ou
   const og = buildImport({ instances: [{ code: '被シュート', start: 20, end: 37, labels: [['シュート分類', 'オウンゴール'], ['スコアゾーン進入人数', '2']] }], periods: [{ key: '1H', ko: 10, from: -1e9, to: 1e9 }], R: R0, M: M2, members, players, goalTypes: gts });
   eq([og.events[0].kind, og.events[0].gtype, og.events[0].sz, og.events[0].n], ['conc', 'o11_OG', undefined, undefined], 'renamed OG type found by id; OG ignores SZ (決5)');
 }
+// ファイル名からピリオド（SCI-01）
+eq(['vsペルー_1P.xml', 'peru-2P.xml', 'U19 2H.csv', 'match_1h.XML', '20261017前半.xml', '後半_peru.csv', 'peru_E1.xml', 'peru_ET2.xml', '延長前半.csv', '延長後半.xml', 'peru.xml', '2026_1017.xml', 'TEAM12P.xml', 'peru_１Ｐ.xml', 'P1.xml'].map(periodFromName),
+  ['1H', '2H', '2H', '1H', '1H', '2H', 'E1', 'E2', 'E1', 'E2', null, null, null, '1H', null], 'period from file name');
 console.log(`scimport: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

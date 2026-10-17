@@ -20,7 +20,7 @@ const PCOL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const MCOL = ['#1F5FBF', '#E0832B', '#2E8B57', '#8A5AC8', '#C8312B', '#0E8A9E', '#B5600F', '#5F6B80'];
 const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '種類別'], ['pace', 'マッチ・ペース']];
 // 2026-10-16：この2つだけ。2026-10-17（決8）：「5×4/4×5を除く」→「数的同数だけ」（5×4・4×5と、両チームの退場の時間帯を除く）
-const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と、両チームの退場の時間帯を除く']];
+const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く']];
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
 const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
@@ -127,26 +127,30 @@ export function vAnalysis(r, mFrom = null) {
   // 試合ページから開いたときは「この試合」で始める（開いたあとは自由に切り替えられる）
   if (mFrom && fromHash !== location.hash) { A.scope = 'match'; A.matchId = mFrom.id; keep(); }
   fromHash = mFrom ? location.hash : null;
-  const ms = selected();
+  // まだ始まっていない試合（MATCH PLAYの記録なし）から開いたとき：「この試合」はその試合のまま、ほかの試合の数字は出さない（AN-01）
+  const pre = A.scope === 'match' && mFrom && A.matchId === mFrom.id && !candidates().some((x) => x.id === mFrom.id);
+  if (pre) skippedLive = 0;
+  const ms = pre ? [] : selected();
   const { ctx, loading } = buildCtx(ms);
   const { ok } = ctx;
 
   // ---------- 上：対象・切り替え ----------
-  const cand = candidates();
+  const cand = pre ? [mFrom, ...candidates()] : candidates();
   const seg = (key, list) => `<span class="anseg">${list.map(([v, l, t]) => `<button class="${A[key] === v ? 'on' : ''}" data-set="${key}" data-v="${v}"${t ? ` title="${t}"` : ''}>${l}</button>`).join('')}</span>`;
-  const one = A.scope === 'match' ? `<select id="anMatch" class="ansel">${cand.map((m) => `<option value="${m.id}" ${m.id === A.matchId ? 'selected' : ''}>${fmtShort(m.date)} vs ${esc(m.opponent)}</option>`).join('')}</select>` : '';
+  const one = A.scope === 'match' ? `<select id="anMatch" class="ansel" data-fresh="1">${cand.map((m) => `<option value="${m.id}" ${m.id === A.matchId ? 'selected' : ''}>${fmtShort(m.date)} vs ${esc(m.opponent)}</option>`).join('')}</select>` : '';
   const multi = A.scope !== 'match' ? `<button class="btn sm" id="anPick">${A.scope === 'pick' ? '試合を選ぶ' : '絞り込み'}（${ms.length}試合）</button>` : '';
   const todoN = ok.filter((x) => x.todo).length; const noOpp = ok.filter((x) => !x.hasOpp).length;
   const head = `<div class="anhead">
     <div class="anrow"><b class="antt">分析</b>${seg('scope', [['match', 'この試合'], ['all', '全試合'], ['pick', '選んだ試合']])}${one}${multi}
       ${A.scope === 'match' ? '' : seg('agg', [['sum', '合計'], ['avg', '1試合平均']])}${seg('per', [['all', '全体'], ['1H', '前半'], ['2H', '後半']])}
-      <span class="anpp" title="数的同数だけ＝5×4・4×5と、両チームの退場の時間帯を除く">時間帯${seg('pp', PPM)}</span>
+      <span class="anpp" title="数的同数だけ＝5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く">時間帯${seg('pp', PPM)}</span>
       ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4（こちらの4×5）の記録なし ${noOpp}試合</span>` : ''}
-      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${skippedLive ? `<span class="anlive" title="試合が終わると含めます。試合中の試合は「この試合」で見られます">試合中の ${skippedLive}試合は含めていません</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span><span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span></div>
+      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${skippedLive ? `<span class="anlive" title="試合が終わると含めます。試合中の試合は「この試合」で見られます">試合中の ${skippedLive}試合は含めていません</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span>${pre ? '' : '<span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span>'}</div>
     <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} " data-tab="${v}">${l}</button>`).join('')}</div></div>`;
 
   let body;
-  if (!ms.length) body = skippedLive ? `<div class="card empty">対象の試合は試合中の ${skippedLive}試合だけです。試合が終わると含めます（試合中の試合は「この試合」で見られます）</div>` : '<div class="card empty">対象の試合がありません（試合が始まると分析できます）</div>';
+  if (pre) body = `<div class="card empty">この試合はまだ記録がありません。MATCH PLAYで試合を始めると、ここに出ます<div class="mt"><a class="btn" href="#/m/${mFrom.id}">‹ 試合ページ</a></div></div>`;
+  else if (!ms.length) body = skippedLive ? `<div class="card empty">対象の試合は試合中の ${skippedLive}試合だけです。試合が終わると含めます（試合中の試合は「この試合」で見られます）</div>` : '<div class="card empty">対象の試合がありません（試合が始まると分析できます）</div>';
   else if (A.tab === 'time') body = timeTab(ctx);
   else if (A.tab === 'stats') body = statsTab(ctx);
   else if (A.tab === 'set') body = setTab(ctx);
@@ -435,8 +439,8 @@ function setTab(ctx) {
 }
 
 // ---------- パワープレー ----------
-// 時間帯は重ならないように分ける（退場を先に、次に自チームの5×4、相手の5×4）。数的同数＋5×4＋4×5＋退場（4対5）＋退場（5対4）＝合計
-const PPK = [['own', '自チームの5×4', '（攻撃・GKを入れ替え）', '5×4'], ['opp', '相手の5×4', '（こちらは4×5・守備）', '4×5'], ['ejown', '自チームの退場', '（4対5）', '退場<br><small>4対5</small>'], ['ejopp', '相手の退場', '（5対4）', '退場<br><small>5対4</small>']];
+// 時間帯は重ならないように分ける（退場を先に、次に自チームの5×4、相手の5×4）。数的同数＋5×4＋4×5＋退場（3×4）＋退場（4×3）＝合計
+const PPK = [['own', '自チームの5×4', '（攻撃・GKを入れ替え）', '5×4'], ['opp', '相手の5×4', '（こちらは4×5・守備）', '4×5'], ['ejown', '自チームの退場', '（3×4）', '退場<br><small>3×4</small>'], ['ejopp', '相手の退場', '（4×3）', '退場<br><small>4×3</small>']];
 function ppTab(ctx) {
   const occ = []; const split = {};
   for (const x of ctx.ok) {
@@ -481,7 +485,7 @@ function ppTab(ctx) {
   const list = occ.sort((a, b) => (a.m.date || '').localeCompare(b.m.date || '') || a.label.localeCompare(b.label) || a.a - b.a).map((o) => `<tr><td>${fmtShort(o.m.date)} vs ${esc(o.m.opponent)}</td><td>${o.label} ${mmss(o.a)}〜${mmss(o.b)}</td><td>${mmss(o.b - o.a)}</td><td class="${o.team === 'own' || o.team === 'ejopp' ? 'w' : 'o'}">${who[o.team]}</td><td class="w">${o.sh}</td><td class="o">${o.osh}</td><td class="w">${o.gf}</td><td class="o">${o.ga}</td></tr>`).join('');
   const bottom = `<table class="antb"><thead><tr><th>試合</th><th>時間帯（経過時間）</th><th>長さ</th><th>どちら</th><th>シュート</th><th>被シュート</th><th>得点</th><th>失点</th></tr></thead><tbody>${list || '<tr><td colspan="8" class="mu">パワープレー・退場の時間帯はありません</td></tr>'}</tbody></table>`;
   return `<div class="antbl anscroll"><h3 class="anh3">回数と時間</h3>${top}<h3 class="anh3">数的同数・5×4・4×5・退場の時間帯で分けたチームの数字</h3>${mid}<h3 class="anh3">1回ごとの一覧</h3>${bottom}</div>
-    <p class="anhint">自チームの5×4＝パワープレー（自チーム）の記録と、GKをFPと入れ替えてGKがピッチにいない区間（退場でGKがいない区間は入れない）。相手の5×4＝MATCH PLAY・記録の修正で入れたパワープレー（相手）${noOpp ? `。相手の5×4の記録がない試合：${noOpp}試合` : ''}。自チームの退場＝MATCH PLAYの退場で空席の区間、相手の退場＝相手の退場の記録。時間帯が重なるときは、退場 → 自チームの5×4 → 相手の5×4 の順に1つだけに数えます（数的同数＋5×4＋4×5＋退場＝合計）。「PP返し」＝5×4の間に相手に決められた得点（守備側から見ると得点）。上の「時間帯」の切り替えに関係なく、全部を出します</p>`;
+    <p class="anhint">自チームの5×4＝パワープレー（自チーム）の記録と、GKをFPと入れ替えてGKがピッチにいない区間（退場でGKがいない区間は入れない）。相手の5×4＝MATCH PLAY・記録の修正で入れたパワープレー（相手）${noOpp ? `。相手の5×4の記録がない試合：${noOpp}試合` : ''}。自チームの退場（3×4）＝MATCH PLAYの退場で空席の区間、相手の退場（4×3）＝相手の退場の記録。時間帯が重なるときは、退場 → 自チームの5×4 → 相手の5×4 の順に1つだけに数えます（数的同数＋5×4＋4×5＋退場＝合計）。「PP返し」＝5×4の間に相手に決められた得点（守備側から見ると得点）。上の「時間帯」の切り替えに関係なく、全部を出します</p>`;
 }
 
 // ---------- 種類別 ----------

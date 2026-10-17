@@ -1,5 +1,5 @@
 // MATCH PLAY — the iPad screen used on the bench during the match (spec 11章).
-import { S as D, matchById, playerById, playerName, put, teamPath, watchOps, addOp, deviceId, now as srvNow } from './store.js';
+import { S as D, matchById, playerById, playerName, put, teamPath, watchOps, watchEvents, opts, addOp, deviceId, now as srvNow } from './store.js';
 import {
   replay, nowElapsed, perLen, PERIODS, periodLabel, seatView, contTime, restTime, playerPeriodTime,
   playerMatchTime, playerCounts, setplayLeft, setplayOn, carryOf, describeOp, ejectLeft, ejectCarryIn,
@@ -7,6 +7,8 @@ import {
 import { $, $$, esc, openModal, closeModal, confirmBox, confirmTwice, toast } from './ui.js';
 import { render, promptBackup } from './views.js';
 import { keypadHTML, bindKeypad } from './keypad.js';
+import { matchModel } from './model.js';
+import { teamStats } from './teamstats.js';
 
 let tick = null, heartbeat = null, mountedId = null, ejectMode = false, autoStopFor = null, lastPpAuto = 0;
 let lastTap = { k: null, t: 0 }; // 2回押しを防ぐ（同じカード・ボタンを300ms以内にもう一度押しても受け付けない。試10）
@@ -97,6 +99,7 @@ export function vPlay(m) {
   const replacedOuts = st.batch.outs.filter((o) => !view.some((v) => v.pid === o.pid)).map((o) => o.pid);
   const ct = m.colorTimer || { orange: 120, red: 180 };
   const other = otherDevice(m);
+  const vo = !!other; // 別の端末が記録中：この端末は見るだけ（ボタンは押せない形にする。決 MP-05）
   const ownTO = st.timeouts.filter((x) => x.period === st.current && x.team === 'own').length;
   const oppTO = st.timeouts.filter((x) => x.period === st.current && x.team === 'opp').length;
   const isExtra = PERIODS.find((p) => p.key === st.current)?.extra;
@@ -150,7 +153,7 @@ export function vPlay(m) {
       ${stats(pid, rest)}</button>`;
   };
 
-  const btn = (id, label, sub = '', cls = '', dis = false) => `<button class="cb ${cls}" id="${id}" ${dis ? 'disabled' : ''}>${label}${sub ? `<small>${sub}</small>` : ''}</button>`;
+  const btn = (id, label, sub = '', cls = '', dis = false) => `<button class="cb ${cls}" id="${id}" ${dis || vo ? 'disabled' : ''}>${label}${sub ? `<small>${sub}</small>` : ''}</button>`;
   const ppLabel = st.ppActive ? '5×4 終了' : 'パワープレー開始';
   // ピリオドの間の表示はマッチレビューと同じ（前半のあと＝ハーフタイム、後半のあと＝後半終了）
   const anyDone = PERIODS.some((p) => st.periods[p.key].status === 'done');
@@ -159,15 +162,15 @@ export function vPlay(m) {
   // 見出しの行に表示が重なるときは、退場の表示の後ろの説明を省いて短くする（切れないように）
   const ejTail = st.ppActive || spOn || st.empty.filter(Boolean).length > 1 ? '' : '（失点で補充するときは、空席を押す）';
   const banner = [];
-  if (other) banner.push(`<div class="pbanner warn">別の端末（${esc(other)}）で記録中です。同じ試合を2台で操作しないでください。<button class="btn sm" id="btnTake">この端末で記録する</button></div>`);
+  if (other) banner.push(`<div class="pbanner warn">別の端末（${esc(other)}）で記録中です。この端末は見るだけです。<button class="btn sm" id="btnTake">この端末で記録する</button></div>`);
 
   return {
     full: true,
-    html: `<div class="play" style="touch-action:manipulation">
+    html: `<div class="play ${vo ? 'viewonly' : ''} ${st.matchOver ? 'over' : ''}" style="touch-action:manipulation">
     <div class="ptop">
       <div class="pl">
         <a class="cb back" href="#/m/${m.id}">‹ 試合ページ</a>
-        <button class="cb per" id="btnPer">${periodLabel(st.current)} ▾</button>
+        <button class="cb per" id="btnPer" ${vo ? 'disabled' : ''}>${periodLabel(st.current)} ▾</button>
       </div>
       <div class="clockbox">
         <div class="clock ${running ? 'run' : ''}" id="clock">${mmss(len - el)}</div>
@@ -187,15 +190,14 @@ export function vPlay(m) {
         ${btn('btnReset', 'リセット', '', 'reset')}
       </div>
       <div class="ss">
-        <button class="big start" id="btnStart" ${running || st.matchOver || st.askExtra || (!live && filled(draft) < need) || (live && el >= len) ? 'disabled' : ''}>▶<span>スタート</span></button>
-        <button class="big stop" id="btnStop" ${!running ? 'disabled' : ''}>❚❚<span>ストップ</span></button>
+        <button class="big start" id="btnStart" ${vo || running || st.matchOver || st.askExtra || (!live && filled(draft) < need) || (live && el >= len) ? 'disabled' : ''}>▶<span>スタート</span></button>
+        <button class="big stop" id="btnStop" ${vo || !running ? 'disabled' : ''}>❚❚<span>ストップ</span></button>
       </div>
     </div>
     ${banner.join('')}
-    ${st.matchOver ? `<div class="pbanner done">試合が終わりました。お疲れさまでした。<a class="btn sm" href="#/m/${m.id}">試合ページへ</a></div>` : ''}
     ${timeUp ? `<div class="pbanner warn">時間になりました：ピリオド終了を押してください <button class="btn sm pri" id="btnEnd2">ピリオド終了</button></div>` : ''}
     ${st.askExtra ? `<div class="pbanner">後半が終わりました。延長戦を行いますか？ <button class="btn sm pri" id="btnExtraYes">延長戦を行う</button><button class="btn sm" id="btnExtraNo">行わない（試合終了）</button></div>` : ''}
-    <div class="plabel st"><span>ピッチ</span><div class="stmid">
+    ${st.matchOver ? finishedPanel(m, st) : `<div class="plabel st"><span>ピッチ</span><div class="stmid">
       ${ejectMode ? '<span class="stchip ej">退場する選手をピッチから押してください</span><button class="btn sm" id="btnEjCancel">やめる</button>' : ''}
       ${carryIn.map((c) => `<span class="stchip ej">退場：${esc(playerName(playerById(c.pid)))}　補充まで ${mmss(c.left)}（前のピリオドから持ち越し。枠を1つ空けたまま始められます）</span>`).join('')}
       ${!ejectMode ? st.empty.map((e, i) => {
@@ -208,12 +210,28 @@ export function vPlay(m) {
       ${st.ppActive ? `<span class="stchip pp ${t - lastPpAuto < 4000 ? 'flash' : ''}">5×4（パワープレー）${st.ppActive.team === 'own' ? '自チーム' : '相手チーム'}</span>` : ''}
       ${spOn ? `<span class="stchip sp" id="spChip">セットプレー中（自動終了まで ${mmss(setplayLeft(st, el))}）</span>` : ''}
     </div><span>${view.filter((v) => v.pid).length} / 5</span></div>
-    <div class="pitch">${view.map(pitchCard).join('')}</div>
+    <div class="pitch">${view.map(pitchCard).join('')}</div>`}
     <div class="plabel"><span>ベンチ（並びは固定）</span>${!live && !st.matchOver && !st.askExtra ? `<span>${carryIn.length ? `先発の${need}〜5人を選んで「スタート」` : '先発の5人を選んで「スタート」'}</span>` : ''}</div>
     <div class="bench" style="grid-template-columns:repeat(${cols},minmax(0,1fr));flex-grow:${Math.ceil(n / cols) * 0.8}">${members.map(benchCard).join('')}</div>
   </div>`,
     bind(root) { bindPlay(root, m, st, cfg, draft); },
   };
+}
+// 試合が終わったあと：ピッチの5枠の代わりに「試合終了」とスコア、行き先を出す（決 MP-04）
+function finishedPanel(m, st) {
+  let score = '';
+  try {
+    const evs = watchEvents(m.id).list.filter((e) => !e.deleted);
+    if (evs.length) {
+      const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
+      const R = teamStats(matchModel(st, Date.now(), m.fix), evs, goalName);
+      const tot = (side) => Object.values(R.score[side] || {}).reduce((a, b) => a + b, 0);
+      score = `<div class="pfsc"><span>${esc(D.team?.name || '自チーム')}</span><b>${tot('own')} − ${tot('opp')}</b><span>${esc(m.opponent || '相手')}</span></div>`;
+    }
+  } catch {}
+  if (!score) score = '<div class="pfnote">スコアは、イベント入力で得点・失点を入れると出ます</div>';
+  return `<div class="pfin"><div class="pft">試合終了</div>${score}<div class="pfmu">お疲れさまでした。出場時間はマッチレビューで見られます。</div>
+    <div class="pfbtns"><a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a><a class="btn" href="#/m/${m.id}">試合ページ ›</a></div></div>`;
 }
 // 交代待ちの選手の時間は、OUTを押した時点で止めて見せる（spec 3章）
 function frozenAt(st, pid, el) {

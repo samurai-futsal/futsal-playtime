@@ -14,7 +14,7 @@ export const KIND = {
   conc: { label: '失点', team: 'opp' }, fspdf: { label: 'FINISH SET PLAY DF', short: 'FINISH SET PLAY<br>DF', team: 'opp' },
   rec: { label: 'ボールリカバリー', team: 'own', sub: true }, lost: { label: 'ボールロスト', team: 'own', sub: true },
   foul: { label: 'ファール', team: 'own', sub: true }, fouled: { label: '被ファール', team: 'own', sub: true },
-  // 相手の退場（こちらが5対4の時間帯。2026-10-17 決定）。at＝退場の時刻、endPeriod・endAt＝数的優位の終わり
+  // 相手の退場（こちらが4×3の時間帯。2026-10-17 決定）。at＝退場の時刻、endPeriod・endAt＝数的優位の終わり
   oej: { label: '相手の退場', team: 'opp', sub: true },
 };
 export const RESULTS = [['in', '枠内'], ['out', '枠外'], ['block', 'ブロック'], ['post', 'ポスト']];
@@ -231,7 +231,7 @@ export function summary(ev, nm, goalName = (x) => x, fmtAt = null) {
   const k = ev.kind;
   if (k === 'oej') {
     const f = fmtAt || ((p, at) => `${Math.floor(at / 60000)}:${String(Math.floor(at / 1000) % 60).padStart(2, '0')}`);
-    return ev.endPeriod != null && ev.endAt != null ? `5対4 〜 ${f(ev.endPeriod, ev.endAt)}まで` : '5対4（終わり未入力）';
+    return ev.endPeriod != null && ev.endAt != null ? `4×3 〜 ${f(ev.endPeriod, ev.endAt)}まで` : '4×3（終わり未入力）';
   }
   if (k === 'z4' || k === 'sz') {
     if (ev.method === 'pass') parts.push(`パス ${P(ev.pid) || '?'} → ${P(ev.pid2) || '?'}`);
@@ -344,7 +344,7 @@ export function cleanFields(ev, goalName = null) {
   return out;
 }
 
-// ---------- 相手の退場（こちらが5対4。決8・2026-10-17） ----------
+// ---------- 相手の退場（こちらが4×3。決8・2026-10-17） ----------
 const pEnd = (p) => (p.status === 'done' ? p.elapsed : p.len);
 const periodsOf = (M) => (M.periods || []).filter((p, i, a) => p.status !== 'none' || !M.matchOver || i === 0);
 // 初めの終わり：プレーイングタイムで2:00後（次のピリオドにまたがることもある。試合の終わりまで）。その前にこちらが得点したら、その得点の時刻

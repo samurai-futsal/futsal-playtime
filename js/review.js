@@ -76,7 +76,7 @@ export function vReview(m) {
   // 項目の番号は固定（1〜8）。出ていない項目は番号が飛ぶので、上部にその理由を書く
   const jumps = [[1, '出場時間', 'rv1'], [2, '1回ごと', 'rv1b'], [3, 'タイムライン', 'rv2'], [4, 'セット', 'rv3'], [5, 'ペース', 'rv5'], [6, 'セット別', 'rv4b'], [7, 'スコア', 'rv7'], [8, 'スタッツ', 'rv8']].map(([n, t, id]) => `<a class="rvjp ${n >= 5 && !evs.length ? 'wait' : ''}" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
-      <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn pri" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a><span class="rvstate">${state}</span><span class="rvctl">${sw}
+      <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn ${started ? 'pri' : ''}" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a><span class="rvstate">${state}</span><span class="rvctl">${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
         <button class="btn" id="rvCompact">${isCompact() ? '大きく表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで書き出す</button></span></div>
       <div class="rvjumps">${jumps}${evs.length ? '' : '<span class="rvnote">5〜8 はイベントを入力すると表示されます</span>'}
@@ -90,7 +90,7 @@ export function vReview(m) {
     <div class="rvps">${esc(fmtDate(m.date))}${m.kickoff ? ' ' + esc(m.kickoff) + 'キックオフ' : ''}　${esc(m.venue || '')}　${esc(act?.name || '')}${m.category ? '　' + esc(m.category) : ''}　<b>${asOf}</b>　（MATCH PLAYの記録から作成${M.fixed.length ? '・記録の修正を反映' : ''}）</div></div>`;
 
   if (!started) {
-    return { active: 'acts', html: `<div class="rvw">${head}<div class="card empty">まだ記録がありません。MATCH PLAYで先発を選んでスタートすると、ここに出場時間が表示されます。</div></div>`, bind: bindReview(m) };
+    return { active: 'acts', html: `<div class="rvw">${head}<div class="card empty">${Object.keys(m.members || {}).length < 5 ? `先に試合メンバーを選んでください。<div class="mt"><a class="btn pri" href="#/m/${m.id}/members">試合メンバー ›</a></div>` : 'MATCH PLAYで試合を始めると、ここに出場時間が出ます'}</div></div>`, bind: bindReview(m) };
   }
 
   const T = playerTable(M);

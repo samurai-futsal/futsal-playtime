@@ -25,7 +25,7 @@ export async function downloadDatasheet(ms) {
   const go = () => { document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); toast(`データシート（Excel）を書き出しました（${list.length}試合）`); };
   // 作るのに時間がかかったときは、iPad が押した操作と見なさずダウンロードを止めることがあるので、もう一度押してもらう
   if (Date.now() - t0 > 700) {
-    const md = openModal(`<h2>データシートができました</h2><div class="mbody"><p>${list.length}試合分のファイルができました。下のボタンで保存してください。</p></div><div class="mfoot"><button class="btn" data-x>やめる</button><button class="btn pri" data-dl>ダウンロード</button></div>`);
+    const md = openModal(`<h2>データシートができました</h2><div class="mbody"><p>${list.length}試合分のファイルができました。下のボタンで保存してください。</p></div><div class="mfoot"><button class="btn" data-x>やめる</button><button class="btn pri xp" data-dl>ダウンロード</button></div>`);
     md.querySelector('[data-x]').onclick = closeModal;
     md.querySelector('[data-dl]').onclick = () => { closeModal(); go(); };
   } else go();
@@ -40,7 +40,7 @@ export function vDatasheet(m) {
     html: `<div class="scw"><div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › データシート（Excel）</div>
       <h1>データシート（Excel）</h1>
       <p class="mu">この試合の記録を Excel のファイルで書き出します。試合中（ハーフタイムなど）は、その時点までの記録で作ります。複数の試合をまとめるときは、分析画面の「書き出し」から書き出せます。</p>
-      <div class="card"><div class="scrow"><button class="btn pri" id="dsGo">データシート（Excel）をダウンロード</button></div>
+      <div class="card"><div class="scrow"><button class="btn pri xp" id="dsGo">データシート（Excel）をダウンロード</button></div>
       <ul class="dsl"><li><b>試合情報</b>：試合の情報とチームの数字（イベント一覧から数式で計算）</li><li><b>イベント一覧</b>：1行1件。時刻・選手・結果・ピッチにいた5人・5×4の時間帯・未入力など</li>
       <li><b>出場時間・出場記録</b>：選手ごと・1回ごとの出場（アプリで集計した値）</li><li><b>選手スタッツ</b>：シュート・シュート関与・被シュート関与・得点・アシスト・進入関与・リカバリー・ロスト・得失点±など（数式で計算）</li>
       <li><b>セット・1分ごと・選手一覧</b></li></ul>

@@ -209,7 +209,7 @@ eq(sortEvents([{ id: 2, period: '2H', at: 1 }, { id: 3, period: '1H', at: 5, seq
   eq(cleanFields({ ...base, kind: 'rec', pid: 'a', zone: 'Z9', card: 'red' }, gn), { ...base, kind: 'rec', pid: 'a' }, 'rec: invalid zone and card dropped');
   eq(cleanFields({ ...base, kind: 'szshot', result: 'in', n: 0 }, gn), { ...base, kind: 'szshot', result: 'in' }, 'SZ shot with 0 people → empty');
 }
-// --- 相手の退場（5対4。決8）
+// --- 相手の退場（4×3。決8）
 {
   const MM = { periods: [{ key: '1H', len: 1200000, elapsed: 1200000, status: 'done' }, { key: '2H', len: 1200000, elapsed: 1200000, status: 'done' }], matchOver: true };
   eq(oejDefaultEnd(MM, [], '1H', 300000), { endPeriod: '1H', endAt: 420000 }, 'default end: 2:00 later');
@@ -226,7 +226,7 @@ eq(sortEvents([{ id: 2, period: '2H', at: 1 }, { id: 3, period: '1H', at: 5, seq
   ];
   eq(oppEjWindows(evs, MM), { '1H': [[1140000, 1200000]], '2H': [[0, 100000], [500000, 620000]] }, 'oppEjWindows: split by period, merged, default end');
   eq([missingLv({ kind: 'oej' }), needsCheck(M, ev({ kind: 'oej', at: 150000 }))], [{ basic: 0, detail: 0 }, false], 'oej is never a todo');
-  eq(summary({ kind: 'oej', endPeriod: '2H', endAt: 60000 }, (x) => x, undefined, (p, at) => `${p}-${at}`), '5対4 〜 2H-60000まで', 'oej summary');
+  eq(summary({ kind: 'oej', endPeriod: '2H', endAt: 60000 }, (x) => x, undefined, (p, at) => `${p}-${at}`), '4×3 〜 2H-60000まで', 'oej summary');
 }
 
 console.log(`events: ${pass} passed, ${fail} failed`);

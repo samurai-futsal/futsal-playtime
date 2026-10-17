@@ -5,7 +5,7 @@ import { replay, periodLabel } from './engine.js';
 import { matchModel, toRunning, periodSig } from './model.js';
 import { KIND, checkOf, cardIssues, OPP_OG, UNKNOWN } from './events.js';
 import { ppWindows } from './teamstats.js';
-import { parseSC, buildImport, kickOffs, DEFAULT_LEAD, LEAD_LABEL } from './scimport.js';
+import { parseSC, buildImport, kickOffs, periodFromName, DEFAULT_LEAD, LEAD_LABEL } from './scimport.js';
 import { esc, toast, confirmBox } from './ui.js';
 import { render } from './views.js';
 
@@ -35,13 +35,17 @@ export function vScImport(m) {
     const inst = st8.parsed.instances; const kos = kickOffs(inst);
     if (!kos.length) body = '<div class="card empty">このファイルには Kick Off の印がありません。前半・後半のキックオフに「Kick Off」を付けて書き出したファイルを選んでください。</div>';
     else {
-      // Kick Off の順にピリオドを当てる（1つだけなら選べる。初めはまだ取り込んでいないピリオド）
+      // Kick Off の順にピリオドを当てる。Kick Off が1つ（片方のピリオドだけのファイル）なら、ファイル名から推測して選んでおく。
+      // 推測できないときは、ピリオドを選ぶまで件数と置き換えの説明を出さない（SCI-01）
       if (st8.assign.length !== kos.length) {
-        const have = new Set(evC.list.filter((e) => !e.deleted && isImp(e)).map((e) => e.period));
-        const firstFree = started.findIndex((p) => !have.has(p.key));
-        const base = kos.length === 1 ? Math.max(0, firstFree) : 0;
-        st8.assign = kos.map((_, i) => started[Math.min(started.length - 1, base + i)]?.key);
+        if (kos.length === 1) { const g = periodFromName(st8.file); st8.guess = started.some((p) => p.key === g) ? g : null; st8.assign = [st8.guess]; }
+        else { st8.guess = null; st8.assign = kos.map((_, i) => started[Math.min(started.length - 1, i)]?.key); }
       }
+      if (!st8.assign[0]) {
+        const g = periodFromName(st8.file);
+        body = `<div class="card"><h3>どのピリオドのファイルですか？</h3><div class="sirow"><span class="sikick"><b>Kick Off 1（動画 ${mmss(kos[0].start * 1000)}）</b><span class="siar">→</span><select data-asg="0" class="sineed"><option value="" selected disabled>選んでください</option>${started.map((x) => `<option value="${x.key}">${x.label}</option>`).join('')}</select></span></div>
+          <p class="mu sm">${g ? `ファイル名は${periodLabel(g)}ですが、MATCH PLAYに${periodLabel(g)}の記録がありません。` : 'ファイル名からピリオドが分かりませんでした。'}ピリオドを選ぶと、取り込む件数が出ます。</p></div>`;
+      } else {
       const lead = leadOf();
       // ピリオドの範囲はプレーの瞬間（コードの開始＋リード）と Kick Off で分ける（記14）
       const periods = kos.map((k, i) => ({ key: st8.assign[i], ko: k.start, shift: +st8.shift[st8.assign[i]] || 0, from: i ? k.start : -1e9, to: kos[i + 1] ? kos[i + 1].start : 1e9 }));
@@ -59,7 +63,7 @@ export function vScImport(m) {
       const prevLen = teamSettings().scLens || {};
       const lenWarn = Object.entries(nowLen).filter(([k, v]) => prevLen[k] != null && Math.abs(prevLen[k] - v) >= 0.5).map(([k, v]) => `${LEN_NAME[k]}の長さが${prevLen[k]}秒 → ${v}秒に変わっています。下の「コードごとの前後の秒数」を確かめてください`);
       st8.nowLen = nowLen;
-      const per = periods.map((p, i) => `<div class="sirow"><span class="sikick"><b>Kick Off ${i + 1}（動画 ${mmss(kos[i].start * 1000)}）</b><span class="siar">→</span><select data-asg="${i}">${started.map((x) => `<option value="${x.key}" ${x.key === p.key ? 'selected' : ''}>${x.label}</option>`).join('')}</select></span>
+      const per = periods.map((p, i) => `<div class="sirow"><span class="sikick"><b>Kick Off ${i + 1}（動画 ${mmss(kos[i].start * 1000)}）</b><span class="siar">→</span><select data-asg="${i}">${started.map((x) => `<option value="${x.key}" ${x.key === p.key ? 'selected' : ''}>${x.label}</option>`).join('')}</select>${kos.length === 1 && st8.guess && st8.guess === p.key ? '<span class="mu sm siguess">ファイル名から選びました</span>' : ''}</span>
         <label>全体をずらす（秒）<input data-sh="${p.key}" value="${st8.shift[p.key] ?? ''}" placeholder="0" inputmode="decimal"></label></div>`).join('');
       const cnt = {}; for (const e of res.events) cnt[e.kind] = (cnt[e.kind] || 0) + 1;
       const order = ['shot', 'szshot', 'goal', 'z4', 'sz', 'fspat', 'oshot', 'oszshot', 'conc', 'oz4', 'osz', 'fspdf', 'rec', 'lost', 'foul', 'fouled'];
@@ -84,6 +88,7 @@ export function vScImport(m) {
           <div class="row end"><button class="btn pri" id="siGo" ${res.events.length ? '' : 'disabled'}>取り込む（${res.events.length}件）</button></div></div>
         <details class="card"><summary><b>コードごとの前後の秒数</b>　チームで覚えます</summary>${leadT}<p class="mu sm">秒数を直したあとは、もう一度「取り込む」（置き換え）を押すと時刻がすべて直ります</p></details>`;
       st8.old = old; st8.edited = edited;
+      }
     }
   }
   return {

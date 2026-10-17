@@ -880,7 +880,7 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .rpsum th small{color:#C9D6EE}
 .rpsum2{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 36px;align-items:start}.rpsc{width:100%}.rpsc td,.rpsc th{text-align:center}
 .prrep .anscroll .antb{width:100%;min-width:0}
-/* 要確認の「このままにする」・相手の退場（5対4）・ピリオドの長さ（2026-10-17） */
+/* 要確認の「このままにする」・相手の退場（4×3）・ピリオドの長さ（2026-10-17） */
 .evw .evok{display:inline-block;font-size:11px;font-weight:700;background:#E9EDF3;color:#44546A;border-radius:6px;padding:0 6px;margin-left:2px}
 .evkeep{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 0;padding:8px 12px;background:#FDECEA;border:1px solid #E3A49E;border-radius:10px;color:#8E2A20;font-size:14px}
 .evkeep span{flex:1;min-width:200px}
@@ -999,3 +999,25 @@ body.playmode #toast.show{transform:translateX(-50%) translateY(0)}
 .gsec{background:#fff;border:1px solid #E1E6EF;border-radius:12px;padding:12px 18px;margin-bottom:12px}.gsec h2{font-size:18px;color:#0B2D6B;margin:4px 0 8px}
 .gsec li{margin:6px 0;line-height:1.6}.gsec dt{font-weight:800;color:#0B2D6B;margin-top:10px}.gsec dd{margin:2px 0 6px 0;line-height:1.6}
 @media print{.guide .gsec{break-inside:avoid;border:none;padding:4px 0}.guide{max-width:none}}
+/* 書き出す＝茶色（2026-10-17 決定。紫はやめる）。試合ページの左の色・分析の「書き出し」・書き出しの画面の主なボタン */
+.act.out{border-left:6px solid #8D5A2B}
+.anexp{color:#8D5A2B}
+.anexp .btn{color:#6E4520;border-color:#C9A47F}
+.btn.pri.xp,#rpGo.btn.pri{background:#8D5A2B;border-color:#8D5A2B;color:#fff}
+.btn.xpl,#rvPdf,#stPdf{color:#6E4520;border-color:#C9A47F}
+/* MATCH PLAY：試合が終わったあと（ピッチの5枠の代わり。決 MP-04） */
+.pfin{flex:1 1 0;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#123A2B;border:2px solid #2E8B5E;border-radius:14px;padding:14px;text-align:center}
+.pfin .pft{font-size:34px;font-weight:900;letter-spacing:.08em;color:#fff}
+.pfin .pfsc{display:flex;align-items:baseline;gap:16px;font-size:18px;font-weight:800;color:#DCEBE3}.pfin .pfsc b{font-size:40px;color:#FFD84D;letter-spacing:.04em}
+.pfin .pfnote,.pfin .pfmu{font-size:14px;color:#B9D3C5;font-weight:600}
+.pfin .pfbtns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}.pfin .pfbtns .btn{min-width:170px;min-height:48px}
+.play.over .bench{opacity:.85}
+/* MATCH PLAY：別の端末が記録中（この端末は見るだけ）。カードとボタンは灰色に（決 MP-05） */
+.play.viewonly .pitch,.play.viewonly .bench,.play.viewonly .plabel .stchip:not(.rv){filter:grayscale(1);opacity:.5}
+.play.viewonly .cbs .cb:disabled{opacity:.3;filter:grayscale(1)}
+.play.viewonly .big:disabled{filter:grayscale(1)}
+/* 分担の表：相手の退場は被ファールの担当（押せない行。EV-07） */
+.sptb tr.oejrow td.ev small{display:block;font-size:11px;font-weight:500;color:#6B7486}
+.sptb .spc.fix{display:flex;align-items:center;justify-content:center;cursor:default;color:#5F7BA8}
+/* Sportscodeから取り込み：ピリオドをまだ選んでいない（SCI-01） */
+.sineed{border:2px solid #C8372D;font-weight:700}

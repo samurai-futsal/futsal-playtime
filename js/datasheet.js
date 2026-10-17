@@ -68,8 +68,8 @@ export function datasheetSheets(ms, teamName) {
     const W = ppWindows(M, evs); const cards = cardsOf(evs, order);
     const inOwn = winTest(W.own, M), inOpp = winTest(W.opp, M), inEjO = winTest(W.ejOwn, M), inEjP = winTest(W.ejOpp, M);
     const isGK = (pid) => m.members?.[pid]?.pos === 'GK';
-    // 相手の退場：5対4の終わり（ピリオドと残り時間）
-    const oejEnd = (e) => { const d = e.endPeriod != null && e.endAt != null ? e : oejDefaultEnd(M, evs, e.period, e.at); const q = M.periods.find((x) => x.key === d.endPeriod); return q ? `5対4の終わり：${q.label} 残り${mmssR(q.len - d.endAt)}` : ''; };
+    // 相手の退場：4×3の終わり（ピリオドと残り時間）
+    const oejEnd = (e) => { const d = e.endPeriod != null && e.endAt != null ? e : oejDefaultEnd(M, evs, e.period, e.at); const q = M.periods.find((x) => x.key === d.endPeriod); return q ? `4×3の終わり：${q.label} 残り${mmssR(q.len - d.endAt)}` : ''; };
     for (const e of sortEvents(evs.filter((v) => !v.deleted), order)) {
       const p = M.periods.find((q) => q.key === e.period); if (!p) continue;
       const k = e.kind; const own = KIND[k]?.team === 'own';
@@ -87,7 +87,7 @@ export function datasheetSheets(ms, teamName) {
         e.n != null && e.n !== '' ? +e.n : '', e.zone || '', card ? CARD_LABEL[card] || card : (k === 'foul' || k === 'fouled' ? 'カードなし' : ''),
         ...[0, 1, 2, 3, 4].map((i) => (on[i] ? fullName(players, on[i]) : '')),
         on.length && !on.some(isGK) ? 'はい' : '', inOwn(e) ? '自チーム5×4' : inOpp(e) ? '相手5×4' : '',
-        [inEjO(e) ? '自チームの退場（4対5）' : '', inEjP(e) ? '相手の退場（5対4）' : ''].filter(Boolean).join('・'),
+        [inEjO(e) ? '自チームの退場（3×4）' : '', inEjP(e) ? '相手の退場（4×3）' : ''].filter(Boolean).join('・'),
         lv.basic || '', lv.detail || '', e.check ? '要確認' : '', e.src === 'sportscode' ? 'Sportscode' : 'アプリ',
         shot, shot && (k === 'goal' || k === 'conc' || e.result === 'in') ? 1 : '', k === 'goal' ? '得点' : k === 'conc' ? '失点' : '',
       ]);

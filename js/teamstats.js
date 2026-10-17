@@ -253,7 +253,7 @@ export function noGkWindows(M) {
   }
   return out;
 }
-// 退場の時間帯：自チーム＝MATCH PLAYの退場で空席の区間（4対5）、相手＝相手の退場の記録（5対4）
+// 退場の時間帯：自チーム＝MATCH PLAYの退場で空席の区間（3×4）、相手＝相手の退場の記録（4×3）
 export function ejWindows(M, events = null) {
   const own = {};
   for (const p of M.periods) own[p.key] = p.status === 'none' ? [] : mergeIv((M.empties || []).filter((x) => x.period === p.key).map((x) => [Math.max(0, x.from), Math.min(p.elapsed, x.to ?? p.elapsed)]));
@@ -279,7 +279,7 @@ export function ppWindows(M, events = null) {
 }
 // mode → ピリオドごとの数える区間。重ならないように分ける（退場を先に、次に自チームの5×4、相手の5×4）：
 //  all（すべて＝null）/ ex（数的同数だけ＝5×4・4×5・両チームの退場を除く）/ pp（5×4・4×5）/ own（自チームの5×4）/ opp（相手の5×4）
-//  / ejown（自チームの退場＝4対5）/ ejopp（相手の退場＝5対4）。ex＋own＋opp＋ejown＋ejopp＝試合全体
+//  / ejown（自チームの退場＝3×4）/ ejopp（相手の退場＝4×3）。ex＋own＋opp＋ejown＋ejopp＝試合全体
 export function windowsOf(M, W, mode) {
   if (mode === 'all') return null;
   const out = {};

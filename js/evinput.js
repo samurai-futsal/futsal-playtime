@@ -76,6 +76,8 @@ function setRole(m, v) {
 const roleWho = (m, i) => { const plan = (m.evSplit?.names || [])[i]; if (plan) return [plan]; return [...new Set(Object.values(m.evRoles || {}).filter((x) => x && x.role === i && Date.now() - (x.t || 0) < 12 * 3600e3).map((x) => x.name || '?'))]; };
 const roleName = (m, i) => { const w = roleWho(m, i); return `担当${i + 1}${w.length ? `（${esc(w.join('・'))}）` : ''}`; };
 const kindsOf = (sp, i) => ALLK.filter((k) => sp.assign[k] === i);
+// 担当のイベントの名前の一覧：相手の退場は、被ファールの担当が入れる（EV-07。分担の表と「どの担当ですか？」に出す）
+const kindsShown = (ks) => (ks.includes('fouled') ? [...ks, 'oej'] : ks);
 const kindLabel = (k) => KIND[k].label;
 
 // 分担を決める画面（イベント入力から開く）
@@ -84,7 +86,7 @@ export function vSplit(m) {
   const prev = D.matches.filter((x) => x.id !== m.id && !x.deleted && x.evSplit && (x.date || '') <= (m.date || '9999')).sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
   const cell = (k, i) => `<td class="${sp.assign[k] === i ? 'on' : ''}"><button class="spc" data-sk="${k}" data-si="${i}" aria-label="${kindLabel(k)}を担当${i + 1}に">${sp.assign[k] === i ? '✓' : ''}</button></td>`;
   const rowsOf = (ks, cls) => ks.map((k) => `<tr><td class="ev ${cls}">${kindLabel(k)}</td>${Array.from({ length: sp.n }, (_, i) => cell(k, i)).join('')}</tr>`).join('');
-  const cnt = (i) => kindsOf(sp, i).length;
+  const cnt = (i) => kindsShown(kindsOf(sp, i)).length;
   const html = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › <a href="#/m/${m.id}/events">イベント入力</a> › 入力担当の設定</div>
     <div class="row between"><h1 style="margin:0">入力担当の設定</h1><a class="btn pri" href="#/m/${m.id}/events">イベント入力へ ›</a></div>
     <p class="mu">何人で入力するかと、それぞれが入れるイベントを決めます。どのイベントも必ず1人だけが担当します（押した担当に移ります）。この試合のすべての端末に同じ分担が出て、試合中でも変えられます。</p>
@@ -92,11 +94,11 @@ export function vSplit(m) {
 </div>
     ${sp.n > 1 ? `<div class="spgrid"><div><div class="card"><h3>② それぞれが入れるイベント（押した担当に移ります）</h3>
       <table class="sptb"><tr><th style="text-align:left">イベント</th>${sp.names.map((nm, i) => `<th>担当${i + 1}<small>${esc(nm) || '&nbsp;'}</small><small>${cnt(i)}個</small></th>`).join('')}</tr>
-      ${rowsOf(MAIN_OWN, 'own')}<tr class="sep"><td colspan="${sp.n + 1}"></td></tr>${rowsOf(MAIN_OPP, 'opp')}<tr class="sep"><td colspan="${sp.n + 1}"></td></tr>${rowsOf(SUBS, 'sub')}</table></div>
+      ${rowsOf(MAIN_OWN, 'own')}<tr class="sep"><td colspan="${sp.n + 1}"></td></tr>${rowsOf(MAIN_OPP, 'opp')}<tr class="sep"><td colspan="${sp.n + 1}"></td></tr>${rowsOf(SUBS, 'sub')}<tr class="oejrow"><td class="ev sub">${kindLabel('oej')}<small>被ファールの担当</small></td>${Array.from({ length: sp.n }, (_, i) => `<td class="${sp.assign.fouled === i ? 'on' : ''}"><span class="spc fix">${sp.assign.fouled === i ? '✓' : ''}</span></td>`).join('')}</tr></table></div>
       <div class="card"><h3>③ 担当者を決める</h3><p class="mu">それぞれの担当を誰がするかを入れておくと、各端末で担当を選んだときに、その端末の担当者の名前も自動でその人になります（空けておくと、担当を選んだ端末の担当者の名前が出ます）。</p>
         <div class="spnames">${sp.names.map((nm, i) => `<label>担当${i + 1}<input id="spName${i}" data-sname="${i}" value="${esc(nm)}" placeholder="担当者名を入力"></label>`).join('')}</div></div></div>
       <div><div class="card sppre"><h3>よく使う分け方（押すと②が切りかわる）</h3>
-        ${PRESETS.map(([id, l]) => `<button data-sp="${id}"><b>${l}</b><small>${Array.from({ length: sp.n }, (_, i) => `担当${i + 1}＝${ALLK.filter((k) => presetAssign(id, sp.n)[k] === i).map(kindLabel).join('・')}`).join('　')}</small></button>`).join('')}
+        ${PRESETS.map(([id, l]) => `<button data-sp="${id}"><b>${l}</b><small>${Array.from({ length: sp.n }, (_, i) => `担当${i + 1}＝${kindsShown(ALLK.filter((k) => presetAssign(id, sp.n)[k] === i)).map(kindLabel).join('・')}`).join('　')}</small></button>`).join('')}
         <button data-sp="prev" ${prev ? '' : 'disabled'}><b>前の試合と同じ</b><small>${prev ? `vs ${esc(prev.opponent)}（${esc(prev.date || '')}）の分担をそのまま使う` : '分担を決めた前の試合がありません'}</small></button></div>
         <div class="card"><h3>各端末では</h3><p class="mu" style="margin:0">イベント入力を開くと「どの担当ですか？」と聞かれ、担当を押すだけ。その担当のイベントだけが大きく出ます（担当以外のイベントは出ません）。③で担当者を決めてあれば、その端末の担当者の名前も自動でその人になります。</p></div></div></div>`
     : '<div class="card"><p class="mu" style="margin:0">1人で全部のイベントを入力します。何人かで分ける時は、上で人数を選んでください。</p></div>'}`;
@@ -148,7 +150,7 @@ function lastMine(all) {
   return best;
 }
 // 何をどう変えたか（履歴の1行）
-const FL = { at: '時刻', kind: 'イベント', pid: '選手', pid2: '受け手', assist: 'アシスト', result: '結果', n: '進入人数', cls: '局面', sp: 'セットプレー', gtype: '種類', sz: 'SZ', zone: 'ゾーン', card: 'カード', fsp: '種類', method: '方法', og: 'OG', period: 'ピリオド', endPeriod: '終わりのピリオド', endAt: '5対4の終わり' };
+const FL = { at: '時刻', kind: 'イベント', pid: '選手', pid2: '受け手', assist: 'アシスト', result: '結果', n: '進入人数', cls: '局面', sp: 'セットプレー', gtype: '種類', sz: 'SZ', zone: 'ゾーン', card: 'カード', fsp: '種類', method: '方法', og: 'OG', period: 'ピリオド', endPeriod: '終わりのピリオド', endAt: '4×3の終わり' };
 function diffText(a, b, nm, periods) {
   const lists = { result: RESULTS, cls: CLS, sp: SETP, fsp: FSP, method: METHODS, zone: ZONES, card: [...CARDS_OPP] };
   const v = (k, x, e) => {
@@ -198,7 +200,7 @@ export function vEvents(m, { rt = false } = {}) {
   if (sp.n > 1 && role == null) {
     return { active: 'acts', html: `${crumbE}<h1>${title}：どの担当ですか？</h1>
       <p class="mu">この試合は ${sp.n}人で分けて入力します。この端末で入力する担当を押してください（あとから変えられます）。担当者：<b>${esc(whoLabel())}</b> <button class="btn xs" id="evWho">変える</button></p>
-      <div class="rolepick">${Array.from({ length: sp.n }, (_, i) => `<button class="card" data-role="${i}"><b>${roleName(m, i)}</b><span>${kindsOf(sp, i).map(kindLabel).join('・')}</span></button>`).join('')}</div>
+      <div class="rolepick">${Array.from({ length: sp.n }, (_, i) => `<button class="card" data-role="${i}"><b>${roleName(m, i)}</b><span>${kindsShown(kindsOf(sp, i)).map(kindLabel).join('・')}</span></button>`).join('')}</div>
       <p><a class="btn" href="#/m/${m.id}/split">入力担当の設定</a></p>`,
       bind: (root) => { root.querySelectorAll('[data-role]').forEach((b) => { b.onclick = () => {
         const i = +b.dataset.role; const plan = (m.evSplit?.names || [])[i];
@@ -253,7 +255,7 @@ export function vEvents(m, { rt = false } = {}) {
         <div class="evkp">${keypadHTML({ steps: [-1, 1], id: 'evkp' })}</div></div></div></div>`;
   // 分担しているときは担当のイベントだけを出す（担当以外は入れない＝しっかり分業。見逃しは試合後に「1人（全部）」で直す）
   const showAll = sp.n <= 1;
-  // 相手の退場（5対4）：1人のときはサブイベントの横、分担しているときは被ファールの担当が入れる
+  // 相手の退場（4×3）：1人のときはサブイベントの横、分担しているときは被ファールの担当が入れる
   const mineRow = sp.n > 1 ? `<div class="mainev bigrow">${mine.map(evBtn).join('')}${mine.includes('fouled') ? evBtn('oej') : ''}</div>` : '';
   const step2 = `<div class="step"><span class="num">2</span><div>
       <div class="st">イベント<small>${sp.n > 1 ? `${roleName(m, role)}が入力するイベント` : 'メインイベント：上が自チーム、下が相手チーム'}</small></div>${mineRow}${showAll ? `
@@ -274,7 +276,7 @@ export function vEvents(m, { rt = false } = {}) {
     active: 'acts',
     html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › ${title}</div>
       <div class="row between"><h1 style="margin:0">${title}</h1><span class="mu">記録した時点で試合の記録になり、マッチレビューにすぐ反映されます</span></div>
-      <div class="evrole"><span class="rl">入力の担当人数</span><b>${sp.n}人</b>${sp.n > 1 ? `<span class="rl">この端末</span><b>${roleName(m, role)}</b><span class="mu">${mine.map(kindLabel).join('・')}</span><button class="btn sm" id="evRoleChange">担当を変える</button>` : '<span class="mu">（1人で全部のイベントを入力）</span>'}
+      <div class="evrole"><span class="rl">入力の担当人数</span><b>${sp.n}人</b>${sp.n > 1 ? `<span class="rl">この端末</span><b>${roleName(m, role)}</b><span class="mu">${kindsShown(mine).map(kindLabel).join('・')}</span><button class="btn sm" id="evRoleChange">担当を変える</button>` : '<span class="mu">（1人で全部のイベントを入力）</span>'}
         <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><button class="dev" id="evWho">担当者：<b>${esc(whoLabel())}</b> <span>変える</span></button></div>
       <div class="evw mt">${list}${form}</div>`,
     bind: (root) => bindEv(root, ctx),
@@ -325,12 +327,12 @@ function dynHTML(ctx) {
     const bad = endOk && (pi(f.endPeriod) < pi(ui.period) || (f.endPeriod === ui.period && f.endAt <= ev.at));
     const editEnd = ui.oejStep === 'end';
     const endPers = ps.filter((p) => pi(p.key) >= pi(ui.period));
-    html += step(3, '5対4の時間帯（相手の退場）', `<div class="oejsw"><button class="btn ${editEnd ? '' : 'pri'}" data-oejstep="start">退場の時刻<b>${lab(ui.period, ev.at)}</b></button><span>〜</span><button class="btn ${editEnd ? 'pri' : ''}" data-oejstep="end">5対4の終わり<b>${endOk ? lab(f.endPeriod, f.endAt) : '—'}</b></button></div>
+    html += step(3, '4×3の時間帯（相手の退場）', `<div class="oejsw"><button class="btn ${editEnd ? '' : 'pri'}" data-oejstep="start">退場の時刻<b>${lab(ui.period, ev.at)}</b></button><span>〜</span><button class="btn ${editEnd ? 'pri' : ''}" data-oejstep="end">4×3の終わり<b>${endOk ? lab(f.endPeriod, f.endAt) : '—'}</b></button></div>
       <div class="hint">押した方の時刻を、上の数字のボタンで入れます（映像のスコアボードの残り時間）。${editEnd ? '' : '退場の時刻は、①の時刻です。'}</div>
       ${editEnd ? `<div class="ch oejper">${endPers.map((p) => `<button class="btn ${p.key === f.endPeriod ? 'on' : ''}" data-endper="${p.key}">${p.label}</button>`).join('')}</div>` : ''}
       <div class="hint">初めの終わりは、退場からプレーイングタイムで2:00後（次のピリオドにまたがることもあります）。その前にこちらが得点したときは、その得点の時刻です。${ui.endTouched ? ' <button class="btn sm" data-oejauto>初めの終わりに戻す</button>' : '（いまは初めの終わり）'}</div>
-      ${bad ? '<div class="evwarn">⚠ 5対4の終わりが、退場の時刻より前になっています</div>' : ''}
-      <div class="hint">相手の選手は記録しません。分析で「5対4（相手の退場）」の時間帯に使います。</div>`);
+      ${bad ? '<div class="evwarn">⚠ 4×3の終わりが、退場の時刻より前になっています</div>' : ''}
+      <div class="hint">相手の選手は記録しません。分析で「相手の退場（4×3）」の時間帯に使います。</div>`);
     return html;
   }
   if (isShot(k)) {
@@ -408,18 +410,18 @@ function bindEv(root, ctx) {
   const { m, cfg, per } = ctx;
   const lenSec = Math.round(per.len / 1000);
   const dyn = () => { root.querySelector('#evDyn').innerHTML = dynHTML(ctx); };
-  // 相手の退場の「5対4の終わり」を入れているときは、同じ数字のボタンで終わりの時刻を入れる
+  // 相手の退場の「4×3の終わり」を入れているときは、同じ数字のボタンで終わりの時刻を入れる
   const endP = ui.kind === 'oej' && ui.oejStep === 'end' ? ctx.M.periods.find((p) => p.key === ui.f.endPeriod) : null;
   const kp = endP ? bindKeypad(root.querySelector('.evkp'), {
     init: Math.max(0, Math.round((endP.len - (ui.f.endAt ?? endP.len)) / 1000)), min: 0, max: Math.round(endP.len / 1000),
-    onChange: (v) => { if (v.ok) { const at = endP.len - v.sec * 1000; if (at !== ui.f.endAt) { ui.f.endAt = at; ui.endTouched = true; dyn(); kp && kp.note(`5対4の終わり：${endP.label}（経過 ${mmss(Math.round(at / 1000))}）`); } } },
+    onChange: (v) => { if (v.ok) { const at = endP.len - v.sec * 1000; if (at !== ui.f.endAt) { ui.f.endAt = at; ui.endTouched = true; dyn(); kp && kp.note(`4×3の終わり：${endP.label}（経過 ${mmss(Math.round(at / 1000))}）`); } } },
     onEnter: () => save(ctx),
   }) : bindKeypad(root.querySelector('.evkp'), {
     init: Math.max(0, Math.min(ui.sec, lenSec)), min: 0, max: lenSec,
     onChange: (v) => { if (v.ok && v.sec !== ui.sec) { ui.sec = v.sec; applyAuto(ctx); dyn(); } else if (!v.ok) { ui.sec = v.sec ?? -1; dyn(); } },
     onEnter: () => { if (ui.kind) save(ctx); },
   });
-  if (endP) kp.note(`5対4の終わり：${endP.label}（経過 ${mmss(Math.round((ui.f.endAt ?? 0) / 1000))}）`);
+  if (endP) kp.note(`4×3の終わり：${endP.label}（経過 ${mmss(Math.round((ui.f.endAt ?? 0) / 1000))}）`);
   else kp.note(`${per.label}（経過 ${mmss(Math.max(0, lenSec - ui.sec))}）`);
   root.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b || b.disabled) return;
@@ -507,7 +509,7 @@ async function save(ctx) {
   if (ev.kind === 'oej') {
     const pi = (k) => M.periods.findIndex((p) => p.key === k);
     if (ev.endPeriod == null || ev.endAt == null) Object.assign(ev, oejDefaultEnd(M, ctx.events.filter((e) => e.id !== ui.edit), ev.period, ev.at));
-    if (pi(ev.endPeriod) < pi(ev.period) || (ev.endPeriod === ev.period && ev.endAt <= ev.at)) return toast('5対4の終わりが、退場の時刻より前になっています');
+    if (pi(ev.endPeriod) < pi(ev.period) || (ev.endPeriod === ev.period && ev.endAt <= ev.at)) return toast('4×3の終わりが、退場の時刻より前になっています');
   }
   if (old) {
     if (old.role != null) ev.role = old.role;
@@ -526,19 +528,19 @@ async function save(ctx) {
   toast(`${was ? '直しました' : '記録しました'}：${mmss(sec)} ${KIND[ev.kind].label}${saved.check ? '（要確認）' : ''}`);
   resetForm(); ui.listPer = ui.period;
   render();
-  // 被ファールでレッドかイエロー2枚目：相手の退場（5対4の時間帯）も作るか聞く（決8）
+  // 被ファールでレッドかイエロー2枚目：相手の退場（4×3の時間帯）も作るか聞く（決8）
   const red = (c) => c === 'red' || c === 'y2';
   if (ev.kind === 'fouled' && red(ev.card) && !(old && old.kind === 'fouled' && red(old.card))
     && !ctx.all.some((x) => !x.deleted && x.kind === 'oej' && x.period === ev.period && Math.abs(x.at - ev.at) <= 5000)) {
     const end = oejDefaultEnd(M, ctx.all.filter((x) => !x.deleted), ev.period, ev.at);
     const pl = (k, at) => { const p = M.periods.find((x) => x.key === k); return p ? `${p.label} 残り${mmss(Math.round((p.len - at) / 1000))}` : ''; };
-    const ok = await confirmBox({ title: '相手の退場（5対4の時間帯）も作りますか？', ok: '作る', cancel: '作らない',
-      body: `<p>相手の選手が退場したので、こちらが5対4になる時間帯を「相手の退場」として記録します。</p><p>退場：${esc(pl(ev.period, ev.at))}　〜　5対4の終わり：${esc(pl(end.endPeriod, end.endAt))}（2:00後。その前にこちらが得点したら、その時刻）</p><p class="mu">あとでイベント入力で直せます。</p>` });
+    const ok = await confirmBox({ title: '相手の退場（4×3の時間帯）も作りますか？', ok: '作る', cancel: '作らない',
+      body: `<p>相手の選手が退場したので、こちらが4×3になる時間帯を「相手の退場」として記録します。</p><p>退場：${esc(pl(ev.period, ev.at))}　〜　4×3の終わり：${esc(pl(end.endPeriod, end.endAt))}（2:00後。その前にこちらが得点したら、その時刻）</p><p class="mu">あとでイベント入力で直せます。</p>` });
     if (ok) {
       const oej = { kind: 'oej', period: ev.period, at: ev.at, side: ev.side, seq: Date.now(), ...end, check: false };
       if (ev.role != null) oej.role = ev.role;
       writeEv(m, oej, 'add', null);
-      toast('相手の退場（5対4の時間帯）も記録しました'); render();
+      toast('相手の退場（4×3の時間帯）も記録しました'); render();
     }
   }
 }

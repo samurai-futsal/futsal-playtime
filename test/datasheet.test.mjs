@@ -60,7 +60,7 @@ eq([0, 1000, 60000, 61000, 600000, 601000].map(minuteOf), [1, 1, 1, 2, 10, 11], 
   const sh2 = datasheetSheets([{ m: { id: 'm1', date: '2026-10-14', opponent: 'ペルー', members }, M: M2, evs: ev2, goalName: () => '定位置', players, activity: '大会', setMin: 60000 }], 'チーム');
   const er = sh2.find((s) => s.name === 'イベント一覧').rows; const hd = er[0].map((c) => c.v);
   const col = (n) => hd.indexOf(n); const row = (id) => er.find((r, i) => i && r[col('経過')].v === ({ 4: 1200000, 5: 120000, 6: 600000, 7: 700000 })[id] / 86400000);
-  eq([row(4)[col('5×4の時間帯')], row(5)[col('退場の時間帯')], row(7)[col('退場の時間帯')], row(6)[col('通算の分')]], ['相手5×4', '自チームの退場（4対5）', '相手の退場（5対4）', 10], 'event list: 5x4 at period end, ejection column, minute');
+  eq([row(4)[col('5×4の時間帯')], row(5)[col('退場の時間帯')], row(7)[col('退場の時間帯')], row(6)[col('通算の分')]], ['相手5×4', '自チームの退場（3×4）', '相手の退場（4×3）', 10], 'event list: 5x4 at period end, ejection column, minute');
   const info = sh2.find((s) => s.name === '試合情報').rows.flat().filter((c) => c && c.f).map((c) => c.f);
   eq([info.some((f) => f.includes(`$${er.length}`)), info.some((f) => f.includes('$5000'))], [true, false], 'COUNTIFS ranges end at the last event row');
   const sets = sh2.find((s) => s.name === 'セット').rows.slice(1);

@@ -577,7 +577,7 @@ function vMatch(r) {
     <h2 class="h">試合中</h2>
     <div class="grp">記録する</div>
     <div class="acts acts2">
-      ${btn('MATCH PLAY', 'ベンチの記録係が使う\n交代・時計・出場時間（1試合に1台）', `#/m/${m.id}/play`, { pri: nMem >= 5, kind: 'rec' })}
+      ${btn('MATCH PLAY', 'ベンチの記録係が使う\n交代・時計・出場時間（1試合に1台）', `#/m/${m.id}/play`, { pri: nMem >= 5 && m.status !== 'done', kind: 'rec' })}
       ${btn('リアルタイム入力', 'ベンチ外スタッフが使う\nPC・iPadでイベントを入力', `#/m/${m.id}/events/rt`, { kind: 'rec' })}
     </div>
     <div class="grp">見る（記録はしない）</div>
@@ -589,7 +589,7 @@ function vMatch(r) {
     <h2 class="h">試合後</h2>
     <div class="grp">入れる・直す</div>
     <div class="acts acts2">
-      ${btn('イベント入力', '映像を見ながら入力\n試合中に入れたものの確認も', `#/m/${m.id}/events`, { kind: 'rec' })}
+      ${btn('イベント入力', '映像を見ながら入力\n試合中に入れたものの確認も', `#/m/${m.id}/events`, { kind: 'rec', pri: st === '未入力あり' })}
       ${btn('記録の修正', '交代・スタメン・退場\nパワープレー・試合情報', `#/m/${m.id}/fix`, { kind: 'rec' })}
       ${btn('Sportscodeから取り込み', 'XML・CSVを読み込んで\nイベント入力に自動で記録', `#/m/${m.id}/scimport`, { kind: 'rec' })}
     </div>
@@ -606,7 +606,7 @@ function vMatch(r) {
       ${btn('データシート（Excel）', 'イベント一覧・選手スタッツ\n数式で集計', `#/m/${m.id}/datasheet`, { kind: 'out' })}
       ${btn('Sportscode（XML・CSV）', '出場の帯とイベント\nSportscode・Excel用', `#/m/${m.id}/sportscode`, { kind: 'out' })}
     </div>
-    <p class="mu actnote">左の色：青＝記録する（記録が変わる）／緑＝見るだけ／紫＝書き出す</p>`,
+    <p class="mu actnote">左の色：青＝記録する（記録が変わる）／緑＝見るだけ／茶＝書き出す</p>`,
   };
 }
 // 試合後に手で入れる数字：ポゼッション率（m.possession：自チームの%）とPK戦
@@ -840,7 +840,7 @@ function vSettings() {
       <div class="row"><input id="devNameIn" value="${esc((() => { try { return localStorage.getItem('fpt.deviceName') || ''; } catch { return ''; } })())}" placeholder="例：谷本"><button class="btn sm pri" id="btnDevName">保存</button></div></div>
     <div class="card"><h3>バックアップ</h3>
       <p class="mu">全チームの記録をファイルに書き出します。最後に書き出した日時：${lb ? new Date(lb).toLocaleString('ja-JP') : 'まだありません'}</p>
-      <div class="row"><button class="btn pri" id="btnBk">バックアップを書き出す</button><button class="btn" id="btnRestore">ファイルから戻す</button><input type="file" id="restoreFile" accept=".json,application/json" hidden></div></div>
+      <div class="row"><button class="btn pri xp" id="btnBk">バックアップを書き出す</button><button class="btn" id="btnRestore">ファイルから戻す</button><input type="file" id="restoreFile" accept=".json,application/json" hidden></div></div>
     <div class="card"><h3>アプリ</h3>
       <p>バージョン ${esc(ctx.appVersion)}　<button class="btn sm" id="btnUpd">更新を確認</button> <span id="updMsg" class="mu"></span></p>
       <p id="updForce" hidden><button class="btn pri" id="btnForce">最新にする</button> <span class="mu">アプリのファイルを入れ直して開き直します（試合の記録はそのまま残ります）</span></p>

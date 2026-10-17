@@ -64,6 +64,16 @@ export const DEFAULT_LEAD = { shot: 15, ent: 15, foul: 15, rl: 13, sp: 3 };
 export const LEAD_LABEL = { shot: 'シュート（被・SZ内も）', ent: 'ゾーン4・スコアゾーン進入（被も）', foul: 'ファール・被ファール（ファウル）', rl: 'リカバリー・ロスト（ROBO・PERDIDA）', sp: 'FINISH SET PLAY AT／DF（SETPLAY）' };
 const leadKey = (k) => (['shot', 'szshot', 'oshot', 'oszshot'].includes(k) ? 'shot' : ['z4', 'oz4', 'sz', 'osz'].includes(k) ? 'ent' : (k === 'rec' || k === 'lost') ? 'rl' : (k === 'fspat' || k === 'fspdf') ? 'sp' : 'foul');
 
+// ファイル名からピリオドを推測する（1P・1H・前半 → 前半、2P・2H・後半 → 後半、E1・延長前半、E2・延長後半）。分からなければ null（SCI-01）
+export function periodFromName(name) {
+  const n = String(name || '').replace(/\.[A-Za-z0-9]+$/, '').normalize('NFKC');
+  if (/延長前半|延長1|(?<![A-Za-z])(?:E|ET|OT)[-_ ]?1(?![0-9])/i.test(n)) return 'E1';
+  if (/延長後半|延長2|(?<![A-Za-z])(?:E|ET|OT)[-_ ]?2(?![0-9])/i.test(n)) return 'E2';
+  if (/前半|(?<![0-9])1(?:P|H|st)(?![A-Za-z0-9])/i.test(n)) return '1H';
+  if (/後半|(?<![0-9])2(?:P|H|nd)(?![A-Za-z0-9])/i.test(n)) return '2H';
+  return null;
+}
+
 // Kick Off の印（ピリオドの始まり）
 export const kickOffs = (inst) => inst.filter((i) => /^kick ?off$/i.test(i.code)).sort((a, b) => a.start - b.start);
 
