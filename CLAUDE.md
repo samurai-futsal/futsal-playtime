@@ -1,8 +1,8 @@
 # Project notes for Claude
 
 - Owner: 谷本俊介 (futsal coach). Always reply in Japanese, plain words, no jargon.
-- Spec (source of truth): Claude Docs project da78d761-6d3f-4a14-ae1d-539ab067cb99 (file e502923c-d42f),
-  「フットサル出場時間管理アプリ 仕様書」. Demo canvas: https://claude.ai/artifact/TdaVUfdqkXdrqRvAkRe1tC
+- Spec (source of truth, since 2026-10-17): Claude Docs 7fd57c7b-928f-4f1d-97f7-0973ac9bb4ff (tab body node 7ec5be4e-3584),
+  「フットサル出場時間管理アプリ 仕様書（最新版）」. The older spec da78d761-6d3f-4a14-ae1d-539ab067cb99 is kept as the history of decisions. Demo canvas: https://claude.ai/artifact/TdaVUfdqkXdrqRvAkRe1tC
 - Working style: propose first, change the spec/app only after the owner decides. Build in the order
   agreed: 接続確認 → ①準備画面 → ②MATCH PLAY+自動テスト → ③レビュー1-3+修正 → ④イベント入力 → ⑤分析 → ⑥書き出し → ⑦仕上げ.
 - Hosting: GitHub Pages from `main` / (root). No build step: plain HTML/CSS/ES modules.
