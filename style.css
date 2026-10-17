@@ -920,3 +920,4 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .rsmode:has(input:checked){border-color:var(--blue);background:var(--blue-l)}
 .note.info{background:var(--soft);border:1px solid var(--line);color:var(--ink)}
 #setupForm input:disabled{background:var(--soft);color:var(--mute)}
+.stpk{text-align:center;font-weight:800;font-size:15px;color:#0B2D6B;margin-top:2px}

@@ -4,7 +4,7 @@
 // the review and analysis use the saved correction instead of the MATCH PLAY record for that period.
 import { S as D, playerById, opts, put, teamPath, watchOps, watchFixLog, addFixLog, updFixLog, teamSettings, watchEvents } from './store.js';
 import { recheckEvents, ensureChecks } from './evinput.js';
-import { replay, periodLen, PERIODS, periodLabel } from './engine.js';
+import { replay, periodLen, perLen, PERIODS, periodLabel } from './engine.js';
 import { replayToFix, seatWalk, fixData, checkFix, periodSig, basisOk, newEvId, matchModel, whyNot, toRunning, playerTable } from './model.js';
 import { $, esc, openModal, closeModal, confirmBox, toast, optionTags } from './ui.js';
 import { keypadHTML, bindKeypad } from './keypad.js';
@@ -18,7 +18,7 @@ const key = (m) => `fpt.fix.${m.id}`;
 let ui = { tab: 'sub', period: null };
 
 // ---------- the record ----------
-function cfgOf(m) { return { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 }; }
+function cfgOf(m) { return { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 }; }
 function dropDraft(m) { try { localStorage.removeItem(key(m)); } catch {} } // 以前の版（保存ボタンがあった版）の下書きを片づける
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const INFO_KEYS = ['date', 'opponent', 'category', 'kickoff', 'venue', 'memo'];
@@ -31,7 +31,7 @@ function baseline(m, st, sig) {
     const saved = m.fix?.periods?.[p.key];
     if (saved && basisOk(sig, p.key, saved.basis)) periods[p.key] = { ...clone(saved), basis: sig[p.key] }; // 古い数え方のしるしは今の数え方に直す
     else periods[p.key] = { ...replayToFix(st, p.key), basis: sig[p.key] };
-    periods[p.key].len = periodLen(st.cfg, p.key);
+    periods[p.key].len = perLen(st, p.key);
   }
   const info = Object.fromEntries(INFO_KEYS.map((k) => [k, m[k] ?? '']));
   return { periods, info };
@@ -65,7 +65,7 @@ function clockNote(m, st, sig, k) {
   st.sig = sig;
   let c; try { const M = matchModel(st, Date.now(), m.fix); c = toRunning(M, st).clock?.[k]; } catch (e) { return ''; }
   if (!c?.changed) return '';
-  const len = periodLen(cfgOf(m), k); const rem = (el) => mmss(len - el);
+  const len = perLen(st, k); const rem = (el) => mmss(len - el);
   const lines = [...c.added.map((a) => `<li>残り ${rem(a.el0)}〜${rem(a.el1)}（${mmss(a.t1 - a.t0)}）：実際には <b>${hms(a.t0)}〜${hms(a.t1)}</b> に時計が動いていたとしました</li>`),
     ...c.removed.map((a) => `<li>記録では ${hms(a.t0)}〜${hms(a.t1)} に時計が動いていましたが、この間は<b>止まっていた</b>としました</li>`)];
   return `<div class="fxinfo"><b>時計の記録も、交代の修正に合わせて直しています（${periodLabel(k)}）</b><ul>${lines.join('')}</ul><small>交代を押した実際の時刻は正しいとして、時計が動いた・止まった時刻の方を直しています。ランニングタイム・Sportscode の帯・フィジカルコーチの数字は、直した時計で数えます。間に交代がないので、時計を足す・削る位置で誰の時間も変わりません。</small></div>`;
@@ -172,7 +172,7 @@ function tabLineup(m, d, k, fp, cfg) {
   const ms = memberList(cfg); const banned = bannedBefore(d, k);
   const why = (i) => (x) => { const f2 = clone(fp); f2.lineup[i] = x; return whyNot(f2, cfg, x, i, null, banned); };
   return `<div class="card"><h2 class="h" style="margin-top:0">${periodLabel(k)}のスタメン（各場所の最初の選手）</h2>
-    <div class="fxlu">${fp.lineup.map((pid, i) => `<label>場所${i + 1}</label><select data-lu="${i}">${pickOpts(cfg, ms, pid, why(i))}</select>`).join('')}</div>
+    <div class="fxlu">${fp.lineup.map((pid, i) => (pid == null && fp.startEmpty?.[i] ? `<label>場所${i + 1}</label><span class="mu">空席（前のピリオドの退場：${esc(plain(cfg, fp.startEmpty[i]))}）</span>` : `<label>場所${i + 1}</label><select data-lu="${i}">${pickOpts(cfg, ms, pid, why(i))}</select>`)).join('')}</div>
     <p class="mu">変えると、その場所の最初の交代まで、選んだ選手が出場していたことになります。</p></div>`;
 }
 

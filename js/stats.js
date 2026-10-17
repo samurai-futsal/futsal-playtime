@@ -35,7 +35,7 @@ function calc(m, range0) {
   let range = range0;
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
   if (!opsC.ready && !opsC.list.length) return null;
-  const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 };
+  const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
   const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
   const M = matchModel(st, Date.now(), m.fix);
   const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
@@ -53,7 +53,7 @@ function calc(m, range0) {
   const rangeLabel = range === 'all' ? '試合全体' : periodLabel(range);
 
   const act = activityById(m.activityId);
-  const sheet = sheetHTML({ R, M, keys, own, opp, game: [act?.name, m.category].filter(Boolean).join(' '), place: m.venue || '', day: (m.date || '').replace(/-/g, '/'), possession: m.possession });
+  const sheet = sheetHTML({ R, M, keys, own, opp, game: [act?.name, m.category].filter(Boolean).join(' '), place: m.venue || '', day: (m.date || '').replace(/-/g, '/'), possession: m.possession, pk: m.pk });
   const foot = `<div class="stft">${esc(own)} vs ${esc(opp)}　${esc(fmtDate(m.date))}　${rangeLabel}・${asOf}。MATCH PLAYとイベント入力の記録から作成${M.fixed.length ? '（記録の修正を反映）' : ''}。グレーの「—」＝記録がない項目、「未入力 n」＝その数だけ項目が入っていないもの（内訳に数えていない）。時間帯は試合の時計（プレーイングタイム）</div>`;
   return { M, R, evs, todo, asOf, hm, shownP, sheet, foot, range };
 }
@@ -83,7 +83,7 @@ export function vStats(m) {
 }
 
 // シート（上段・下段）。R = teamStats の結果
-export function sheetHTML({ R, M, keys, own, opp, game, place, day, possession }) {
+export function sheetHTML({ R, M, keys, own, opp, game, place, day, possession, pk = null }) {
   const { A, B } = R; const has = R.hasEvents;
   const v = (x) => (has ? x : null);
   // スコアの行：選んだ範囲（試合全体／前半／後半）のピリオドだけ。まだ行っていないピリオドは空欄
@@ -92,7 +92,7 @@ export function sheetHTML({ R, M, keys, own, opp, game, place, day, possession }
   const sc = (p, side) => (!has ? '<span class="na">—</span>' : p.status === 'none' ? '' : R.score[side][p.key] ?? 0);
   const scTot = (side) => (has ? (keys ? R.rangeScore[side] : Object.values(R.score[side]).reduce((a, b) => a + b, 0)) : '<span class="na">—</span>');
   const scRows = ps.map((p, i) => `<tr>${i === 0 ? `<td class="sttm" rowspan="${ps.length}">${esc(own)}</td><td class="stbig" rowspan="${ps.length}">${scTot('own')}</td>` : ''}<td class="stp">${sc(p, 'own')}</td><td class="stp">${p.label}</td><td class="stp">${sc(p, 'opp')}</td>${i === 0 ? `<td class="stbig" rowspan="${ps.length}">${scTot('opp')}</td><td class="sttm" rowspan="${ps.length}">${esc(opp)}</td>` : ''}</tr>`).join('');
-  const scT = `<table class="stsc">${scRows}</table>`;
+  const scT = `<table class="stsc">${scRows}</table>${pk && !keys ? `<div class="stpk">PK ${pk.own ?? 0}−${pk.opp ?? 0}</div>` : ''}`;
   const pos = `<table class="stpos"><tr><td></td><td class="py">ポゼッション率</td><td></td></tr><tr><td>${possession != null ? possession + '%' : '<span class="na">—</span>'}</td><td class="pl">${possession != null ? '' : '（記録なし）'}</td><td>${possession != null ? (100 - possession) + '%' : '<span class="na">—</span>'}</td></tr></table>`;
   const max = Math.max(1, A.shots, B.shots, A.z4, B.z4, A.fsp, B.fsp);
   const W = (x) => Math.round(x / max * 118);

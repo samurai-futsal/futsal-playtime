@@ -55,7 +55,7 @@ export const liveSkipped = () => skippedLive;
 function oneMatch(m, per) {
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
   if (!opsC.ready && !opsC.list.length) return null;
-  const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 };
+  const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
   const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
   const M = matchModel(st, Date.now(), m.fix);
   const keys = per === 'all' ? null : M.periods.some((p) => p.key === per && p.status !== 'none') ? [per] : [];
@@ -346,7 +346,7 @@ function oneCtx(x) {
   const badgeF = (pid) => `<span class="no ${mem(pid).pos === 'GK' ? 'gk' : 'fp'}">${esc(mem(pid).no ?? '')}</span>`;
   const gkLast = (list) => [...list.filter((p) => mem(p).pos !== 'GK'), ...list.filter((p) => mem(p).pos === 'GK')];
   const R = teamStats(x.M, x.evs, x.gn);
-  return { M0: x.M, order: entryOrder(x.M), byNo: Object.keys(x.m.members || {}), mem, last, badge: badgeF, gkLast, evs: x.evs, goalName: x.gn, R, T0: playerTable(x.M), own: S.team?.name || '自チーム', opp: x.m.opponent || '相手' };
+  return { M0: x.M, order: entryOrder(x.M), byNo: Object.keys(x.m.members || {}), mem, last, badge: badgeF, gkLast, evs: x.evs, goalName: x.gn, R, T0: playerTable(x.M), own: S.team?.name || '自チーム', opp: x.m.opponent || '相手', pk: x.m.pk || null };
 }
 
 // ---------- 出場時間：タイムライン ----------

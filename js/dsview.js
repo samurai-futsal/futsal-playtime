@@ -12,7 +12,7 @@ export function downloadDatasheet(ms) {
   for (const m of ms.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.kickoff || '').localeCompare(b.kickoff || ''))) {
     const opsC = watchOps(m.id); const evC = watchEvents(m.id);
     if ((!opsC.ready && !opsC.list.length) || !evC.ready) { toast('記録を読み込んでいます。少し待ってからもう一度押してください'); ms.forEach((x) => { watchOps(x.id); watchEvents(x.id); }); return false; }
-    const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 };
+    const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
     const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
     const gts = opts('goalTypes', true);
     list.push({ m, M: matchModel(st, Date.now(), m.fix), st, evs: evC.list.filter((e) => !e.deleted), goalName: (id) => gts.find((o) => o.id === id)?.name || '', players: S.players, activity: activityById(m.activityId)?.name || '', setMin: (teamSettings().setMin ?? 60) * 1000 });

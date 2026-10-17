@@ -1,7 +1,7 @@
 // マッチレビューのイベントを使う項目（5 マッチ・ペース、7 スコアとチームスタッツ、8 スタッツまとめ）と、
 // 出場タイムラインの得点・失点の線（spec 7章、2026-10-16 決定）。時間はいつもプレーイングタイム（経過時間）。
 import { esc } from './ui.js';
-import { OPP_OG, NO_ASSIST, UNKNOWN, isOG } from './events.js';
+import { OPP_OG, NO_ASSIST, UNKNOWN, isOG, isOGType } from './events.js';
 import { teamStats, playerStats } from './teamstats.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -27,7 +27,7 @@ export function stagger(items, w) {
 // 下段に並べられる行（分析画面で選べる。マッチレビューは shot・ent・fsp の3段）。数える条件は (e, goalName)。
 // シュートはチームスタッツと同じ：得点・失点を含み、OG（相手OG・自チームのOG）は両チームとも数えない
 export const PACE_ROWS = {
-  shot: ['シュート', '（SZ内・得点を含む）', (e) => ['shot', 'szshot'].includes(e.kind) || (e.kind === 'goal' && e.pid !== OPP_OG), (e, gn) => ['oshot', 'oszshot'].includes(e.kind) || (e.kind === 'conc' && !isOG(gn ? gn(e.gtype) : '')), 'own', 'opp'],
+  shot: ['シュート', '（SZ内・得点を含む）', (e) => ['shot', 'szshot'].includes(e.kind) || (e.kind === 'goal' && e.pid !== OPP_OG), (e, gn) => ['oshot', 'oszshot'].includes(e.kind) || (e.kind === 'conc' && !isOGType(e.gtype, gn)), 'own', 'opp'],
   ent: ['Z4・SZ進入', '（合計）', (e) => e.kind === 'z4' || e.kind === 'sz', (e) => e.kind === 'oz4' || e.kind === 'osz', 'own', 'opp'],
   fsp: ['FINISH SET PLAY', '（AT／DF）', (e) => e.kind === 'fspat', (e) => e.kind === 'fspdf', 'own', 'opp'],
   rl: ['リカバリー／ロスト', '（自チーム）', (e) => e.kind === 'rec', (e) => e.kind === 'lost', 'リカバリー', 'ロスト'],
@@ -135,7 +135,7 @@ export function teamSection(c, o = {}) {
   const { R, badge, last, own, opp, goalName, M0 } = c;
   const { A, B } = R;
   const tot = (side) => Object.values(R.score[side]).reduce((a, b) => a + b, 0);
-  const per = M0.periods.filter((p) => p.status !== 'none').map((p) => `${p.label} ${R.score.own[p.key]}−${R.score.opp[p.key]}`).join('　');
+  const per = M0.periods.filter((p) => p.status !== 'none').map((p) => `${p.label} ${R.score.own[p.key]}−${R.score.opp[p.key]}`).join('　') + (c.pk ? `　PK ${c.pk.own ?? 0}−${c.pk.opp ?? 0}` : '');
   let so = 0, sp = 0;
   const P = (pid) => (pid === OPP_OG ? '相手OG' : pid === UNKNOWN ? '不明' : pid ? `${badge(pid)}${esc(last(pid))}` : '<span class="na">—</span>');
   const flow = R.goals.map(({ e, own: o }) => {

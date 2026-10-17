@@ -17,6 +17,6 @@
 - MATCH PLAY: js/engine.js is a pure replay of an append-only op log (teams/{t}/matches/{m}/ops).
   Undo/reset are new ops. Tests: `node test/scenarios.test.mjs` (spec cases) and
   `node test/engine.test.mjs [seed] [runs]` (random-operation invariants, spec 10章) and
-  `node test/events.test.mjs` (event rules) and `node test/running.test.mjs` (running time) and `node test/analysis.test.mjs` (analysis) and `node test/scimport.test.mjs` (Sportscode import) and `node test/datasheet.test.mjs` (Excel data sheet). Run all before pushing.
+  `node test/events.test.mjs` (event rules) and `node test/running.test.mjs` (running time) and `node test/analysis.test.mjs` (analysis) and `node test/scimport.test.mjs` (Sportscode import) and `node test/datasheet.test.mjs` (Excel data sheet) and `node test/setplay.test.mjs` (set-play timer, random) and `node test/restore.test.mjs` (backup restore plan) and `node test/release.test.mjs` (version + offline file lists). Run all before pushing.
 - UI testing in the workspace: serve the repo with `python3 -m http.server` and drive it with Playwright,
   routing the three gstatic Firebase URLs to in-memory fakes (Firebase itself is unreachable from here).

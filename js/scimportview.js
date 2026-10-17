@@ -21,7 +21,7 @@ export function vScImport(m) {
   if (st8.m !== m.id) st8 = { m: m.id, file: null, text: null, parsed: null, assign: [], shift: {} };
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
   if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
-  const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 };
+  const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
   const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
   const M = matchModel(st, Date.now(), m.fix); const R = toRunning(M, st);
   const started = M.periods.filter((p) => st.periods[p.key]?.kickT != null);

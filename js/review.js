@@ -2,12 +2,13 @@
 // 5〜8 はイベントが必要（今あるのは 6 セットごとのシュート…。マッチ・ペース・スコア・スタッツは後の工程）。
 // 番号は1〜8で固定（出ていない項目は飛ぶ。上部に理由を書く）。ランニングタイムの切り替えは 1〜4 に効く。
 import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvents, opts, activityById } from './store.js';
-import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
+import { replay, periodLabel, periodLen, perLen, nowElapsed } from './engine.js';
 import { matchModel, toRunning, playerTable, playedTime, periodSig, entryOrder } from './model.js';
 import { ppWindows, setSplit, setCountTable, asOfLabel } from './teamstats.js';
 import { esc, fmtShort, fmtDate, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge } from './review58.js';
+import { ensureChecks } from './evinput.js';
 
 const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -28,10 +29,11 @@ export function stopReviewTick() { clearInterval(tick); tick = null; }
 export function vReview(m) {
   const opsC = watchOps(m.id);
   if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
-  const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 };
+  const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
   const st = replay(opsC.list, cfg);
   st.sig = periodSig(opsC.list);
   const M0 = matchModel(st, Date.now(), m.fix);
+  ensureChecks(m, M0, watchEvents(m.id), { quiet: true }); // ⚠要確認を、今の交代の記録で確かめ直す（変わったときだけ）
   const evs = watchEvents(m.id).list.filter((e) => !e.deleted);
   const runMode = isRun();
   const M = runMode ? toRunning(M0, st, Date.now()) : M0;
@@ -53,7 +55,7 @@ export function vReview(m) {
   // イベントを使う項目（5〜8）と得点・失点の線（2026-10-16 決定）
   const goalName = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
   const R = teamStats(M0, evs, goalName);
-  const C = { M0, order, byNo, mem, last, badge, gkLast, evs, goalName, R, T0: playerTable(M0), own: S.team?.name || '自チーム', opp: m.opponent || '相手' };
+  const C = { M0, order, byNo, mem, last, badge, gkLast, evs, goalName, R, T0: playerTable(M0), own: S.team?.name || '自チーム', opp: m.opponent || '相手', pk: m.pk || null };
   const marks = evs.length ? goalMarks(R, C) : [];
   const half = (k) => `${R.score.own[k] ?? 0}−${R.score.opp[k] ?? 0}`;
 
@@ -62,7 +64,7 @@ export function vReview(m) {
   let state;
   if (st.matchOver) state = `<span class="rvst done">試合終了</span>${evs.length ? scoreBadge(C, R) + `<span class="rvclk">（前半 ${half('1H')}）</span>` : ''}`;
   else if (M.live) {
-    const len = periodLen(cfg, st.current);
+    const len = perLen(st, st.current);
     state = `<span class="rvst ${running ? 'run' : ''}">${running ? '試合進行中' : '停止中'}</span><span class="rvclk">${periodLabel(st.current)}　残り <b>${mmssUp(len - nowElapsed(st))}</b></span>${evs.length ? scoreBadge(C, R) : ''}`;
   } else if (st.askExtra) state = `<span class="rvst half">後半終了</span>${evs.length ? scoreBadge(C, R) : ''}`;
   else if (pDone('1H') && !pDone('2H')) state = `<span class="rvst half">ハーフタイム</span><span class="rvclk">前半終了</span>${evs.length ? scoreBadge(C, R) : ''}`;

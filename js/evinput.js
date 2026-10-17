@@ -21,7 +21,7 @@ let todoFor = null;
 export function openTodo(matchId) { todoFor = matchId; if (ui.m === matchId) ui.todo = true; }
 const FIELDS = EV_FIELDS;
 
-function cfgOf(m) { return { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 }; }
+function cfgOf(m) { return { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 }; }
 const goalTypes = () => opts('goalTypes', true);
 const goalName = (id) => goalTypes().find((o) => o.id === id)?.name || '';
 const ogId = () => goalTypeIdOf(goalTypes(), 'OG'); // 名前を変えても id で見分ける（記15）

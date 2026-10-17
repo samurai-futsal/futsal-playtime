@@ -937,7 +937,7 @@ export function liveOnThisDevice() {
     const mine = [...c.list].sort((a, b) => (a.t || 0) - (b.t || 0)).filter((o) => o.dev === me);
     if (!mine.length) continue;
     try {
-      const st = replay(c.list, { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 });
+      const st = replay(c.list, { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 });
       if (st.periods[st.current]?.status === 'live') return m;
     } catch {}
   }

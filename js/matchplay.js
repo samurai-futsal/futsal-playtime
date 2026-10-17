@@ -5,7 +5,7 @@ import {
   playerMatchTime, playerCounts, setplayLeft, setplayOn, carryOf, describeOp, ejectLeft, ejectCarryIn,
 } from './engine.js';
 import { $, $$, esc, openModal, closeModal, confirmBox, confirmTwice, toast } from './ui.js';
-import { render } from './views.js';
+import { render, promptBackup } from './views.js';
 import { keypadHTML, bindKeypad } from './keypad.js';
 
 let tick = null, heartbeat = null, mountedId = null, ejectMode = false, autoStopFor = null, lastPpAuto = 0;
@@ -231,7 +231,7 @@ function afterOp(m, cfg, before) {
   return after;
 }
 // 試合の記録が終わった（最後のピリオドの終了、または延長戦を「行わない」）。ここで試合が終わったことが確定する
-function onMatchFinished(m) {} // eslint-disable-line no-unused-vars
+function onMatchFinished(m) { setTimeout(() => promptBackup('end:' + m.id), 800); } // 試合が終わったらバックアップを促す（未2）
 
 function otherDevice(m) {
   const lv = m.live; if (!lv || lv.dev === deviceId()) return null;

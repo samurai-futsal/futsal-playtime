@@ -4,7 +4,7 @@
 // 選手の行（#背番号）：時計が動いていた区間ごとに、ピッチにいた選手1人1本（時計が止まっている間は帯を切る）。
 // GKをFPと入れ替えてGKがいない区間（特殊局面）は帯を分けて「局面＝特殊局面」のラベルを付ける（spec 9章）。
 // イベントの行：今使っているコードウィンドウと同じコード名・色・ラベル（ゾーン4進入、シュート、SETPLAY AT、ROBO など）。
-import { OPP_OG, UNKNOWN, isOG } from './events.js';
+import { OPP_OG, UNKNOWN, isOG, isOGType, clsOfGoalTypeId } from './events.js';
 import { ppWindows, noGkWindows, winTest } from './teamstats.js';
 
 const xesc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -75,12 +75,12 @@ export function buildXML(o) {
       let code = null, lk = 'shot';
       if (k === 'shot' || k === 'szshot' || k === 'oshot' || k === 'oszshot' || k === 'goal' || k === 'conc') {
         const sz = k === 'szshot' || k === 'oszshot' || ((k === 'goal' || k === 'conc') && e.sz === 'in');
-        const og = (k === 'goal' && e.pid === OPP_OG) || (k === 'conc' && isOG(gn(e.gtype)));
+        const og = (k === 'goal' && e.pid === OPP_OG) || (k === 'conc' && isOGType(e.gtype, gn));
         const mine = k === 'shot' || k === 'szshot' || k === 'goal';
         code = mine ? (sz ? 'スコアゾーン内シュート' : 'シュート') : (sz ? 'スコアゾーン内被シュート' : '被シュート');
         add('シュート分類', og ? 'オウンゴール' : (k === 'goal' || k === 'conc') ? 'ゴール' : RES_TXT[e.result]);
         if (!og) add('スコアゾーン進入人数', e.n);
-        let cls = e.cls; if (!cls && (k === 'goal' || k === 'conc')) cls = clsOf(gn(e.gtype));
+        let cls = e.cls; if (!cls && (k === 'goal' || k === 'conc')) cls = clsOfGoalTypeId(e.gtype, gn);
         add('局面', cls ? CLS_TXT[cls] + (mine ? '攻撃' : '守備') : null);
         if (mine && !og) add('選手', P(e.pid));
         if (e.sp) add('セットプレー分類', SP_TXT[e.sp] + (mine ? '' : ' DF'));

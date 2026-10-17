@@ -1,7 +1,7 @@
 // データシート（Excel）⑥-3（spec 9章「書き出し」）。画面を作らない純粋な処理で、シートの中身を組み立てる。
 // イベント一覧は1行1件。試合情報・選手スタッツ・1分ごとはイベント一覧から数式（COUNTIFS）で集計するので、行を直すと計算し直される。
 // 出場時間・出場記録・セットはアプリで集計した値。複数の試合を選んだときは「試合」の列で全試合を1つのシートにまとめる。
-import { KIND, RESULTS, CLS, SETP, FSP, METHODS, CARD_LABEL, OPP_OG, UNKNOWN, NO_ASSIST, isOG, isSZ, pitchAt, missingLv, cardsOf, sortEvents } from './events.js';
+import { KIND, RESULTS, CLS, SETP, FSP, METHODS, CARD_LABEL, OPP_OG, UNKNOWN, NO_ASSIST, isOG, isOGType, oejDefaultEnd, isSZ, pitchAt, missingLv, cardsOf, sortEvents } from './events.js';
 import { playerTable } from './model.js';
 import { ppWindows, windowsOf, winTest, setSplit } from './teamstats.js';
 import { S as ST, colName } from './xlsx.js';
@@ -40,6 +40,7 @@ export function playerLabels(pids, players, noOf) {
 }
 
 // ms = [{ m, M, st, evs, goalName, players, setMin }]（試合の古い順）。teamName：自チームの名前
+const mmssR = (ms) => { const t = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 export function datasheetSheets(ms, teamName) {
   const multi = ms.length > 1;
   const titles = matchTitles(ms.map((x) => x.m));
@@ -67,12 +68,14 @@ export function datasheetSheets(ms, teamName) {
     const W = ppWindows(M, evs); const cards = cardsOf(evs, order);
     const inOwn = winTest(W.own, M), inOpp = winTest(W.opp, M), inEjO = winTest(W.ejOwn, M), inEjP = winTest(W.ejOpp, M);
     const isGK = (pid) => m.members?.[pid]?.pos === 'GK';
+    // 相手の退場：5対4の終わり（ピリオドと残り時間）
+    const oejEnd = (e) => { const d = e.endPeriod != null && e.endAt != null ? e : oejDefaultEnd(M, evs, e.period, e.at); const q = M.periods.find((x) => x.key === d.endPeriod); return q ? `5対4の終わり：${q.label} 残り${mmssR(q.len - d.endAt)}` : ''; };
     for (const e of sortEvents(evs.filter((v) => !v.deleted), order)) {
       const p = M.periods.find((q) => q.key === e.period); if (!p) continue;
       const k = e.kind; const own = KIND[k]?.team === 'own';
       const side = e.side || (k === 'fspat' || k === 'fspdf' ? 'after' : 'before');
       const on = pitchAt(M, e.period, e.at, side);
-      const og = (k === 'goal' && e.pid === OPP_OG) || (k === 'conc' && isOG(gn(e.gtype)));
+      const og = (k === 'goal' && e.pid === OPP_OG) || (k === 'conc' && isOGType(e.gtype, gn));
       const shot = (k === 'shot' || k === 'szshot' || (k === 'goal' && !og)) ? '自' : (k === 'oshot' || k === 'oszshot' || (k === 'conc' && !og)) ? '相' : '';
       const sz = isSZ(k) ? 'SZ内' : (k === 'shot' || k === 'oshot') ? 'SZ外' : e.sz === 'in' ? 'SZ内' : e.sz === 'out' ? 'SZ外' : '';
       const lv = missingLv(e, gn);
@@ -80,7 +83,7 @@ export function datasheetSheets(ms, teamName) {
       evRows.push([
         title(m), m.date || '', p.label, { v: day(e.at), s: 'time' }, { v: day(p.len - e.at), s: 'time' }, { v: day(offset(e.period) + e.at), s: 'time' }, minuteOf(offset(e.period) + e.at),
         KIND[k]?.label || k, own ? '自チーム' : '相手', nm(e.pid), nm(e.kind === 'goal' ? e.assist : e.pid2), lab(METHODS, e.method),
-        (k === 'goal' || k === 'conc') ? (og ? 'オウンゴール' : 'ゴール') : lab(RESULTS, e.result), e.gtype ? gn(e.gtype) : '', lab(CLS, e.cls), lab(SETP, e.sp), lab(FSP, e.fsp), sz,
+        (k === 'goal' || k === 'conc') ? (og ? 'オウンゴール' : 'ゴール') : k === 'oej' ? oejEnd(e) : lab(RESULTS, e.result), e.gtype ? gn(e.gtype) : '', lab(CLS, e.cls), lab(SETP, e.sp), lab(FSP, e.fsp), sz,
         e.n != null && e.n !== '' ? +e.n : '', e.zone || '', card ? CARD_LABEL[card] || card : (k === 'foul' || k === 'fouled' ? 'カードなし' : ''),
         ...[0, 1, 2, 3, 4].map((i) => (on[i] ? fullName(players, on[i]) : '')),
         on.length && !on.some(isGK) ? 'はい' : '', inOwn(e) ? '自チーム5x4' : inOpp(e) ? '相手5x4' : '',
@@ -120,6 +123,7 @@ export function datasheetSheets(ms, teamName) {
     [{ v: '活動', s: 'bold' }, ...ms.map((x) => x.activity || '')], [{ v: '試合の区分', s: 'bold' }, ...ms.map((x) => x.m.category || '')],
     [{ v: '会場', s: 'bold' }, ...ms.map((x) => x.m.venue || '')], [{ v: 'キックオフ', s: 'bold' }, ...ms.map((x) => x.m.kickoff || '')],
     [{ v: '試合時間（プレーイングタイム）', s: 'bold' }, ...ms.map((x) => ({ v: day(x.M.periods.reduce((t, p) => t + (p.status === 'none' ? 0 : p.elapsed), 0)), s: 'time' })), ...(multi ? [{ f: `SUM(B9:${colName(ms.length)}9)`, s: 'timeb' }] : [])],
+    [{ v: 'PK戦（自チーム−相手）', s: 'bold' }, ...ms.map((x) => (x.m.pk ? `${x.m.pk.own ?? 0}−${x.m.pk.opp ?? 0}` : ''))],
     [{ v: 'ポゼッション率（自チーム）', s: 'bold' }, ...ms.map((x) => (x.m.possession != null ? x.m.possession / 100 : '')).map((v) => (v === '' ? '' : { v, s: 'pct' }))],
     [],
     [H('チームの数字（イベント一覧から計算）'), ...infoCols.map(H), ...(multi ? [H('合計')] : [])],

@@ -2,7 +2,7 @@
 // ピッチ＝「今の出場」が長い順、ベンチ＝「休み」が長い順。数字は実際の時間（ランニングタイム）が大きく、
 // プレーイングタイム（試合の時計）を小さく添える。「合計出場」＝この試合の合計。色はランニングタイム用の目安（設定で変えられる）。
 import { watchOps, resyncOps, playerById, teamSettings } from './store.js';
-import { replay, periodLabel, periodLen, nowElapsed, PERIODS } from './engine.js';
+import { replay, periodLabel, periodLen, perLen, nowElapsed, PERIODS } from './engine.js';
 import { matchModel, toRunning, playerTable, periodSig } from './model.js';
 import { esc } from './ui.js';
 import { render } from './views.js';
@@ -36,7 +36,7 @@ export function vPhys(m) {
   if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
   const ts = teamSettings();
   const OR = (ts.runOrange || 180) * 1000, RD = (ts.runRed || 300) * 1000, MAX = Math.max(RD + 60000, RD * 1.2);
-  const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: ts.setplayAuto || 60 };
+  const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: ts.setplayAuto || 60 };
   const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
   const per = st.periods[st.current];
   const live = per?.status === 'live';
@@ -80,7 +80,7 @@ export function vPhys(m) {
   const unused = rows.filter((r) => !r.on && !r.played && !st.ejected.has(r.pid)).sort((a, b) => noOf(a.pid) - noOf(b.pid));
 
   // 上の帯
-  const len = periodLen(cfg, st.current);
+  const len = perLen(st, st.current);
   const runEl = R.periods.find((p) => p.key === st.current)?.elapsed || 0;
   let state;
   if (st.matchOver) state = '<span class="phst">試合終了</span><span class="phrt">試合終了時点の数字（止まっています）</span>';

@@ -1,7 +1,7 @@
 // チームと選手の集計（マッチレビュー 5・7・8、マッチスタッツ）。spec 7章・9章。
 // 画面を作らない純粋な計算。同じ記録から同じ計算で作るので、レビューとスタッツの数字は必ず一致する。
 // 得点・失点は専用の種類（goal / conc）で記録するが、シュートにも数える（得点＝枠内のシュート）。OGはシュートに数えない。
-import { OPP_OG, NO_ASSIST, UNKNOWN, isOG, isFsp, clsOfGoalType, cardsOf, pitchAt, SET_COLS } from './events.js';
+import { OPP_OG, NO_ASSIST, UNKNOWN, isOG, isOGType, clsOfGoalTypeId, oppEjWindows, isFsp, clsOfGoalType, cardsOf, pitchAt, SET_COLS } from './events.js';
 import { setTable, SET_MIN } from './model.js';
 
 export const CLS_KEYS = ['pos', 'set', 'trans', 'gk', 'special'];
@@ -17,10 +17,10 @@ export function shotsOf(events, goalName, own) {
     else if (!own && (k === 'oshot' || k === 'oszshot')) out.push({ e, sz: k === 'oszshot', result: e.result || null, cls: e.cls || null, n: k === 'oshot' ? num(e.n) : null, goal: false });
     else if (own && k === 'goal' && e.pid !== OPP_OG) {
       const sz = e.sz === 'in' ? true : e.sz === 'out' ? false : null;
-      out.push({ e, sz, result: 'in', cls: clsOfGoalType(goalName(e.gtype)), n: sz === false ? num(e.n) : null, goal: true, pid: e.pid });
-    } else if (!own && k === 'conc' && !isOG(goalName(e.gtype))) {
+      out.push({ e, sz, result: 'in', cls: clsOfGoalTypeId(e.gtype, goalName), n: sz === false ? num(e.n) : null, goal: true, pid: e.pid });
+    } else if (!own && k === 'conc' && !isOGType(e.gtype, goalName)) {
       const sz = e.sz === 'in' ? true : e.sz === 'out' ? false : null;
-      out.push({ e, sz, result: 'in', cls: clsOfGoalType(goalName(e.gtype)), n: sz === false ? num(e.n) : null, goal: true });
+      out.push({ e, sz, result: 'in', cls: clsOfGoalTypeId(e.gtype, goalName), n: sz === false ? num(e.n) : null, goal: true });
     }
   }
   return out;
@@ -79,7 +79,7 @@ export function teamStats(M, events, goalName, keys = null, win = null) {
   const timeouts = { own: 0, opp: 0 }; for (const t of M.timeouts || []) if ((!keys || keys.includes(t.period)) && (!win || win(t))) timeouts[t.team === 'opp' ? 'opp' : 'own']++;
   const ejOwn = (M.ejections || []).filter((x) => (!keys || keys.includes(x.period)) && (!win || win(x))).length;
   return {
-    A, B, score, rangeScore, goals, timeouts, ejOwn, ejOpp: B.cards.y2 + B.cards.red,
+    A, B, score, rangeScore, goals, timeouts, ejOwn, ejOpp: ev.filter((e) => e.kind === 'oej').length || (B.cards.y2 + B.cards.red),
     rec: ev.filter((e) => e.kind === 'rec').length, lost: ev.filter((e) => e.kind === 'lost').length,
     hasEvents: all.length > 0, hasExtra, n: ev.length, bands: BD.map((b) => b.label),
   };
@@ -254,29 +254,12 @@ export function noGkWindows(M) {
   return out;
 }
 // 退場の時間帯：自チーム＝MATCH PLAYの退場で空席の区間（4対5）、相手＝相手の退場の記録（5対4）
-// 相手の退場（イベントの 'oej'）の区間。events.js の oppEjWindows(events, M) ができたら、ejWindows の中をそれに置きかえる
-export function oppEjWindowsLocal(events, M) {
-  const out = {}; for (const p of M.periods) out[p.key] = [];
-  const order = M.periods.map((p) => p.key);
-  for (const e of events || []) {
-    if (e.deleted || e.kind !== 'oej') continue;
-    const i0 = order.indexOf(e.period); if (i0 < 0) continue;
-    let i1 = e.endPeriod ? order.indexOf(e.endPeriod) : i0; if (i1 < i0) i1 = i0;
-    for (let i = i0; i <= i1; i++) {
-      const p = M.periods[i]; if (p.status === 'none') continue;
-      const a = i === i0 ? e.at : 0; const b = i === i1 && e.endAt != null ? e.endAt : p.elapsed;
-      out[p.key].push([a, Math.min(b, p.elapsed)]);
-    }
-  }
-  for (const k of Object.keys(out)) out[k] = mergeIv(out[k]);
-  return out;
-}
 export function ejWindows(M, events = null) {
   const own = {};
   for (const p of M.periods) own[p.key] = p.status === 'none' ? [] : mergeIv((M.empties || []).filter((x) => x.period === p.key).map((x) => [Math.max(0, x.from), Math.min(p.elapsed, x.to ?? p.elapsed)]));
   // ランニングタイムの試合の形（M.relOf がある）のときは、相手の退場の時刻（試合の時計）を実際の時間に置きかえる
   const Mp = M.relOf ? { ...M, periods: M.periods.map((p) => ({ ...p, elapsed: p.playing ?? p.elapsed })) } : M;
-  let opp = oppEjWindowsLocal(events, Mp); // ← 切り替え先：oppEjWindows(events, Mp)（events.js）
+  let opp = oppEjWindows(events, Mp);
   if (M.relOf) opp = Object.fromEntries(Object.entries(opp).map(([k, iv]) => [k, mergeIv(iv.map(([a, b]) => [M.relOf(k, a), M.relOf(k, b)]))]));
   return { own, opp };
 }
@@ -290,7 +273,7 @@ export function ppWindows(M, events = null) {
     const pp = (team) => (M.pp || []).filter((x) => x.period === p.key && x.team === team).map((x) => [x.from, Math.min(end, x.to ?? end)]);
     own[p.key] = mergeIv([...pp('own'), ...ng[p.key]]); opp[p.key] = mergeIv(pp('opp'));
   }
-  const hasOpp = (M.pp || []).some((x) => x.team === 'opp');
+  const hasOpp = !!M.oppPPRecorded || (M.pp || []).some((x) => x.team === 'opp');
   const E = ejWindows(M, events);
   return { own, opp, hasOpp, ejOwn: E.own, ejOpp: E.opp, hasOppEj: (events || []).some((e) => !e.deleted && e.kind === 'oej') };
 }
@@ -382,7 +365,7 @@ export function setCountTable(M, W, events, goalName, { keys = null, setMin = 60
     if (k === 'shot' || k === 'szshot') return 0;
     if (k === 'goal') return e.pid === OPP_OG ? -1 : 0;
     if (k === 'oshot' || k === 'oszshot') return 1;
-    if (k === 'conc') return isOG(goalName(e.gtype)) ? -1 : 1;
+    if (k === 'conc') return isOGType(e.gtype, goalName) ? -1 : 1;
     const i = ['z4', 'oz4', 'sz', 'osz', 'fspat', 'fspdf'].indexOf(k);
     return i < 0 ? -1 : i + 2;
   };
