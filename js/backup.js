@@ -1,5 +1,5 @@
 // バックアップ：書き出し・試合が終わったときのお知らせ・ファイルから戻す（spec 5章）。
-import { S, put, fbHandle, saveOptions } from './store.js';
+import { S, put, fbHandle, saveOptions, markMatchChanged } from './store.js';
 import { checkFile, fileCounts, planRestore, reviveDates, SUBS, MSUBS } from './restoreplan.js';
 import { $$, esc, openModal, closeModal, confirmTwice, toast } from './ui.js';
 import { render } from './views.js';
@@ -194,6 +194,8 @@ async function applyPlan(plan) {
         else b.set(ref, reviveDates(w.data, toTs), w.op === 'merge' ? { merge: true } : undefined);
       }
       await b.commit();
+      // 試合の記録（ops・イベント）を戻したら、その試合の「変わった印」も書きかえる（ほかの端末が端末の保存だけで済ませないように）
+      for (const k of new Set(plan.writes.slice(i, i + N).filter((w) => w.path[0] === 'teams' && w.path[2] === 'matches' && w.path.length >= 4).map((w) => w.path[1] + '/' + w.path[3]))) markMatchChanged(...k.split('/'));
       prog(`${Math.min(100, Math.round((i + N) / plan.writes.length * 100))}%（${Math.min(plan.writes.length, i + N)} / ${plan.writes.length}件）`);
     }
     for (const [k, patch] of Object.entries(plan.options)) saveOptions(k, patch);

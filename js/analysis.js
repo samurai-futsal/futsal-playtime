@@ -428,10 +428,18 @@ function setTab(ctx) {
   const th = (k, h, cls = '') => `<th class="srt ${A.sort.col === k ? 'on' : ''} ${cls}" data-sort="${k}">${h}</th>`;
   const head = `<tr><th>順位</th><th style="text-align:left">FP4人のセット</th>${th('time', '出場時間')}<th>回数</th>${ctx.ok.length > 1 ? '<th>試合数</th>' : ''}${th('sh', 'シュート', 'w')}${th('osh', '被シュート', 'o')}${th('gf', '得点', 'w')}${th('ga', '失点', 'o')}${th('pm', '±')}${th('en', 'Z4・SZ<br>進入', 'w')}${th('oen', '被Z4・SZ<br>進入', 'o')}${th('dsh', 'シュート差<br>／分')}${th('den', '進入差<br>／分')}</tr>`;
   const has = (r) => r.time > 0 || r.sh || r.osh || r.gf || r.ga || r.en || r.oen;
-  const body = list.map((r, i) => row(r, i)).join('') + (short ? row(short, 0, `出場時間が${mmss(setMin)}未満のセット（${shortN}組）`) : '') + (has(ppRow) ? row(ppRow, 0, '5×4・4×5と退場の時間帯') : '') + (has(special) ? row(special, 0, 'GK1人・FP4人がそろっていない区間') : '') + (has(other) ? row(other, 0, '交代の瞬間の3秒未満の組み合わせ') : '')
+  // 組が多いとき（シーズン全体など）：画面は上から50組と「もっと見る」、複数試合のマッチレポートは上から30組と
+  // 「そのほかのセット」の行（時間・数を足すので、合計は変わらない）。2026-10-17 決11・12
+  const sig = `${ctx.ok.map((x) => x.m.id).join(',')}|${A.per}|${A.pp}`;
+  const cap = A.print ? (ctx.ok.length > 1 ? 30 : Infinity) : A.setMore === sig ? Infinity : 50;
+  const shown = list.slice(0, cap), rest = list.slice(cap);
+  let restRow = null;
+  if (A.print && rest.length) { restRow = blank(); for (const r of rest) for (const f of ['time', 'count', 'sh', 'osh', 'gf', 'ga', 'en', 'oen']) restRow[f] += r[f]; }
+  const more = !A.print && rest.length ? `<tr class="anmore"><td colspan="${ctx.ok.length > 1 ? 14 : 13}"><button class="btn sm" data-set="setMore" data-v="${esc(sig)}">もっと見る（残り ${rest.length}組）</button></td></tr>` : '';
+  const body = shown.map((r, i) => row(r, i)).join('') + more + (restRow ? row(restRow, 0, `そのほかのセット（${rest.length}組）`) : '') + (short ? row(short, 0, `出場時間が${mmss(setMin)}未満のセット（${shortN}組）`) : '') + (has(ppRow) ? row(ppRow, 0, '5×4・4×5と退場の時間帯') : '') + (has(special) ? row(special, 0, 'GK1人・FP4人がそろっていない区間') : '') + (has(other) ? row(other, 0, '交代の瞬間の3秒未満の組み合わせ') : '')
     + (list.length || short ? row(total, 0, '合計', 'tot') : '');
   return `<div class="antbl"><table class="antb anset"><thead>${head}</thead><tbody>${body || '<tr><td colspan="14" class="mu">GKが1人・FPが4人そろった時間がありません</td></tr>'}</tbody></table></div>
-    <p class="anhint">FP4人の組み合わせごと（出場時間の長い順。見出しで並べ替え）。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。差／分＝（自チーム−相手）÷出場時間。セットは数的同数の時間帯だけで数えます。出場時間が${mmss(setMin)}未満のセット（設定画面で変えられます）、パワープレー（5×4・4×5）と両チームの退場の時間帯、GK1人・FP4人がそろっていない区間、交代の瞬間の3秒未満の組み合わせは表に出さず、下の行にまとめます（全部足すと合計の行になります）。薄い数字＝出場時間が${mmss(ref)}未満で参考値</p>`;
+    <p class="anhint">${restRow ? `出場時間の長い30組を出し、ほかの${rest.length}組は「そのほかのセット」の行にまとめています。` : ''}FP4人の組み合わせごと（出場時間の長い順。見出しで並べ替え）。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。差／分＝（自チーム−相手）÷出場時間。セットは数的同数の時間帯だけで数えます。出場時間が${mmss(setMin)}未満のセット（設定画面で変えられます）、パワープレー（5×4・4×5）と両チームの退場の時間帯、GK1人・FP4人がそろっていない区間、交代の瞬間の3秒未満の組み合わせは表に出さず、下の行にまとめます（全部足すと合計の行になります）。薄い数字＝出場時間が${mmss(ref)}未満で参考値</p>`;
 }
 
 // ---------- パワープレー ----------
@@ -522,8 +530,9 @@ function paceTab(ctx) {
 
 // ---------- マッチレポート（PDF、⑥-4）：分析画面と同じ計算・同じ表を、A4横のページに並べる ----------
 // ms：試合の配列。agg：複数試合の合計ページを「合計」「1試合平均」のどちらで出すか。
+// perMatch：複数試合のとき、試合ごとのページも入れるか（false＝まとめのページだけ。2026-10-17 決11）
 // 返り値：ページの配列 [{ title, who, html }]（読み込み中なら null）
-export function reportPages(ms, agg = 'sum') {
+export function reportPages(ms, agg = 'sum', { perMatch = true } = {}) {
   const save = { ...A, sort: { ...A.sort }, rows: [...A.rows] };
   try {
     Object.assign(A, { per: 'all', pp: 'all', agg, sort: { col: '', dir: 'desc' }, tview: 'list', print: true, scope: ms.length > 1 ? 'all' : 'match' });
@@ -533,8 +542,9 @@ export function reportPages(ms, agg = 'sum') {
     const vs = (m) => `${fmtShort(m.date)} vs ${esc(m.opponent || '')}`;
     if (multi) {
       const who = `${ms.length}試合の${agg === 'avg' ? '1試合平均' : '合計'}`;
-      pages.push({ title: '試合ごとの結果と合計・1試合平均', who: `${ms.length}試合`, html: summaryPage(all.ctx) });
+      pages.push({ title: '試合ごとの結果と合計・1試合平均', who: `${ms.length}試合`, html: summaryPage(all.ctx, perMatch) });
       pushCommon(pages, all.ctx, who);
+      if (!perMatch) return pages;
     }
     for (const m of ms) {
       A.scope = 'match'; A.agg = 'sum';
@@ -571,7 +581,7 @@ function infoLine(x) {
   return [fmtShort(m.date) + (m.kickoff ? ` ${esc(m.kickoff)}キックオフ` : ''), esc(act?.name || ''), esc(m.category || ''), esc(m.venue || '')].filter(Boolean).map((t) => `<span>${t}</span>`).join('');
 }
 // 複数試合：試合ごとの結果一覧と、チームの合計・1試合平均
-function summaryPage(ctx) {
+function summaryPage(ctx, perMatch = true) {
   const { ok } = ctx; const n = ok.length;
   const own = esc(S.team?.name || '自チーム');
   const rows = ok.map((x) => {
@@ -598,7 +608,7 @@ function summaryPage(ctx) {
   // 得点者・アシスト（選手ごとの合計）
   const sc = ctx.pids.filter((p) => ctx.P[p].goals || ctx.P[p].assists).sort((x, y) => ctx.P[y].goals - ctx.P[x].goals || ctx.P[y].assists - ctx.P[x].assists);
   const scT = `<table class="antb rpsc"><thead><tr><th class="apl">選手</th><th>得点</th><th>アシスト</th><th>出場試合数</th></tr></thead><tbody>${sc.map((p) => `<tr><td class="apl">${badge(ctx, p)} ${name(p)}</td><td><b>${ctx.P[p].goals}</b></td><td>${ctx.P[p].assists}</td><td>${ctx.P[p].games}</td></tr>`).join('') || '<tr><td colspan="4" class="mu">得点・アシストはまだありません</td></tr>'}</tbody></table>`;
-  return `<h3 class="anh3">試合ごとの結果</h3>${list}<div class="rpsum2"><div><h3 class="anh3">チームの合計と1試合平均</h3>${cm}</div><div><h3 class="anh3">得点者・アシスト（${n}試合の合計）</h3>${scT}</div></div><p class="anhint">${skippedLive ? `試合中の ${skippedLive}試合は含めていません。` : ''}シュートは得点を含む（OGは除く）。相手のファール・カード＝自チームの被ファールで記録したもの。このあとに${n}試合の合計のページ、そのあとに試合ごとのページが続きます</p>`;
+  return `<h3 class="anh3">試合ごとの結果</h3>${list}<div class="rpsum2"><div><h3 class="anh3">チームの合計と1試合平均</h3>${cm}</div><div><h3 class="anh3">得点者・アシスト（${n}試合の合計）</h3>${scT}</div></div><p class="anhint">${skippedLive ? `試合中の ${skippedLive}試合は含めていません。` : ''}シュートは得点を含む（OGは除く）。相手のファール・カード＝自チームの被ファールで記録したもの。このあとに${n}試合の合計のページ${perMatch ? '、そのあとに試合ごとのページ' : ''}が続きます</p>`;
 }
 // 時間帯ごとの数（マッチスタッツの下段と同じ区切り：前半・後半をそれぞれ半分に、延長は延長前半・延長後半。名前は試合の長さから）
 function bandTable(c) {

@@ -999,3 +999,10 @@ body.playmode #toast.show{transform:translateX(-50%) translateY(0)}
 .gsec{background:#fff;border:1px solid #E1E6EF;border-radius:12px;padding:12px 18px;margin-bottom:12px}.gsec h2{font-size:18px;color:#0B2D6B;margin:4px 0 8px}
 .gsec li{margin:6px 0;line-height:1.6}.gsec dt{font-weight:800;color:#0B2D6B;margin-top:10px}.gsec dd{margin:2px 0 6px 0;line-height:1.6}
 @media print{.guide .gsec{break-inside:avoid;border:none;padding:4px 0}.guide{max-width:none}}
+/* 分析のセット：上から50組のあとの「もっと見る」（2026-10-17 決12） */
+.anset tr.anmore td{text-align:center;padding:8px;background:#F7F9FC}
+/* マッチレポート：まとめだけ／試合ごとも（2026-10-17 決11） */
+.rpopt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;margin:8px 0;cursor:pointer}
+.rpopt input{margin-top:4px;width:20px;height:20px}
+.rpopt span{display:flex;flex-direction:column;gap:2px}.rpopt small{color:#5F6B80;font-size:13px}
+.rpopt:has(input:checked){border-color:#1F5FBF;background:#F2F6FD}
