@@ -9,6 +9,7 @@ import { parseSC, buildImport, kickOffs, periodFromName, DEFAULT_LEAD, LEAD_LABE
 import { esc, toast, confirmBox } from './ui.js';
 import { render } from './views.js';
 
+let guarded = false;
 let st8 = { m: null, file: null, text: null, parsed: null, assign: [], shift: {} };
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const leadOf = () => ({ ...DEFAULT_LEAD, ...(teamSettings().scLead || {}) });
@@ -27,8 +28,8 @@ export function vScImport(m) {
   const started = M.periods.filter((p) => st.periods[p.key]?.kickT != null);
   const crumb = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › Sportscodeから取り込み</div>`;
   const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML か CSV を選ぶと、イベント入力に自動で記録します（シュート、ゾーン進入、FINISH SET PLAY（SETPLAY）、リカバリー・ロスト（ROBO・PERDIDA）、ファール（ファウル））。時刻は Kick Off の印と MATCH PLAY の時計の記録から試合の時計に直します。出場（#背番号の行）は取り込みません（MATCH PLAY の記録を使います）。</p>`;
-  const pick = `<div class="card"><div class="scrow"><label class="filebtn btn pri">ファイルを選ぶ（XML・CSV）<input type="file" id="siFile" accept=".xml,.csv,.XML,.CSV,text/xml,text/csv,application/xml" hidden></label>
-    ${st8.file ? `<span class="scpos">${esc(st8.file)}（${st8.parsed?.kind === 'csv' ? 'CSV' : 'XML'}・${st8.parsed?.instances.length || 0}件）</span>` : '<span class="mu">前半だけ・後半だけ・両方入ったファイルのどれでも取り込めます</span>'}</div></div>`;
+  const pick = `<div class="card sidrop" id="siDrop"><div class="scrow"><label class="filebtn btn pri">ファイルを選ぶ（XML・CSV）<input type="file" id="siFile" accept=".xml,.csv,.XML,.CSV,text/xml,text/csv,application/xml" hidden></label>
+    ${st8.file ? `<span class="scpos">${esc(st8.file)}（${st8.parsed?.kind === 'csv' ? 'CSV' : 'XML'}・${st8.parsed?.instances.length || 0}件）</span>` : '<span class="mu">前半だけ・後半だけ・両方入ったファイルのどれでも取り込めます</span>'}</div><p class="sidrophint">PCでは、ファイルをこの画面にドラッグ＆ドロップしても読み込めます</p></div>`;
   if (!started.length) return { active: 'acts', html: `<div class="scw">${crumb}${intro}<div class="card empty">MATCH PLAY でキックオフを押したピリオドがありません。時計の記録を使うので、先に MATCH PLAY の記録が必要です。</div></div>` };
   let body = '';
   if (st8.parsed) {
@@ -95,7 +96,25 @@ export function vScImport(m) {
     active: 'acts', html: `<div class="scw siw">${crumb}${intro}${pick}${body}</div>`,
     bind: (root) => {
       const f = root.querySelector('#siFile');
-      f.onchange = () => { const file = f.files?.[0]; if (!file) return; const r = new FileReader(); r.onload = () => { st8.file = file.name; st8.text = String(r.result); st8.parsed = parseSC(st8.text); st8.assign = []; st8.shift = {}; render(); }; r.readAsText(file); };
+      const load = (file) => { const r = new FileReader(); r.onload = () => { st8.file = file.name; st8.text = String(r.result); st8.parsed = parseSC(st8.text); st8.assign = []; st8.shift = {}; render(); }; r.readAsText(file); };
+      f.onchange = () => { const file = f.files?.[0]; if (file) load(file); };
+      // ドラッグ＆ドロップ（PC）：画面のどこに落としても読み込む。枠を光らせて「ここに落とせる」と分かるようにする
+      // 画面の外（上のバーなど）に落としたときに、ブラウザがファイルを開いてしまわないようにする
+      if (!guarded) { guarded = true; for (const t of ['dragover', 'drop']) document.addEventListener(t, (e) => { if (location.hash.includes('/scimport') && [...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault(); }); }
+      const w = root.querySelector('.siw'), dz = root.querySelector('#siDrop');
+      if (w && dz) {
+        let depth = 0;
+        const hasFile = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+        w.addEventListener('dragenter', (e) => { if (!hasFile(e)) return; e.preventDefault(); depth++; dz.classList.add('over'); });
+        w.addEventListener('dragover', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+        w.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) dz.classList.remove('over'); });
+        w.addEventListener('drop', (e) => {
+          if (!hasFile(e)) return; e.preventDefault(); depth = 0; dz.classList.remove('over');
+          const file = e.dataTransfer.files?.[0]; if (!file) return;
+          if (!/\.(xml|csv)$/i.test(file.name)) { toast('XML か CSV のファイルを選んでください'); return; }
+          load(file);
+        });
+      }
       root.querySelectorAll('[data-asg]').forEach((s) => s.onchange = () => { st8.assign[+s.dataset.asg] = s.value; render(); });
       root.querySelectorAll('[data-sh]').forEach((i) => i.onchange = () => { const v = i.value.trim(); st8.shift[i.dataset.sh] = v === '' ? 0 : +v || 0; render(); });
       root.querySelectorAll('[data-ld]').forEach((i) => i.onchange = () => { const L = { ...(teamSettings().scLead || {}) }; L[i.dataset.ld] = +i.value || 0; put(teamPath(), { settings: { ...(S.team?.settings || {}), scLead: L } }); if (S.team) S.team.settings = { ...(S.team.settings || {}), scLead: L }; render(); });
