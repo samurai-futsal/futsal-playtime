@@ -898,3 +898,25 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .anpast{display:inline-block;margin-left:4px;padding:0 4px;border-radius:4px;background:#EEF0F4;color:#6B7486;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap}
 .anpp2 td.antot{background:#F3F5F9;font-weight:800}
 .anset tr.tot td,.rvset tr.tot td{font-weight:800;border-top:2px solid #8A93A6}
+/* 試合ページ「試合後に入れる数字」：ポゼッション率・PK戦 */
+.postin{display:flex;flex-wrap:wrap;gap:12px 32px;align-items:flex-start}
+.postin .pi label{display:block;font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.postin .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.postin .pinum{width:88px;flex:0 0 88px;min-width:0;text-align:center}
+.postin .pkseg{margin:0}
+.seg button{font:inherit;font-size:15px;border:0;background:#fff;padding:8px 16px;cursor:pointer;color:var(--ink)}
+.seg button.on{background:var(--blue-l);color:var(--navy);font-weight:700}
+.postin .pkin{display:inline-flex;align-items:center;gap:6px;font-weight:700}
+/* 試合メンバーの注意 */
+.mwarn div{margin:2px 0}
+/* ファイルから戻す */
+.rsgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px 24px}
+@media (max-width:640px){.rsgrid{grid-template-columns:1fr}}
+.rstab{border-collapse:collapse;width:100%;font-size:14px}
+.rstab th{text-align:left;font-weight:500;color:var(--mute);padding:4px 8px 4px 0;border-bottom:1px solid var(--line2)}
+.rstab td{text-align:right;font-weight:700;padding:4px 0;border-bottom:1px solid var(--line2)}
+.rsmode{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin:6px 0;cursor:pointer}
+.rsmode input{width:auto;margin-top:4px}
+.rsmode:has(input:checked){border-color:var(--blue);background:var(--blue-l)}
+.note.info{background:var(--soft);border:1px solid var(--line);color:var(--ink)}
+#setupForm input:disabled{background:var(--soft);color:var(--mute)}

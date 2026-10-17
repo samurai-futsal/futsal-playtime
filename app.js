@@ -1,7 +1,7 @@
 // フットサル出場時間 — entry point: service worker, Firebase, login, then the app screens.
 // When releasing, bump APP_VERSION here AND VERSION in sw.js.
 import { initStore } from './js/store.js';
-import { startApp, render } from './js/views.js';
+import { startApp, render, onPlayScreen, confirmUpdate } from './js/views.js';
 import { $, esc } from './js/ui.js';
 
 const APP_VERSION = '0.6.36';
@@ -20,15 +20,25 @@ let swReg = null;
 async function setupSW() {
   if (!('serviceWorker' in navigator)) return;
   swReg = await navigator.serviceWorker.register('./sw.js');
-  const offer = () => { if (swReg.waiting && navigator.serviceWorker.controller) $('#update').hidden = false; };
+  // 「更新する」は MATCH PLAY の上には出さない（試合中の誤操作を防ぐ）。MATCH PLAY を離れたら、また出す
+  const offer = () => { $('#update').hidden = !(swReg.waiting && navigator.serviceWorker.controller) || onPlayScreen(); };
   offer();
+  addEventListener('hashchange', offer);
   swReg.addEventListener('updatefound', () => {
     const w = swReg.installing;
     w && w.addEventListener('statechange', () => { if (w.state === 'installed') offer(); });
   });
-  $('#btnUpdate').onclick = () => swReg.waiting && swReg.waiting.postMessage('SKIP_WAITING');
-  let reloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
+  $('#btnUpdate').onclick = async () => {
+    if (!swReg.waiting) return;
+    if (onPlayScreen() || !(await confirmUpdate())) return; // この端末でピリオドが進行中なら確かめる
+    swReg.waiting.postMessage('SKIP_WAITING');
+  };
+  // 新しい版に切り替わったら開き直す。ただし MATCH PLAY を開いている間は開き直さず、離れたときに開き直す
+  // （別のタブで「更新する」を押したときなど）
+  let reloaded = false, deferred = false;
+  const reload = () => { if (!reloaded) { reloaded = true; location.reload(); } };
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (onPlayScreen()) deferred = true; else reload(); });
+  addEventListener('hashchange', () => { if (deferred && !onPlayScreen()) reload(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && navigator.onLine) swReg.update().catch(() => {}); });
 }
 setupSW().catch((e) => console.warn('sw', e));

@@ -2,8 +2,10 @@
 import {
   S, onChange, selectTeam, newId, put, del, now, teamPath, teamSettings, opts, playerById, activityById,
   matchById, playerName, sortPlayers, matchesOf, matchStatus, playedPlayerIds, inAnyMatch, today,
-  DEFAULT_TIMES, DEFAULT_TEAM_SETTINGS, lastError,
+  DEFAULT_TIMES, DEFAULT_TEAM_SETTINGS, lastError, renameOption, addOption, moveOption, saveOptions, optName, watchOps, deviceId,
 } from './store.js';
+import { replay } from './engine.js';
+import { exportBackup, promptBackup, restoreFromFile, lastBackupAt, setBackupVersion } from './backup.js';
 import { vPlay, unmountPlay } from './matchplay.js';
 import { vReview, stopReviewTick } from './review.js';
 import { vFix } from './fix.js';
@@ -15,13 +17,16 @@ import { vScImport } from './scimportview.js';
 import { vReport } from './report.js';
 import { vDatasheet } from './dsview.js';
 import { vPhys, stopPhysTick } from './viewer.js';
-import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTags } from './ui.js';
+import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTagsId } from './ui.js';
+export { promptBackup }; // 試合が終わったときのバックアップのお知らせ（matchplay.js から呼ぶ）
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js', 'js/options.js', 'js/backup.js', 'js/restoreplan.js'];
+const FB_FILES = ['firebase-app.js', 'firebase-auth.js', 'firebase-firestore.js'].map((f) => 'https://www.gstatic.com/firebasejs/10.12.2/' + f);
 export function startApp(c) {
   ctx = c;
+  setBackupVersion(c.appVersion);
   try { const t = localStorage.getItem('fpt.team'); if (t) selectTeam(t); } catch {}
   onChange(render);
   addEventListener('hashchange', onHash);
@@ -37,16 +42,30 @@ export function setLeaveGuard(fn) {
   leaveGuard = fn;
   window.onbeforeunload = fn ? (e) => { e.preventDefault(); e.returnValue = ''; } : null;
 }
+let replacing = false; // goReturn で今の画面を置きかえている途中
 function onHash() {
   const h = location.hash || '#/home';
-  if (leaveGuard && leaveGuard(h) === false) { const prev = stack[stack.length - 1]; if (prev) history.replaceState(null, '', prev); return; }
-  if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop();
+  if (leaveGuard && leaveGuard(h) === false) { replacing = false; const prev = stack[stack.length - 1]; if (prev) history.replaceState(null, '', prev); return; }
+  if (replacing) { replacing = false; if (stack.length) stack[stack.length - 1] = h; else stack.push(h); }
+  else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop();
   else if (stack[stack.length - 1] !== h) stack.push(h);
   closeModal();
   render();
   scrollTo(0, 0);
 }
 export function goBack() { if (stack.length > 1) history.back(); else location.hash = '#/home'; }
+// 「完了」「‹ 試合ページ」など、入力を終えて元の画面へ戻るとき（spec 14章：保存済みの入力画面には戻らない）。
+// 1つ前がその画面なら履歴を1つ戻り、そうでなければ今の画面を置きかえる（どちらでも、あとの「‹ 戻る」で入力画面に戻らない）
+export function goReturn(h) {
+  if (!h || h === location.hash) return;
+  if (stack.length > 1 && stack[stack.length - 2] === h) { history.back(); return; }
+  replacing = true; location.replace(h);
+}
+document.addEventListener('click', (e) => {
+  const a = e.target.closest?.('a.mpback, a[data-ret], .play a.cb.back');
+  if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault(); goReturn(a.getAttribute('href'));
+});
 const go = (h) => { location.hash = h; };
 
 function route() {
@@ -127,10 +146,19 @@ function vHome() {
   const ms = S.matches;
   const td = today();
   const open = ms.filter((m) => m.status !== 'done');
-  const next = open.filter((m) => (m.date || '') >= td).sort((a, b) => (a.date + (a.kickoff || '')).localeCompare(b.date + (b.kickoff || '')))[0]
-    || open.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
-  const recent = ms.filter((m) => m !== next && (m.status === 'done' || (m.date || '') < td))
+  const byKick = (a, b) => ((a.date || '') + (a.kickoff || '')).localeCompare((b.date || '') + (b.kickoff || ''));
+  // 試合中の試合（今日の日付）はいつもホームに出す。試合中のあいだは見出しを「試合中」にする（spec 14章）
+  const liveToday = ms.filter((m) => m.status === 'playing' && m.date === td).sort(byKick);
+  const next1 = open.filter((m) => (m.date || '') >= td).sort(byKick)[0]
+    || [...open].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+  const tops = liveToday.length ? liveToday : next1 ? [next1] : [];
+  const isLive = tops.some((m) => m.status === 'playing');
+  const recent = ms.filter((m) => !tops.includes(m) && (m.status === 'done' || (m.date || '') < td))
     .sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 5);
+  const nextCard = (next) => `<a class="card nextm" href="#/m/${next.id}">
+        <div class="nm-l"><div class="mu">${esc(actName(next))}</div><div class="vs">vs ${esc(next.opponent)}</div>
+        <div class="mu">${fmtDate(next.date)}${next.kickoff ? ' ' + esc(next.kickoff) + ' キックオフ' : ''}${next.venue ? '　' + esc(next.venue) : ''}</div></div>
+        <div class="nm-r">${chip(matchStatus(next), next)}<span class="go">試合ページへ ›</span></div></a>`;
   const actName = (m) => activityById(m.activityId)?.name || '';
   const tile = (href, t, sub, soon = false) => `<a class="tile ${soon ? 'soon' : ''}" href="${href}"><b>${t}</b><span>${sub}</span></a>`;
   const activePlayers = S.players.filter((p) => p.status !== 'former').length;
@@ -142,11 +170,8 @@ function vHome() {
       ${tile('#/acts', '活動と試合', `活動 ${S.activities.length}件・試合 ${ms.length}件`)}
       ${tile('#/analysis', '分析', '出場時間・スタッツ')}
     </div>
-    <h2 class="h">次の試合</h2>
-    ${next ? `<a class="card nextm" href="#/m/${next.id}">
-        <div class="nm-l"><div class="mu">${esc(actName(next))}</div><div class="vs">vs ${esc(next.opponent)}</div>
-        <div class="mu">${fmtDate(next.date)}${next.kickoff ? ' ' + esc(next.kickoff) + ' キックオフ' : ''}${next.venue ? '　' + esc(next.venue) : ''}</div></div>
-        <div class="nm-r">${chip(matchStatus(next), next)}<span class="go">試合ページへ ›</span></div></a>`
+    <h2 class="h">${isLive ? '試合中' : '次の試合'}</h2>
+    ${tops.length ? tops.map(nextCard).join('')
       : `<div class="card empty">予定の試合はまだありません。<a href="#/acts">活動と試合</a>から、活動の中に試合を作ってください。</div>`}
     <h2 class="h">最近の試合</h2>
     ${recent.length ? `<div class="card list">${recent.map((m) => matchRow(m, true)).join('')}</div>` : '<div class="card empty">まだありません</div>'}
@@ -172,7 +197,7 @@ function matchRow(m, withAct = false) {
 function backupOverdue() {
   // remind only once a match has been played (spec 5章: 試合が終わるたびにバックアップを促す)
   if (!S.matches.some((m) => m.status === 'done' || m.status === 'playing')) return false;
-  try { const t = +localStorage.getItem('fpt.lastBackup') || 0; return Date.now() - t > 14 * 864e5; } catch { return false; }
+  return Date.now() - lastBackupAt() > 14 * 864e5; // 最後の書き出しはクラウドに記録（どの端末で書き出しても同じ）
 }
 
 // ---------- チーム ----------
@@ -322,11 +347,13 @@ function vActivities() {
     bind() { $('#btnAddA').onclick = () => activityForm(null); },
   };
 }
-function timesFields(t) {
-  // 延長戦の長さは「延長戦あり」のときだけ出す
-  return `<div><label for="fHalf">前後半の長さ（分）</label><input id="fHalf" name="half" type="number" min="1" max="40" inputmode="numeric" value="${esc(t.half)}"></div>
-    <div><label class="chk" style="margin-top:34px"><input id="fExtra" type="checkbox" name="extra" ${t.extra ? 'checked' : ''}> 延長戦あり</label></div>
-    <div id="extraBox" ${t.extra ? '' : 'hidden'}><label for="fExtraHalf">延長戦の長さ（分・前後半それぞれ）</label><input id="fExtraHalf" name="extraHalf" type="number" min="1" max="20" inputmode="numeric" value="${esc(t.extraHalf)}"></div>`;
+function timesFields(t, locked = false) {
+  // 延長戦の長さは「延長戦あり」のときだけ出す。locked＝試合が始まったあと（事前設定では変えられない。2026-10-17 決定）
+  const dis = locked ? 'disabled' : '';
+  return `<div><label for="fHalf">前後半の長さ（分）</label><input id="fHalf" name="half" type="number" min="1" max="40" inputmode="numeric" value="${esc(t.half)}" ${dis}></div>
+    <div><label class="chk" style="margin-top:34px"><input id="fExtra" type="checkbox" name="extra" ${t.extra ? 'checked' : ''} ${dis}> 延長戦あり</label></div>
+    <div id="extraBox" ${t.extra ? '' : 'hidden'}><label for="fExtraHalf">延長戦の長さ（分・前後半それぞれ）</label><input id="fExtraHalf" name="extraHalf" type="number" min="1" max="20" inputmode="numeric" value="${esc(t.extraHalf)}" ${dis}></div>
+    ${locked ? '<p class="span2 note info">試合が始まったあとは、記録の修正の『試合情報』で直せます</p>' : ''}`;
 }
 document.addEventListener('change', (e) => {
   if (e.target.id === 'fExtra') { const b = document.getElementById('extraBox'); if (b) b.hidden = !e.target.checked; }
@@ -340,7 +367,7 @@ function activityForm(a) {
   const isNew = !a; a = a || { type: '', start: today(), end: today(), times: { ...DEFAULT_TIMES } };
   const t = { ...DEFAULT_TIMES, ...(a.times || {}) };
   const m = openModal(`<h2>${isNew ? '活動を作る' : '活動を編集'}</h2><div class="mbody grid2">
-    <div><label for="aType">種類</label><select id="aType" name="type">${optionTags(opts('activityTypes'), a.type, { blank: '選んでください' })}</select></div>
+    <div><label for="aType">種類</label><select id="aType" name="typeId">${optionTagsId(opts('activityTypes'), a.typeId, { blank: '選んでください', all: opts('activityTypes', true) })}${!a.typeId && a.type ? `<option value="=" selected>${esc(a.type)}</option>` : ''}</select></div>
     <div><label for="aName">名前</label><input id="aName" name="name" value="${esc(a.name || '')}" placeholder="例：〇〇カップ"></div>
     <div><label for="aStart">開始日</label><input id="aStart" name="start" type="date" value="${esc(a.start || '')}"></div>
     <div><label for="aEnd">終了日</label><input id="aEnd" name="end" type="date" value="${esc(a.end || '')}"></div>
@@ -355,13 +382,14 @@ function activityForm(a) {
     if (!v.start) return toast('開始日を入れてください');
     const end = v.end && v.end >= v.start ? v.end : v.start;
     const id = isNew ? newId() : a.id;
-    put(teamPath('activities', id), { type: v.type, name: v.name, start: v.start, end, times: readTimes(v), ...(isNew ? { members: {}, deleted: false, createdAt: now() } : {}) });
+    put(teamPath('activities', id), { ...(v.typeId === '=' ? {} : { typeId: v.typeId, type: optName('activityTypes', v.typeId) }), name: v.name, start: v.start, end, times: readTimes(v), ...(isNew ? { members: {}, deleted: false, createdAt: now() } : {}) });
     closeModal(); toast('保存しました');
     if (isNew) go('#/a/' + id);
   };
   const d = m.querySelector('[data-delA]');
   d && (d.onclick = async () => {
     const ms = matchesOf(a.id);
+    if (ms.some((x) => x.status === 'playing')) return blockedLive(true);
     const ok = await confirmTwice(
       { title: `「${a.name}」を削除しますか？`, body: ms.length ? `<p>この活動の<b>試合 ${ms.length}件と、その記録も消えます</b>。</p>` : '<p>招集メンバーの情報も消えます。</p>', ok: '削除する', danger: true },
       { title: '本当に削除しますか？', body: '<p>元に戻せません。</p>', ok: '削除する', danger: true });
@@ -416,10 +444,18 @@ function vActivity(r) {
       $('#btnEditA').onclick = () => activityForm(a);
       $('#btnAddMatch').onclick = () => matchForm(null, a);
       const add = $('#btnAddM'); add && (add.onclick = () => addMembers(a));
-      const done = $('#btnDone'); done && (done.onclick = () => go('#/a/' + a.id));
+      const done = $('#btnDone'); done && (done.onclick = () => goReturn('#/a/' + a.id));
       root.addEventListener('change', (e) => {
         const id = e.target.dataset.no; if (!id) return;
-        put(teamPath('activities', a.id), { members: { [id]: { no: e.target.value.trim() } } });
+        const v = e.target.value.trim();
+        put(teamPath('activities', a.id), { members: { [id]: { no: v } } });
+        // まだ始まっていない試合（準備中・準備完了）の試合メンバーの背番号も合わせる。始まった試合の記録は変えない
+        let n = 0;
+        for (const x of matchesOf(a.id)) {
+          if (x.status === 'playing' || x.status === 'done' || !x.members?.[id] || String(x.members[id].no ?? '') === v) continue;
+          put(teamPath('matches', x.id), { members: { [id]: { no: v } } }); n++;
+        }
+        if (n) toast(`まだ始まっていない試合（${n}件）の背番号も変えました`);
       });
       root.addEventListener('click', async (e) => {
         const out = e.target.closest('[data-out]');
@@ -460,7 +496,7 @@ function matchForm(mt, a) {
   const m = openModal(`<h2>試合を作る</h2><div class="mbody grid2">
     <div><label for="mDate">日付</label><input id="mDate" name="date" type="date" value="${esc(d)}"></div>
     <div><label for="mOpp">対戦相手</label><input id="mOpp" name="opponent" placeholder="例：サンプルFC"></div>
-    <div><label for="mCat">試合の区分（任意）</label><select id="mCat" name="category">${optionTags(opts('matchCategories'), '', { blank: 'なし' })}</select></div>
+    <div><label for="mCat">試合の区分（任意）</label><select id="mCat" name="categoryId">${optionTagsId(opts('matchCategories'), '', { blank: 'なし' })}</select></div>
     <div><label for="mKo">キックオフ時刻（任意）</label><input id="mKo" name="kickoff" type="time"></div>
     <div class="span2"><label for="mVenue">会場（任意）</label><input id="mVenue" name="venue"></div>
     <div class="span2 subh">試合時間（活動の初期値）</div>
@@ -473,15 +509,19 @@ function matchForm(mt, a) {
     if (!v.opponent) return toast('対戦相手を入れてください');
     const id = newId(); const ts = teamSettings();
     put(teamPath('matches', id), {
-      activityId: a.id, date: v.date, opponent: v.opponent, category: v.category, kickoff: v.kickoff, venue: v.venue, memo: '',
+      activityId: a.id, date: v.date, opponent: v.opponent, categoryId: v.categoryId, category: optName('matchCategories', v.categoryId), kickoff: v.kickoff, venue: v.venue, memo: '',
       times: readTimes(v), colorTimer: { orange: ts.colorOrange, red: ts.colorRed }, members: {}, status: 'prep',
       deleted: false, createdAt: now(), createdOrder: Date.now(),
     });
     closeModal(); toast('試合を作りました'); go('#/m/' + id);
   };
 }
+function blockedLive(act = false) {
+  return confirmBox({ title: act ? '試合中の試合がある活動は削除できません' : '試合中の試合は削除できません', body: act ? '<p>この活動の中に、いま「試合中」の試合があります。MATCH PLAYで試合を終えてから削除してください。</p>' : '<p>この試合はいま「試合中」です。MATCH PLAYで試合を終えてから削除してください。</p>', ok: 'わかりました', cancel: '閉じる' });
+}
 async function deleteMatch(m) {
   if (!m) return;
+  if (m.status === 'playing') return blockedLive();
   const hasRec = m.status === 'playing' || m.status === 'done';
   const ok = await confirmTwice(
     { title: `vs ${m.opponent}（${fmtShort(m.date)}）を削除しますか？`, body: hasRec ? '<p><b>出場時間やイベントの記録も消えます。</b></p><p>削除する前にバックアップを書き出すことをおすすめします。</p>' : '<p>事前設定と試合メンバーが消えます。</p>', ok: '削除する', danger: true },
@@ -520,6 +560,7 @@ function vMatch(r) {
       <b>${label}${done === true ? ' <span class="ok">✓</span>' : done === false ? ' <span class="wait">未</span>' : ''}</b><span>${sub.split('\n').map((x) => `<span class="ln">${x}</span>`).join('')}</span>${soon ? `<em>${soonText}</em>` : ''}</a>`;
   return {
     active: 'acts',
+    bind: bindPostInputs(m),
     html: `<div class="crumb"><a href="#/acts">活動と試合</a> › <a href="#/a/${a?.id}">${esc(a?.name || '')}</a> › vs ${esc(m.opponent)}</div>
     <div class="row between"><div><h1 class="inl">vs ${esc(m.opponent)}</h1> ${chip(st, m)}
       <div class="mu">${fmtDate(m.date)}${m.kickoff ? ' ' + esc(m.kickoff) + ' キックオフ' : ''}${m.category ? '　' + esc(m.category) : ''}${m.venue ? '　' + esc(m.venue) : ''}　前後半 各${t.half}分・延長${t.extra ? `あり（各${t.extraHalf}分）` : 'なし'}</div></div></div>
@@ -547,6 +588,7 @@ function vMatch(r) {
       ${btn('記録の修正', '交代・スタメン・退場\nパワープレー・試合情報', `#/m/${m.id}/fix`, { kind: 'rec' })}
       ${btn('Sportscodeから取り込み', 'XML・CSVを読み込んで\nイベント入力に自動で記録', `#/m/${m.id}/scimport`, { kind: 'rec' })}
     </div>
+    ${postInputs(m)}
     <div class="grp">見る（ハーフタイムでも、いつでも）</div>
     <div class="acts acts2">
       ${btn('分析', 'この試合・大会全体\n選手ごとのスタッツ', `#/m/${m.id}/analysis`, { kind: 'see' })}
@@ -562,23 +604,64 @@ function vMatch(r) {
     <p class="mu actnote">左の色：青＝記録する（記録が変わる）／緑＝見るだけ／紫＝書き出す</p>`,
   };
 }
+// 試合後に手で入れる数字：ポゼッション率（m.possession：自チームの%）とPK戦（m.pk = {own, opp}、なければ null）
+function postInputs(m) {
+  const ps = m.possession != null && m.possession !== '' ? m.possession : '';
+  const pk = m.pk && typeof m.pk === 'object' ? m.pk : null;
+  return `<div class="grp">試合後に入れる数字</div>
+    <div class="card postin">
+      <div class="pi"><label for="mPoss">ポゼッション率（自チーム）</label>
+        <div class="row"><input id="mPoss" class="pinum" type="number" min="0" max="100" step="1" inputmode="numeric" value="${esc(ps)}" placeholder="—"><span>%</span>
+        <span class="mu" id="possOpp">${ps !== '' ? `相手 ${Math.round((100 - ps) * 10) / 10}%` : '相手は100%から引いた値になります'}</span></div></div>
+      <div class="pi"><label>PK戦</label>
+        <div class="row"><div class="seg pkseg"><button class="${pk ? '' : 'on'}" data-pkhad="0">なし</button><button class="${pk ? 'on' : ''}" data-pkhad="1">あり</button></div>
+        ${pk ? `<span class="pkin">自チーム <input id="pkOwn" class="pinum" type="number" min="0" max="99" inputmode="numeric" value="${esc(pk.own ?? 0)}" aria-label="PK戦 自チームの成功"> − <input id="pkOpp" class="pinum" type="number" min="0" max="99" inputmode="numeric" value="${esc(pk.opp ?? 0)}" aria-label="PK戦 相手の成功"> 相手</span>` : ''}</div></div>
+    </div>`;
+}
+function bindPostInputs(m) {
+  return (root) => {
+    const poss = root.querySelector('#mPoss');
+    if (poss) poss.onchange = () => {
+      const t = poss.value.trim();
+      if (t === '') { put(teamPath('matches', m.id), { possession: del() }); toast('ポゼッション率を消しました'); return; }
+      const v = Number(t);
+      if (!Number.isFinite(v) || v < 0 || v > 100) { toast('ポゼッション率は0〜100の数で入れてください'); poss.value = m.possession ?? ''; return; }
+      put(teamPath('matches', m.id), { possession: Math.round(v * 10) / 10 }); toast('ポゼッション率を保存しました');
+    };
+    root.querySelectorAll('[data-pkhad]').forEach((b) => { b.onclick = () => {
+      const had = b.dataset.pkhad === '1';
+      if (had === !!(m.pk && typeof m.pk === 'object')) return;
+      put(teamPath('matches', m.id), { pk: had ? { own: 0, opp: 0 } : null });
+    }; });
+    for (const id of ['pkOwn', 'pkOpp']) {
+      const el = root.querySelector('#' + id); if (!el) continue;
+      el.onchange = () => {
+        const v = Math.round(Number(el.value));
+        if (el.value.trim() === '' || !Number.isFinite(v) || v < 0 || v > 99) { toast('PK戦の数は0〜99で入れてください'); el.value = m.pk?.[id === 'pkOwn' ? 'own' : 'opp'] ?? 0; return; }
+        put(teamPath('matches', m.id), { pk: { ...(m.pk || {}), [id === 'pkOwn' ? 'own' : 'opp']: v } }); toast('PK戦のスコアを保存しました');
+      };
+    }
+  };
+}
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 const parseMmss = (s, fb) => { const m = String(s).trim().match(/^(\d{1,2})(?::(\d{1,2}))?$/); return m ? (+m[1]) * 60 + (+(m[2] || 0)) : fb; };
 function vMatchSetup(m) {
   const t = { ...DEFAULT_TIMES, ...(m.times || {}) };
   const ct = m.colorTimer || { orange: teamSettings().colorOrange, red: teamSettings().colorRed };
+  const started = m.status === 'playing' || m.status === 'done';
+  const legacyCat = !m.categoryId && m.category; // 一覧にない名前（古い記録）。選び直すまでそのまま残す
   return {
     active: 'acts',
     html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 事前設定</div><h1>事前設定</h1>
     <div class="card"><div class="grid2" id="setupForm">
       <div><label for="sDate">日付</label><input id="sDate" name="date" type="date" value="${esc(m.date || '')}"></div>
       <div><label for="sOpp">対戦相手</label><input id="sOpp" name="opponent" value="${esc(m.opponent || '')}"></div>
-      <div><label for="sCat">試合の区分（任意）</label><select id="sCat" name="category">${optionTags(opts('matchCategories'), m.category, { blank: 'なし' })}</select></div>
+      <div><label for="sCat">試合の区分（任意）</label><select id="sCat" name="categoryId">${optionTagsId(opts('matchCategories'), m.categoryId, { blank: 'なし', all: opts('matchCategories', true) })}${legacyCat ? `<option value="=" selected>${esc(m.category)}</option>` : ''}</select></div>
       <div><label for="sKo">キックオフ時刻（任意）</label><input id="sKo" name="kickoff" type="time" value="${esc(m.kickoff || '')}"></div>
       <div class="span2"><label for="sVenue">会場（任意）</label><input id="sVenue" name="venue" value="${esc(m.venue || '')}"></div>
       <div class="span2"><label for="sMemo">メモ（任意）</label><textarea id="sMemo" name="memo" rows="2">${esc(m.memo || '')}</textarea></div>
       <div class="span2 subh">試合時間</div>
-      ${timesFields(t)}
+      ${timesFields(t, started)}
       <div class="span2 subh">カラータイマー（連続出場時間で色が変わる。GKは対象外）</div>
       <div><label for="sOr">オレンジになる時間（分:秒）</label><input id="sOr" name="orange" value="${mmss(ct.orange)}" inputmode="numeric"></div>
       <div><label for="sRed">赤になる時間（分:秒）</label><input id="sRed" name="red" value="${mmss(ct.red)}" inputmode="numeric"></div>
@@ -592,7 +675,8 @@ function vMatchSetup(m) {
         if (!v.opponent) return toast('対戦相手を入れてください');
         const orange = parseMmss(v.orange, ct.orange), red = parseMmss(v.red, ct.red);
         if (red <= orange) return toast('赤になる時間は、オレンジより後にしてください');
-        put(teamPath('matches', m.id), { date: v.date, opponent: v.opponent, category: v.category, kickoff: v.kickoff, venue: v.venue, memo: v.memo, times: readTimes(v), colorTimer: { orange, red } });
+        put(teamPath('matches', m.id), { date: v.date, opponent: v.opponent, ...(v.categoryId === '=' ? {} : { categoryId: v.categoryId, category: optName('matchCategories', v.categoryId) || (v.categoryId ? m.category : '') }), kickoff: v.kickoff, venue: v.venue, memo: v.memo,
+          ...(started ? {} : { times: readTimes(v) }), colorTimer: { orange, red } });
         toast('保存しました'); goBack();
       };
     },
@@ -625,7 +709,8 @@ function vMatchMembers(m) {
     ${ids.length ? '' : `<div class="note warn">この活動の招集メンバーがいません。先に<a href="#/a/${a?.id}">活動のページ</a>で招集メンバーを追加してください。</div>`}
     <div class="pgrid">${ps.map((p) => card(p, call[p.id])).join('')}</div>
     ${orphan.length ? `<h2 class="h">招集から外れた選手</h2><div class="pgrid">${orphan.map((id) => playerById(id) && card(playerById(id))).join('')}</div>` : ''}
-    <div class="row end"><a class="btn pri" href="#/m/${m.id}">完了</a></div>`,
+    ${memberWarn(mem)}
+    <div class="row end"><a class="btn pri" data-ret href="#/m/${m.id}">完了</a></div>`,
     bind(root) {
       const cp = $('#btnCopy');
       cp && (cp.onclick = async () => {
@@ -654,6 +739,21 @@ function vMatchMembers(m) {
   };
 }
 
+// 試合メンバーの注意（止めはしない）：背番号なし・背番号の重なり・GKがいない
+function memberWarn(mem) {
+  const ids = Object.keys(mem); if (!ids.length) return '';
+  const nm = (id) => esc(playerName(playerById(id)));
+  const blank = ids.filter((id) => !String(mem[id]?.no ?? '').trim());
+  const by = {}; ids.forEach((id) => { const n = String(mem[id]?.no ?? '').trim(); if (n) (by[n] = by[n] || []).push(id); });
+  const dup = Object.entries(by).filter(([, l]) => l.length > 1);
+  const gk = ids.filter((id) => (mem[id]?.pos || playerById(id)?.pos) === 'GK').length;
+  const w = [];
+  if (blank.length) w.push(`背番号が入っていない選手がいます：${blank.map(nm).join('、')}（活動のページの招集メンバーで入れてください）`);
+  if (dup.length) w.push(`背番号が重なっています：${dup.map(([n, l]) => `${esc(n)}番（${l.map(nm).join('・')}）`).join('、')}`);
+  if (!gk) w.push('GKが1人もいません');
+  return w.length ? `<div class="note warn mwarn">${w.map((x) => `<div>⚠ ${x}</div>`).join('')}<div class="mu xs">このままでも試合は始められます</div></div>` : '';
+}
+
 // ---------- 試合を探す ----------
 function vSearch() {
   const statuses = ['準備中', '準備完了', '試合中', '未入力あり', '記録完了'];
@@ -662,14 +762,14 @@ function vSearch() {
     <div class="card filt">
       <input id="qOpp" placeholder="相手チーム名で検索">
       <select id="qAct"><option value="">すべての活動</option>${[...S.activities].sort((a, b) => (b.start || '').localeCompare(a.start || '')).map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select>
-      <select id="qCat"><option value="">すべての区分</option>${optionTags(opts('matchCategories', true), '', { blank: null })}</select>
+      <select id="qCat"><option value="">すべての区分</option>${optionTagsId(opts('matchCategories', true), '', { blank: null })}</select>
       <select id="qSt"><option value="">すべての状態</option>${statuses.map((s) => `<option>${s}</option>`).join('')}</select>
     </div>
     <div id="results"></div>`,
     bind() {
       const draw = () => {
         const q = $('#qOpp').value.trim(), act = $('#qAct').value, cat = $('#qCat').value, st = $('#qSt').value;
-        const list = S.matches.filter((m) => (!q || (m.opponent || '').includes(q)) && (!act || m.activityId === act) && (!cat || m.category === cat) && (!st || matchStatus(m) === st))
+        const list = S.matches.filter((m) => (!q || (m.opponent || '').includes(q)) && (!act || m.activityId === act) && (!cat || m.categoryId === cat) && (!st || matchStatus(m) === st))
           .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         const groups = [];
         for (const m of list) { let g = groups.find((x) => x.id === m.activityId); if (!g) groups.push(g = { id: m.activityId, ms: [] }); g.ms.push(m); }
@@ -691,14 +791,14 @@ function vSoon(r) {
 // ---------- 設定 ----------
 function vSettings() {
   const ts = teamSettings();
-  const lb = (() => { try { return +localStorage.getItem('fpt.lastBackup') || 0; } catch { return 0; } })();
+  const lb = lastBackupAt();
   const optEditor = (key, title) => {
     const list = S.global[key];
     return `<div class="opted"><h3>${title}</h3>${list.map((o, i) => `<div class="optrow ${o.hidden ? 'hid' : ''}">
-      <input id="opt_${key}_${i}" data-ok="${key}" data-oi="${i}" value="${esc(o.name)}">
-      <button class="btn xs" data-up="${key}:${i}" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
-      <button class="btn xs" data-down="${key}:${i}" ${i === list.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
-      <button class="btn xs" data-hide="${key}:${i}">${o.hidden ? '表示する' : '非表示'}</button></div>`).join('')}
+      <input id="opt_${key}_${esc(o.id)}" data-ok="${key}" data-oid="${esc(o.id)}" value="${esc(o.name)}" aria-label="${esc(title)}：${esc(o.name)}">
+      <button class="btn xs" data-up="${key}:${esc(o.id)}" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
+      <button class="btn xs" data-down="${key}:${esc(o.id)}" ${i === list.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
+      <button class="btn xs" data-hide="${key}:${esc(o.id)}">${o.hidden ? '表示する' : '非表示'}</button></div>`).join('')}
       <div class="row"><input id="optnew_${key}" placeholder="追加する名前"><button class="btn sm" data-add="${key}">追加</button></div></div>`;
   };
   return {
@@ -713,7 +813,7 @@ function vSettings() {
       <div class="row"><input id="devNameIn" value="${esc((() => { try { return localStorage.getItem('fpt.deviceName') || ''; } catch { return ''; } })())}" placeholder="例：谷本"><button class="btn sm pri" id="btnDevName">保存</button></div></div>
     <div class="card"><h3>バックアップ</h3>
       <p class="mu">全チームの記録をファイルに書き出します。最後に書き出した日時：${lb ? new Date(lb).toLocaleString('ja-JP') : 'まだありません'}</p>
-      <div class="row"><button class="btn pri" id="btnBk">バックアップを書き出す</button><button class="btn" disabled>ファイルから戻す（次の版で入ります）</button></div></div>
+      <div class="row"><button class="btn pri" id="btnBk">バックアップを書き出す</button><button class="btn" id="btnRestore">ファイルから戻す</button><input type="file" id="restoreFile" accept=".json,application/json" hidden></div></div>
     <div class="card"><h3>アプリ</h3>
       <p>バージョン ${esc(ctx.appVersion)}　<button class="btn sm" id="btnUpd">更新を確認</button> <span id="updMsg" class="mu"></span></p>
       <p id="updForce" hidden><button class="btn pri" id="btnForce">最新にする</button> <span class="mu">アプリのファイルを入れ直して開き直します（試合の記録はそのまま残ります）</span></p>
@@ -735,7 +835,9 @@ function vSettings() {
     <div class="row end"><button class="btn pri" id="btnTeamSet">保存</button></div></div>` : ''}`,
     bind(root) {
       $('#btnOut').onclick = async () => { if (await confirmBox({ title: 'ログアウトしますか？', body: '<p>もう一度ログインするにはネットが必要です。試合の前にはログアウトしないでください。</p>', ok: 'ログアウト' })) ctx.signOut(); };
-      $('#btnBk').onclick = exportBackup;
+      $('#btnBk').onclick = () => exportBackup();
+      $('#btnRestore').onclick = () => $('#restoreFile').click();
+      $('#restoreFile').onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) restoreFromFile(f); };
       $('#btnDevName').onclick = () => { const v = $('#devNameIn').value.trim(); try { if (v) localStorage.setItem('fpt.deviceName', v); else localStorage.removeItem('fpt.deviceName'); } catch {} toast(v ? `担当者の名前を「${v}」にしました` : '名前を消しました（「iPad」か「PC」と出ます）'); render(); };
       $('#btnUpd').onclick = async () => {
         const msg = (t) => { $('#updMsg').textContent = t; };
@@ -759,12 +861,35 @@ function vSettings() {
       $('#btnForce').onclick = async () => {
         if (!navigator.onLine) return toast('ネットにつながっているときに使えます');
         if (!(await confirmBox({ title: 'アプリを最新にしますか？', body: '<p>アプリのファイルを入れ直して開き直します。試合の記録・下書きはそのまま残ります。</p>', ok: '最新にする' }))) return;
-        $('#updMsg').textContent = '入れ直しています…';
+        const msg = (t) => { const el = $('#updMsg'); if (el) el.textContent = t; };
+        // 1) 先に新しい版のファイルを全部取ってきて確かめる。1つでも取れなければ、今の版のまま（何も消さない）
+        msg('新しいファイルを確かめています…');
+        let files;
+        try {
+          const t = Date.now();
+          const text = async (u) => { const r = await fetch(u, { cache: 'no-store' }); if (!r.ok) throw new Error(u + ' ' + r.status); const x = await r.text(); if (!x) throw new Error(u + ' empty'); return x; };
+          const sw = await text(`./sw.js?fresh=${t}`);
+          const latest = sw.match(/VERSION = '([^']+)'/)?.[1]; if (!latest) throw new Error('sw.js');
+          // 新しい版の sw.js に書かれているファイル一覧（新しく増えたファイルも含めて）
+          const shell = [...new Set([...sw.matchAll(/'\.\/([^']+)'/g)].map((x) => x[1]).filter(Boolean).concat(SHELL_FILES))];
+          files = [...shell.map((f) => `./${f}`), ...FB_FILES];
+          const got = await Promise.all([
+            ...shell.map((f) => text(`./${f}?fresh=${t}`).then((x) => [f, x])),
+            ...FB_FILES.map((u) => text(`${u}?check=${t}`).then((x) => [u, x])),
+          ]);
+          const app = got.find(([f]) => f === 'app.js')?.[1] || '';
+          if (!app.includes(`APP_VERSION = '${latest}'`)) throw new Error('app.js と sw.js の版が合いません');
+        } catch (e) {
+          console.warn('force update', e);
+          msg('新しいファイルを取ってこられませんでした。今の版のまま使えます（ネットのよいところで、もう一度押してください）');
+          return;
+        }
+        // 2) 全部そろったので、古いファイルを消して入れ直す
+        msg('入れ直しています…');
         try {
           for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
           for (const k of await caches.keys()) await caches.delete(k);
-          await Promise.all(SHELL_FILES.map((f) => fetch(`./${f}?fresh=${Date.now()}`, { cache: 'reload' }).catch(() => {})));
-          await Promise.all(SHELL_FILES.map((f) => fetch(`./${f}`, { cache: 'reload' }).catch(() => {})));
+          await Promise.all(files.map((f) => fetch(f, { cache: 'reload' }).catch(() => {})));
         } finally { location.reload(); }
       };
       const ts2 = $('#btnTeamSet');
@@ -774,62 +899,52 @@ function vSettings() {
         if (s.colorRed <= s.colorOrange || s.runRed <= s.runOrange) return toast('赤になる時間は、オレンジより後にしてください');
         put(['teams', S.teamId], { settings: s }); toast('保存しました');
       });
-      const saveList = (key, list) => put(['config', 'global'], { [key]: list });
+      // 選択肢は1件ずつ書く（store.js saveOptions）。2台で同時に直しても、別の選択肢の直しは消えない
       root.addEventListener('change', (e) => {
         const k = e.target.dataset.ok; if (!k) return;
-        const list = S.global[k].map((o) => ({ ...o })); const i = +e.target.dataset.oi;
-        const v = e.target.value.trim(); if (!v) { e.target.value = list[i].name; return; }
-        list[i].name = v; saveList(k, list); toast('名前を変えました');
+        const o = S.global[k].find((x) => x.id === e.target.dataset.oid); if (!o) return;
+        const v = e.target.value.trim(); if (!v || v === o.name) { e.target.value = o.name; return; }
+        if (!renameOption(k, o.id, v)) { e.target.value = o.name; return toast(`「${v}」はすでにあります。別の名前にしてください`); }
+        toast('名前を変えました');
       });
       root.addEventListener('click', (e) => {
         const b = e.target.closest('button'); if (!b) return;
         const spec = b.dataset.up || b.dataset.down || b.dataset.hide; const add = b.dataset.add;
         if (add) {
           const inp = $('#optnew_' + add); const v = inp.value.trim(); if (!v) return;
-          if (S.global[add].some((o) => o.name === v)) return toast('同じ名前がすでにあります');
-          saveList(add, [...S.global[add], { id: 'o' + Date.now(), name: v, hidden: false }]); inp.value = ''; inp.dataset.fresh = '1'; return;
+          if (!addOption(add, v)) return toast('同じ名前がすでにあります');
+          inp.value = ''; inp.dataset.fresh = '1'; return;
         }
         if (!spec) return;
-        const [k, si] = spec.split(':'); const i = +si; const list = S.global[k].map((o) => ({ ...o }));
-        if (b.dataset.up && i > 0) [list[i - 1], list[i]] = [list[i], list[i - 1]];
-        if (b.dataset.down && i < list.length - 1) [list[i + 1], list[i]] = [list[i], list[i + 1]];
-        if (b.dataset.hide) list[i].hidden = !list[i].hidden;
-        saveList(k, list);
+        const [k, id] = spec.split(':'); const list = S.global[k]; const i = list.findIndex((o) => o.id === id); if (i < 0) return;
+        if (b.dataset.up && i > 0) moveOption(k, i, i - 1);
+        if (b.dataset.down && i < list.length - 1) moveOption(k, i, i + 1);
+        if (b.dataset.hide) saveOptions(k, { [id]: { hidden: !list[i].hidden } });
       });
     },
   };
 }
 
-// ---------- バックアップの書き出し ----------
-async function exportBackup() {
-  try {
-    const { fsM, db } = ctx.fb;
-    const out = { app: 'futsal-playtime', version: ctx.appVersion, exportedAt: new Date().toISOString(), config: {}, teams: [] };
-    const g = await fsM.getDoc(fsM.doc(db, 'config', 'global')); out.config.global = g.exists() ? g.data() : null;
-    const ts = await fsM.getDocs(fsM.collection(db, 'teams'));
-    for (const t of ts.docs) {
-      const team = { id: t.id, ...t.data() };
-      for (const sub of ['players', 'activities', 'matches']) {
-        const s = await fsM.getDocs(fsM.collection(db, 'teams', t.id, sub));
-        team[sub] = s.docs.map((d) => ({ id: d.id, ...d.data() }));
-      }
-      // 試合ごとの記録：MATCH PLAYの操作（ops）、イベント（events）、記録の修正の履歴（fixlog）
-      for (const m of team.matches) {
-        for (const sub of ['ops', 'events', 'fixlog']) {
-          const s = await fsM.getDocs(fsM.collection(db, 'teams', t.id, 'matches', m.id, sub));
-          m[sub] = s.docs.map((d) => ({ id: d.id, ...d.data() }));
-        }
-      }
-      out.teams.push(team);
-    }
-    const blob = new Blob([JSON.stringify(out, (k, v) => (v && typeof v.toDate === 'function' ? v.toDate().toISOString() : v), 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    const d = new Date();
-    a.href = URL.createObjectURL(blob);
-    a.download = `出場時間_バックアップ_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    try { localStorage.setItem('fpt.lastBackup', String(Date.now())); } catch {}
-    toast('バックアップを書き出しました'); render();
-  } catch (e) { console.error(e); toast('書き出せませんでした（' + (e.code || e.message) + '）'); }
+// ---------- 更新の確認（app.js から使う。試13） ----------
+// MATCH PLAY を開いているあいだは「更新する」を出さない
+export const onPlayScreen = () => /^#\/m\/[^/]+\/play/.test(location.hash);
+// この端末で記録している試合のピリオドが進行中か（更新で開き直す前に確かめる）
+export function liveOnThisDevice() {
+  const me = deviceId();
+  for (const m of S.matches) {
+    if (m.status !== 'playing') continue;
+    const c = watchOps(m.id); if (!c.list.length) continue;
+    const mine = [...c.list].sort((a, b) => (a.t || 0) - (b.t || 0)).filter((o) => o.dev === me);
+    if (!mine.length) continue;
+    try {
+      const st = replay(c.list, { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 });
+      if (st.periods[st.current]?.status === 'live') return m;
+    } catch {}
+  }
+  return null;
+}
+export async function confirmUpdate() {
+  const m = liveOnThisDevice();
+  if (!m) return true;
+  return confirmBox({ title: '試合中ですが、更新しますか？', body: `<p>この端末で vs ${esc(m.opponent)} を記録中です（ピリオドが進行中）。</p><p>更新するとアプリを開き直します。記録は消えませんが、ハーフタイムや試合後に更新するのがおすすめです。</p>`, ok: '更新する', cancel: 'あとで' });
 }

@@ -11,12 +11,9 @@
 //   teams/{teamId}/matches/{id}        試合（members: {playerId: {no,pos,pp,order}} = 試合メンバー）
 
 import { todoCount } from './events.js';
+import { DEFAULT_OPTIONS, OPT_KEYS, readOptions, hasMap, fullMap, nameTaken, renamePatch, resolveDoc, normalizeWrite } from './options.js';
 
-export const DEFAULT_OPTIONS = {
-  activityTypes: ['合宿', '大会', 'リーグ戦の節', '遠征', '練習試合'],
-  matchCategories: ['予選リーグ', '決勝トーナメント', '順位決定戦'],
-  goalTypes: ['定位置', 'トランジション', 'CK', 'CK-KI', 'KI', 'FK', 'GK活用', 'パワープレー', 'パワープレー返し', 'PK', '第2PK', 'OG'],
-};
+export { DEFAULT_OPTIONS };
 export const DEFAULT_TEAM_SETTINGS = { colorOrange: 120, colorRed: 180, setplayAuto: 60, refMin: 120, setMin: 60, runOrange: 180, runRed: 300 };
 export const DEFAULT_TIMES = { half: 20, extra: false, extraHalf: 5 };
 
@@ -24,7 +21,9 @@ let F = null; // { fsM, db }
 const listeners = new Set();
 export const S = {
   ready: { global: false, teams: false, team: false },
-  global: null,          // { activityTypes:[{id,name,hidden}], ... }
+  global: null,          // { activityTypes:[{id,name,hidden,order}], ... }（options.js）
+  globalRaw: {},         // config/global の中身そのまま
+  lastBackup: 0,         // 最後にバックアップを書き出した時刻（config/global.lastBackup、全端末で共通）
   teams: [],             // all teams (not deleted)
   teamId: null,
   team: null,
@@ -34,6 +33,13 @@ export const S = {
 };
 const pend = {};
 let unsubTeam = [];
+// 活動・試合は読んだままの形を取っておき、選択肢の今の名前をそろえた写しを S に出す（名前を変えたらすぐ全部に出る）
+const raw = { activities: [], matches: [] };
+function derive() {
+  if (!S.global) return;
+  S.activities = raw.activities.map((a) => resolveDoc(a, S.global.activityTypes, 'type', 'typeId'));
+  S.matches = raw.matches.map((m) => resolveDoc(m, S.global.matchCategories, 'category', 'categoryId'));
+}
 
 export function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 let queued = false;
@@ -41,23 +47,48 @@ function emit() {
   if (queued) return; queued = true;
   queueMicrotask(() => { queued = false; listeners.forEach((f) => f()); });
 }
+// 同期待ち：見ている一覧の「まだ送っていない書き込み」に加えて、この端末が書いてまだサーバーに届いていない
+// 書き込みすべて（記録の修正の履歴、ほかのチームの記録など、いま見ていないものも）を数える。
+// 書き込みの数え方は setDoc / バッチの完了だけで行い、一覧の知らせの中では何も書かない。
+let inflight = 0, bootPending = false;
+function updPending() {
+  const p = inflight > 0 || bootPending || Object.values(pend).some(Boolean);
+  if (p !== S.pending) { S.pending = p; emit(); }
+}
 function track(key, snap) {
   pend[key] = snap.metadata.hasPendingWrites;
-  S.pending = Object.values(pend).some(Boolean);
+  S.pending = inflight > 0 || bootPending || Object.values(pend).some(Boolean);
   S.fromCache = snap.metadata.fromCache;
 }
-
-const optList = (names) => names.map((n, i) => ({ id: 'o' + i + '_' + n, name: n, hidden: false }));
+function counted(p) {
+  inflight++; updPending();
+  const done = () => { inflight--; updPending(); };
+  p.then(done, done);
+  return p;
+}
 
 export function initStore(fsM, db) {
-  F = { fsM, db };
+  // setDoc と writeBatch().commit() を数える版に包む（store.js のどの書き込みも同期の表示に入る）
+  const wrapped = {
+    ...fsM,
+    setDoc: (...a) => counted(fsM.setDoc(...a)),
+    ...(fsM.deleteDoc ? { deleteDoc: (...a) => counted(fsM.deleteDoc(...a)) } : {}),
+    ...(fsM.writeBatch ? { writeBatch: (...a) => { const b = fsM.writeBatch(...a); const c = b.commit.bind(b); b.commit = () => counted(c()); return b; } } : {}),
+  };
+  F = { fsM: wrapped, db };
+  // 前に開いたときの、まだ送れていない書き込み（アプリを閉じる前のもの）も「同期待ち」に入れる
+  if (fsM.waitForPendingWrites) {
+    bootPending = true;
+    fsM.waitForPendingWrites(db).catch(() => {}).finally(() => { bootPending = false; updPending(); });
+  }
   const { onSnapshot, doc, collection } = fsM;
   onSnapshot(doc(db, 'config', 'global'), { includeMetadataChanges: true }, (snap) => {
     track('global', snap);
     const v = snap.exists() ? snap.data() : {};
-    const g = {};
-    for (const k of Object.keys(DEFAULT_OPTIONS)) g[k] = Array.isArray(v[k]) && v[k].length ? v[k] : optList(DEFAULT_OPTIONS[k]);
-    S.global = g; S.ready.global = true; emit();
+    S.globalRaw = v;
+    S.global = readOptions(v);
+    S.lastBackup = typeof v.lastBackup === 'number' ? v.lastBackup : 0;
+    S.ready.global = true; derive(); emit();
   }, onErr);
   onSnapshot(collection(db, 'teams'), { includeMetadataChanges: true }, (snap) => {
     track('teams', snap);
@@ -68,6 +99,7 @@ export function initStore(fsM, db) {
     emit();
   }, onErr);
 }
+export const fbHandle = () => F; // バックアップ（backup.js）用
 
 export let lastError = null;
 function onErr(e) { lastError = e; console.error(e); emit(); }
@@ -75,7 +107,7 @@ function onErr(e) { lastError = e; console.error(e); emit(); }
 export function selectTeam(teamId) {
   if (S.teamId === teamId && unsubTeam.length) return;
   unsubTeam.forEach((u) => u()); unsubTeam = [];
-  S.teamId = teamId; S.players = []; S.activities = []; S.matches = [];
+  S.teamId = teamId; S.players = []; S.activities = []; S.matches = []; raw.activities = []; raw.matches = [];
   S.team = S.teams.find((t) => t.id === teamId) || null;
   S.ready.team = false;
   try { teamId ? localStorage.setItem('fpt.team', teamId) : localStorage.removeItem('fpt.team'); } catch {}
@@ -85,7 +117,8 @@ export function selectTeam(teamId) {
   for (const [key, field] of [['players', 'players'], ['activities', 'activities'], ['matches', 'matches']]) {
     unsubTeam.push(onSnapshot(collection(F.db, 'teams', teamId, key), { includeMetadataChanges: true }, (snap) => {
       track(key, snap);
-      S[field] = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.deleted);
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.deleted);
+      if (field === 'players') S.players = list; else { raw[field] = list; derive(); }
       if (++got >= 3) S.ready.team = true;
       emit();
     }, onErr));
@@ -98,6 +131,11 @@ export function newId(coll = 'x') { return F.fsM.doc(F.fsM.collection(F.db, coll
 // Write with merge. Not awaited by callers: offline writes resolve only once they reach the server.
 export function put(path, data) {
   const { setDoc, doc, serverTimestamp } = F.fsM;
+  // 試合の区分・活動の種類は、名前で渡されても選択肢の id で保存する（options.js）
+  if (path[0] === 'teams' && path.length === 4 && S.global) {
+    if (path[2] === 'matches') data = normalizeWrite(data, S.global.matchCategories, 'category', 'categoryId');
+    if (path[2] === 'activities') data = normalizeWrite(data, S.global.activityTypes, 'type', 'typeId');
+  }
   const ref = doc(F.db, ...path);
   setDoc(ref, { ...data, updatedAt: serverTimestamp() }, { merge: true }).catch(onErr);
 }
@@ -108,6 +146,30 @@ export const now = () => F.fsM.serverTimestamp();
 export const teamPath = (...rest) => ['teams', S.teamId, ...rest];
 export const teamSettings = () => ({ ...DEFAULT_TEAM_SETTINGS, ...(S.team?.settings || {}) });
 export const opts = (k, includeHidden = false) => (S.global?.[k] || []).filter((o) => includeHidden || !o.hidden);
+// 選択肢を1件ずつ書く（optMap に merge。2台で同時に別の選択肢を直しても消し合わない）。
+// patch = { [id]: {name?, hidden?, order?} }。まだ古い形（配列）のときは、今の一覧をまるごと新しい形にして書く。
+export function saveOptions(k, patch) {
+  const base = hasMap(S.globalRaw, k) ? {} : fullMap(S.global[k]);
+  for (const [id, p] of Object.entries(patch)) base[id] = { ...(base[id] || {}), ...p };
+  put(['config', 'global'], { optMap: { [k]: base } });
+}
+// 名前を変える／足す。同じ名前があれば false
+export function renameOption(k, id, name) {
+  if (nameTaken(S.global[k], name, id)) return false;
+  const o = S.global[k].find((x) => x.id === id); if (!o) return false;
+  saveOptions(k, { [id]: renamePatch(o, name) }); return true;
+}
+export function addOption(k, name) {
+  if (nameTaken(S.global[k], name)) return false;
+  const order = Math.max(-1, ...S.global[k].map((o, i) => (Number.isFinite(o.order) && o.order < 1e9 ? o.order : i))) + 1;
+  saveOptions(k, { ['o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)]: { name, hidden: false, order } }); return true;
+}
+export function moveOption(k, from, to) {
+  const list = [...S.global[k]]; const [x] = list.splice(from, 1); list.splice(to, 0, x);
+  saveOptions(k, Object.fromEntries(list.map((o, i) => [o.id, { order: i }])));
+}
+export const optName = (k, id) => (S.global?.[k] || []).find((o) => o.id === id)?.name || '';
+export { OPT_KEYS };
 export const playerById = (id) => S.players.find((p) => p.id === id);
 export const activityById = (id) => S.activities.find((a) => a.id === id);
 export const matchById = (id) => S.matches.find((m) => m.id === id);
