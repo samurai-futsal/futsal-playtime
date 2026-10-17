@@ -1021,3 +1021,10 @@ body.playmode #toast.show{transform:translateX(-50%) translateY(0)}
 .sptb .spc.fix{display:flex;align-items:center;justify-content:center;cursor:default;color:#5F7BA8}
 /* Sportscodeから取り込み：ピリオドをまだ選んでいない（SCI-01） */
 .sineed{border:2px solid #C8372D;font-weight:700}
+/* 分析のセット：上から50組のあとの「もっと見る」（2026-10-17 決12） */
+.anset tr.anmore td{text-align:center;padding:8px;background:#F7F9FC}
+/* マッチレポート：まとめだけ／試合ごとも（2026-10-17 決11） */
+.rpopt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;margin:8px 0;cursor:pointer}
+.rpopt input{margin-top:4px;width:20px;height:20px}
+.rpopt span{display:flex;flex-direction:column;gap:2px}.rpopt small{color:#5F6B80;font-size:13px}
+.rpopt:has(input:checked){border-color:#1F5FBF;background:#F2F6FD}

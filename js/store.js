@@ -127,6 +127,7 @@ export function selectTeam(teamId) {
       track(key, snap);
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.deleted);
       if (field === 'players') S.players = list; else { raw[field] = list; derive(); }
+      if (field === 'matches') { matchesSync = !snap.metadata.fromCache && !snap.metadata.hasPendingWrites; sweepLive(); noteLiveAll(); }
       if (++got >= 3) S.ready.team = true;
       emitSoon();
     }, onErr));
@@ -209,23 +210,182 @@ export function playedPlayerIds(activityId = null) {
 export function inAnyMatch(playerId) { return S.matches.some((m) => (m.members || {})[playerId]); }
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
+// ---------- 記録（ops・イベント）の読み方：読み取り回数を抑える（2026-10-17 決13） ----------
+// 無料プラン（Spark）は1日5万回まで読める。前は分析で全試合を開くと、試合ごとに ops とイベントの「聞き続ける読み方」
+// （onSnapshot）を2つずつ付けたままにしていた。アプリを開き直して30分以上たつと、聞き始めるたびに全部の文書を
+// サーバーから読み直す（1試合 約400件 → 100試合で約4万回）。そこで読み方を2つに分ける：
+//  ① 聞き続ける（live）：試合中の試合と、画面に開いている試合（#/m/{id}… の画面：試合ページ・MATCH PLAY・
+//     イベント入力・マッチレビュー・記録の修正など）だけ。ほかの端末の記録がすぐ届く（これまでどおり）。
+//  ② 1回だけ読む（snap）：それ以外（終わった試合を分析・書き出しで使うとき）。
+//     試合の文書（matches/{id}）に「変わった印」revOps・revEv を持たせ、この端末で ops・イベントを書くたびに
+//     新しい値に書きかえる（同じ一瞬の書き込みは1回にまとめる。flushRev）。試合の一覧は聞き続けているので、
+//     ほかの端末が書きかえた印もすぐ届く。
+//     端末には「この試合の ops を、印が r のときに n 件、まるごと受け取った」というメモ（localStorage fpt.rc）を残す。
+//     読むとき：メモの印が今の印と同じなら、端末の保存（Firestore のキャッシュ、getDocsFromCache）から読む＝
+//     サーバーの読み取りは0回。件数が n より少ない（保存が消されていた）・印が違う・メモがないときだけ、
+//     サーバーから読む（getDocs）。オフラインのときは getDocs が端末の保存を返すので、それを出して、
+//     つながったら（online）読み直す。
+//  安全のため：一覧の知らせ（onSnapshot の中）では何も書かない（前に evTodo の書き込みで止まらなくなったことがある）。
+//  印を書くのは、この端末の書き込み（addOp・saveEvent・patchEvent・バックアップから戻す）のときだけ。
+//  読み込みが終わっても書かない。何度描き直しても、印が同じなら読み直さない（tried で覚える）。
+//  注意：この版より前のアプリは印を書かない。前の版の端末で終わった試合のイベントを直したときは、
+//  その試合を画面で開くと（①になり）最新になる。
+const KINDS = {
+  ops: { coll: 'ops', rev: 'revOps', cache: null },
+  ev: { coll: 'events', rev: 'revEv', cache: null },
+};
+let matchesSync = false; // 試合の一覧の最後の知らせが、サーバーで確かめたもので、まだ送っていない書き込みもないか
+const liveRe = /^#\/m\/([^/?]+)/;
+// 純粋な判断（test/readplan.test.mjs で確かめる）
+// 聞き続けるか：試合中か、その試合の画面を開いているか
+export function wantLiveFor(m, matchId, hash) {
+  if (m && m.status === 'playing') return true;
+  const x = liveRe.exec(hash || ''); return !!x && x[1] === matchId;
+}
+// 1回だけ読む試合を、今読むか。c＝今の写し { ready, rev, tried, loading }、cur＝試合の文書の今の印
+// 'keep'＝今の写しのまま／'load'＝読む／'wait'＝読み込み中か、この印ではもう読んだ（オフラインで確かめられなかった）
+export function snapPlan(c, cur) {
+  if (c.loading) return 'wait';
+  if (c.ready && c.rev === cur) return 'keep';
+  if (c.tried === cur) return 'wait';
+  return 'load';
+}
+// 端末の保存から読んだ結果を使ってよいか（メモ mk = { rev, n }、size＝端末の保存にあった件数）
+export const cacheUsable = (mk, cur, size) => !!mk && mk.rev === cur && size >= mk.n && size > 0;
+// 印の値（なければ ''＝まだ一度も書いていない試合）
+export const revOf = (m, field) => (m && m[field] != null ? String(m[field]) : '');
+// メモ（端末に保存）
+const RC = 'fpt.rc';
+let rcMem = null;
+const rcAll = () => { if (rcMem) return rcMem; try { rcMem = JSON.parse(localStorage.getItem(RC) || '{}') || {}; } catch { rcMem = {}; } return rcMem; };
+const rcKey = (teamId, matchId, kind) => `${teamId}/${matchId}/${kind}`;
+function rcGet(teamId, matchId, kind) { const v = rcAll()[rcKey(teamId, matchId, kind)]; return v ? { rev: v[0], n: v[1] } : null; }
+function rcSet(teamId, matchId, kind, rev, n) {
+  const all = rcAll(), k = rcKey(teamId, matchId, kind), v = all[k];
+  if (v && v[0] === rev && v[1] === n) return;
+  all[k] = [rev, n];
+  try { localStorage.setItem(RC, JSON.stringify(all)); } catch {}
+}
+// 同じ中身なら前の配列をそのまま使う（分析の計算の使い回しが効くように）
+function sameList(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i].id !== b[i].id || JSON.stringify(a[i]) !== JSON.stringify(b[i])) return false;
+  return true;
+}
+const wantLive = (matchId) => wantLiveFor(matchById(matchId), matchId, typeof location !== 'undefined' ? location.hash : '');
+// 聞き続けている写しに、印のメモを残す（サーバーで確かめた最新で、まだ送っていない書き込みがないときだけ）
+function noteLive(kind, matchId, c) {
+  if (!c.unsub || !c.srvOk || !matchesSync || c.team !== S.teamId) return;
+  const m = matchById(matchId); if (!m) return;
+  rcSet(c.team, matchId, kind, revOf(m, KINDS[kind].rev), c.list.length);
+}
+function noteLiveAll() {
+  for (const [kind, K] of Object.entries(KINDS)) for (const [id, c] of Object.entries(K.cache)) noteLive(kind, id, c);
+}
+// 聞き続ける必要がなくなった試合は、聞くのをやめる（読んだ中身はそのまま使う）
+function sweepLive() {
+  for (const [kind, K] of Object.entries(KINDS)) for (const [id, c] of Object.entries(K.cache)) {
+    if (!c.unsub || wantLive(id)) continue;
+    noteLive(kind, id, c);
+    c.unsub(); c.unsub = null;
+    delete pend[(kind === 'ops' ? 'ops_' : 'ev_') + id];
+    // 最後に受け取ったのがサーバーで確かめたものなら、その時の印の写しとして使い続ける。そうでなければ次に読み直す
+    const mk = rcGet(c.team, id, kind);
+    c.rev = mk && c.srvOk && mk.n === c.list.length ? mk.rev : undefined; c.tried = undefined;
+  }
+}
+if (typeof addEventListener === 'function') {
+  addEventListener('hashchange', () => { if (F) { sweepLive(); } });
+  // つながったら、オフラインで確かめられなかった写しを読み直す
+  addEventListener('online', () => {
+    let any = false;
+    for (const K of Object.values(KINDS)) for (const c of Object.values(K.cache)) if (!c.unsub && c.tried !== undefined && c.rev !== c.tried) { c.tried = undefined; any = true; }
+    if (any) emit();
+  });
+}
+// ops・イベントの写しを返す（なければ作る）。画面からは描くたびに呼ばれる
+function ensure(kind, matchId, onSnap) {
+  const K = KINDS[kind];
+  const c = K.cache[matchId];
+  if (wantLive(matchId)) { if (!c.unsub) listen(kind, matchId, c, onSnap); return c; }
+  if (c.unsub) return c; // 一覧の知らせで外す（sweepLive）まではそのまま
+  const m = matchById(matchId);
+  if (!m) return c; // 試合の一覧がまだ：届いたら描き直すのでそのとき読む
+  const cur = revOf(m, K.rev);
+  if (snapPlan(c, cur) === 'load') loadSnap(kind, matchId, c, cur);
+  return c;
+}
+function listen(kind, matchId, c, onSnap) {
+  const K = KINDS[kind]; const { onSnapshot, collection } = F.fsM;
+  c.team = S.teamId; c.srvOk = false;
+  c.unsub = onSnapshot(collection(F.db, 'teams', c.team, 'matches', matchId, K.coll), { includeMetadataChanges: true }, (snap) => {
+    if (!c.unsub) return; // やめたあとに届いた知らせ
+    c.srvOk = !snap.metadata.fromCache && !snap.metadata.hasPendingWrites;
+    onSnap(snap);
+    noteLive(kind, matchId, c);
+  }, onErr);
+}
+async function loadSnap(kind, matchId, c, cur) {
+  const K = KINDS[kind]; const { getDocs, getDocsFromCache, collection } = F.fsM;
+  const team = S.teamId;
+  c.loading = true; c.tried = cur; c.team = team;
+  const ref = collection(F.db, 'teams', team, 'matches', matchId, K.coll);
+  let snap = null, ok = false, srv = false;
+  try {
+    const mk = rcGet(team, matchId, kind);
+    if (mk && mk.rev === cur && getDocsFromCache) {
+      try { const s = await getDocsFromCache(ref); if (cacheUsable(mk, cur, s.docs.length)) { snap = s; ok = true; } } catch {}
+    }
+    if (!snap) {
+      try { snap = await getDocs(ref); srv = ok = !snap.metadata.fromCache; } catch (e) { try { if (getDocsFromCache) snap = await getDocsFromCache(ref); } catch {} }
+    }
+  } finally { c.loading = false; }
+  if (c.unsub || S.teamId !== team) return; // そのあいだに聞き始めた（その知らせが新しい）・チームを変えた
+  if (snap) {
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (!(c.ready && sameList(c.list, list))) c.list = list;
+    c.ready = true; c.pending = !!snap.metadata.hasPendingWrites;
+  }
+  if (ok) { c.rev = cur; c.fromCache = !srv; if (srv) { c.srvAt = Date.now(); rcSet(team, matchId, kind, cur, snap.docs.length); } }
+  else { c.rev = undefined; c.fromCache = true; } // オフラインなど：見せるが、つながったら読み直す
+  emitSoon();
+}
+// この端末で ops・イベントを書いたら、試合の文書の印を書きかえる（同じ一瞬の書き込みは試合ごとに1回）。
+// 書き込みの順番どおりにサーバーに届くので、ほかの端末で印が変わって見えたときは、記録も届いている。
+const revQ = new Map(); // `${team}/${match}` → Set(印の項目)
+let revSeq = 0;
+function bumpRev(teamId, matchId, fields) {
+  if (!teamId || !matchId) return;
+  if (!revQ.size) queueMicrotask(flushRev);
+  const k = teamId + '/' + matchId; const set = revQ.get(k) || new Set(); fields.forEach((f) => set.add(f)); revQ.set(k, set);
+}
+function flushRev() {
+  const { setDoc, doc } = F.fsM;
+  for (const [k, set] of revQ) {
+    const [t, m] = k.split('/');
+    const tok = `${deviceId()}.${Date.now().toString(36)}.${(++revSeq).toString(36)}`;
+    setDoc(doc(F.db, 'teams', t, 'matches', m), Object.fromEntries([...set].map((f) => [f, tok])), { merge: true }).catch(onErr);
+  }
+  revQ.clear();
+}
+// バックアップから戻したあと（backup.js）：その試合の記録が変わったので、ほかの端末にも読み直してもらう
+export function markMatchChanged(teamId, matchId) { bumpRev(teamId, matchId, ['revOps', 'revEv']); }
+
 // ---------- MATCH PLAY operations (teams/{t}/matches/{m}/ops/{id}) ----------
 // Append-only: an op is never changed or deleted (undo and reset are new ops). See engine.js.
-const opsCache = {}; // matchId -> { list, unsub, pending, fromCache, srvAt, checkAt, cacheAt }
+const opsCache = (KINDS.ops.cache = {}); // matchId -> { list, unsub, pending, fromCache, srvAt, checkAt, cacheAt, rev, tried, loading, team, srvOk }
 // srvAt = サーバーから最新を受け取った（fromCache:false）最後の時刻。checkAt = つなぎ直しを始めた時刻（確認中の表示用）
+// 聞き続けるか1回だけ読むかは ensure が決める（上）
 export function watchOps(matchId, keep) {
-  if (opsCache[matchId]) return opsCache[matchId];
-  const c = (opsCache[matchId] = { list: keep?.list || [], unsub: null, ready: !!keep?.ready, pending: false, fromCache: true, srvAt: keep?.srvAt || 0, checkAt: Date.now(), cacheAt: Date.now() });
-  const { onSnapshot, collection } = F.fsM;
-  c.unsub = onSnapshot(collection(F.db, 'teams', S.teamId, 'matches', matchId, 'ops'), { includeMetadataChanges: true }, (snap) => {
+  const c = opsCache[matchId] || (opsCache[matchId] = { list: keep?.list || [], unsub: null, ready: !!keep?.ready, pending: false, fromCache: true, srvAt: keep?.srvAt || 0, checkAt: Date.now(), cacheAt: Date.now() });
+  return ensure('ops', matchId, (snap) => {
     track('ops_' + matchId, snap);
     c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     c.ready = true; c.pending = snap.metadata.hasPendingWrites;
     if (snap.metadata.fromCache) { if (!c.fromCache) c.cacheAt = Date.now(); c.fromCache = true; }
     else { c.fromCache = false; c.srvAt = Date.now(); c.checkAt = 0; }
     emitSoon();
-  }, onErr);
-  return c;
+  });
 }
 // 同期（閲覧専用の画面用）：通信をつなぎ直して、この試合の記録を取り直す。記録は一切書かない。
 // 表示中の数字は消さずに残し、サーバーから最新が届いたら置きかわる。
@@ -253,6 +413,7 @@ export function addOp(matchId, op) {
   c.list = [...c.list, { id, ...rec }]; // show immediately (the snapshot confirms it a moment later)
   const { setDoc, doc } = F.fsM;
   setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'ops', id), rec).catch(onErr);
+  bumpRev(S.teamId, matchId, ['revOps']);
   emit();
   return { id, ...rec };
 }
@@ -293,24 +454,22 @@ export function addFixLog(matchId, rec) {
 
 // ---------- イベント（teams/{t}/matches/{m}/events/{id}、spec 6章・13章） ----------
 // 1件ずつの文書。直すときは上書き、消すときは deleted:true（ほかの端末にも消したことが届く）。
-const evCache = {};
+const evCache = (KINDS.ev.cache = {});
 const todoSent = {}; // 同じ数を何度も書かない
 export function watchEvents(matchId) {
-  if (evCache[matchId]) return evCache[matchId];
-  const c = (evCache[matchId] = { list: [], ready: false });
-  const { onSnapshot, collection } = F.fsM;
-  onSnapshot(collection(F.db, 'teams', S.teamId, 'matches', matchId, 'events'), { includeMetadataChanges: true }, (snap) => {
+  const c = evCache[matchId] || (evCache[matchId] = { list: [], ready: false, unsub: null });
+  return ensure('ev', matchId, (snap) => {
     track('ev_' + matchId, snap);
     c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() })); c.ready = true;
     // 試合の状態「未入力あり n」：未入力の項目か要確認が残っているイベントの数を試合に書いておく（一覧で使う）
+    // （聞き続けている試合＝画面に開いている試合・試合中の試合だけ。1回だけ読む試合では書かない）
     if (!snap.metadata.fromCache || snap.metadata.hasPendingWrites) {
       const gn = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
       const n = todoCount(c.list, gn); const m = matchById(matchId);
       if (m && (m.evTodo ?? 0) !== n && todoSent[matchId] !== n) { todoSent[matchId] = n; put(teamPath('matches', matchId), { evTodo: n }); }
     }
     emitSoon();
-  }, onErr);
-  return c;
+  });
 }
 export function saveEvent(matchId, ev) {
   const id = ev.id || newId();
@@ -320,6 +479,7 @@ export function saveEvent(matchId, ev) {
   c.list = [...c.list.filter((x) => x.id !== id), data]; // すぐ画面に出す
   const { setDoc, doc } = F.fsM;
   setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'events', id), data).catch(onErr);
+  bumpRev(S.teamId, matchId, ['revEv']);
   emit();
   return data;
 }
@@ -329,6 +489,7 @@ export function patchEvent(matchId, id, data) {
   c.list = c.list.map((x) => (x.id === id ? { ...x, ...data } : x));
   const { setDoc, doc } = F.fsM;
   setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'events', id), data, { merge: true }).catch(onErr);
+  bumpRev(S.teamId, matchId, ['revEv']);
   emit();
 }
 export function deleteEvent(matchId, id) {
