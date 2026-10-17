@@ -576,9 +576,10 @@ function vMatch(r) {
     </div>
     <h2 class="h">試合中</h2>
     <div class="grp">記録する</div>
-    <div class="acts acts2">
+    <div class="acts acts3">
       ${btn('MATCH PLAY', 'ベンチの記録係が使う\n交代・時計・出場時間（1試合に1台）', `#/m/${m.id}/play`, { pri: nMem >= 5 && m.status !== 'done', kind: 'rec' })}
       ${btn('リアルタイム入力', 'ベンチ外スタッフが使う\nPC・iPadでイベントを入力', `#/m/${m.id}/events/rt`, { kind: 'rec' })}
+      ${btn('Sportscodeから取り込み', 'ハーフタイムにも使える\n前半のXML・CSVを取り込む', `#/m/${m.id}/scimport`, { kind: 'rec' })}
     </div>
     <div class="grp">見る（記録はしない）</div>
     <div class="acts acts3">
