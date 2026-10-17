@@ -133,9 +133,10 @@ export function paceSection(c, o = {}) {
 // ---------- 7. スコアとチームスタッツ ----------
 // PK戦のキッカー（自チーム、蹴った順）：「1 甲斐 ○　2 水谷 ×（GKが止めた）」
 const PKR = { goal: '○', saved: '×（GKが止めた）', missed: '×（枠外・ポスト）' };
+const PKC = { tl: '左上', tc: '中央上', tr: '右上', bl: '左下', bc: '中央下', br: '右下', ol: '左枠外', ot: '上枠外', or: '右枠外' };
 function pkLine(c) {
   const k = c.pk?.kicks || []; if (!k.length) return '';
-  return `<div class="rvpk"><b>PK戦のキッカー</b>${k.map((x, i) => `<span>${i + 1}人目 ${x.pid ? `${c.badge(x.pid)}${esc(c.last(x.pid))}` : '<span class="na">—</span>'} ${PKR[x.res] || '<span class="na">結果なし</span>'}</span>`).join('')}</div>`;
+  return `<div class="rvpk"><b>PK戦のキッカー</b>${k.map((x, i) => `<span>${i + 1}人目 ${x.pid ? `${c.badge(x.pid)}${esc(c.last(x.pid))}` : '<span class="na">—</span>'}${x.course ? ` <small>${PKC[x.course] || ''}</small>` : ''} ${PKR[x.res] || '<span class="na">結果なし</span>'}</span>`).join('')}</div>`;
 }
 export function teamSection(c, o = {}) {
   const { R, badge, last, own, opp, goalName, M0 } = c;

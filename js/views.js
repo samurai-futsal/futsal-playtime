@@ -608,6 +608,8 @@ function vMatch(r) {
 // m.pk = { own, opp, kicks: [{ pid, res }] }（なければ null）。kicks は自チームのキッカーを蹴った順に。res：goal＝成功／saved＝GKが止めた／missed＝枠外・ポスト
 // キッカーを入れたときは、自チームのスコアは成功の数（自動）。相手のスコアは手で入れる
 export const PK_RES = [['goal', '成功'], ['saved', '失敗（GKが止めた）'], ['missed', '失敗（枠外・ポスト）']];
+// コース（キッカーから見た向き）
+export const PK_COURSE = [['tl', '左上'], ['tc', '中央上'], ['tr', '右上'], ['bl', '左下'], ['bc', '中央下'], ['br', '右下'], ['ol', '左枠外'], ['ot', '上枠外'], ['or', '右枠外']];
 export const pkOwnScore = (pk) => (pk?.kicks?.length ? pk.kicks.filter((k) => k.res === 'goal').length : pk?.own ?? 0);
 function postInputs(m) {
   const ps = m.possession != null && m.possession !== '' ? m.possession : '';
@@ -615,8 +617,9 @@ function postInputs(m) {
   const kicks = pk?.kicks || [];
   const mem = Object.entries(m.members || {}).sort((a, b) => (parseInt(a[1].no, 10) || 999) - (parseInt(b[1].no, 10) || 999));
   const pOpts = (sel) => `<option value="">選手を選ぶ</option>${mem.map(([pid, x]) => `<option value="${pid}" ${pid === sel ? 'selected' : ''}>${esc(x.no ?? '')} ${esc(playerById(pid)?.last || '')} ${esc(playerById(pid)?.first || '')}</option>`).join('')}`;
+  const cOpts = (sel) => `<option value="">コースを選ぶ</option>${PK_COURSE.map(([v, l]) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${l}</option>`).join('')}`;
   const rOpts = (sel) => `<option value="">結果を選ぶ</option>${PK_RES.map(([v, l]) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${l}</option>`).join('')}`;
-  const kickRows = kicks.map((k, i) => `<tr><td class="pkno">${i + 1}人目</td><td><select data-pkp="${i}">${pOpts(k.pid)}</select></td><td><select data-pkr="${i}" class="${k.res === 'goal' ? 'ok' : k.res ? 'ng' : ''}">${rOpts(k.res)}</select></td><td><button class="btn sm" data-pkdel="${i}" title="この行を消す">消す</button></td></tr>`).join('');
+  const kickRows = kicks.map((k, i) => `<tr><td class="pkno">${i + 1}人目</td><td><select data-pkp="${i}">${pOpts(k.pid)}</select></td><td><select data-pkc="${i}">${cOpts(k.course)}</select></td><td><select data-pkr="${i}" class="${k.res === 'goal' ? 'ok' : k.res ? 'ng' : ''}">${rOpts(k.res)}</select></td><td><button class="btn sm" data-pkdel="${i}" title="この行を消す">消す</button></td></tr>`).join('');
   return `<div class="grp">試合後に入れる数字</div>
     <div class="card postin">
       <div class="pi"><label for="mPoss">ポゼッション率（自チーム）</label>
@@ -625,7 +628,7 @@ function postInputs(m) {
       <div class="pi"><label>PK戦</label>
         <div class="row"><div class="seg pkseg"><button class="${pk ? '' : 'on'}" data-pkhad="0">なし</button><button class="${pk ? 'on' : ''}" data-pkhad="1">あり</button></div>
         ${pk ? `<span class="pkin">自チーム ${kicks.length ? `<b class="pkauto" title="キッカーの成功の数">${pkOwnScore(pk)}</b>` : `<input id="pkOwn" class="pinum" type="number" min="0" max="99" inputmode="numeric" value="${esc(pk.own ?? 0)}" aria-label="PK戦 自チームの成功">`} − <input id="pkOpp" class="pinum" type="number" min="0" max="99" inputmode="numeric" value="${esc(pk.opp ?? 0)}" aria-label="PK戦 相手の成功"> 相手</span>` : ''}</div>
-        ${pk ? `<div class="pkk"><div class="mu sm">自チームのキッカー（蹴った順）${kicks.length ? '：自チームのスコアは成功の数から自動で入ります' : ''}</div>
+        ${pk ? `<div class="pkk"><div class="mu sm">自チームのキッカー（蹴った順）。コースはキッカーから見た向き${kicks.length ? '：自チームのスコアは成功の数から自動で入ります' : ''}</div>
           ${kicks.length ? `<table class="pktb"><tbody>${kickRows}</tbody></table>` : ''}
           <button class="btn sm" id="pkAdd">＋ ${kicks.length + 1}人目のキッカーを足す</button></div>` : ''}</div>
     </div>`;
@@ -662,6 +665,8 @@ function bindPostInputs(m) {
     root.querySelectorAll('[data-pkp]').forEach((el) => { el.onchange = async () => { const k = cur(); const i = +el.dataset.pkp;
       if (el.value && k.some((x, j) => j !== i && x.pid === el.value) && !(await confirmBox({ title: 'この選手は、もう別の順番で蹴っています', body: '<p>全員が蹴り終わって2巡目に入ったときは、このままで大丈夫です。</p>', ok: 'このまま入れる' }))) { el.value = k[i].pid || ''; return; }
       k[i].pid = el.value; saveKicks(k); }; });
+    // 枠外のコースを選んだときは、結果が空なら「失敗（枠外・ポスト）」を入れる
+    root.querySelectorAll('[data-pkc]').forEach((el) => { el.onchange = () => { const k = cur(); const i = +el.dataset.pkc; k[i].course = el.value; if (/^o/.test(el.value) && !k[i].res) k[i].res = 'missed'; saveKicks(k); }; });
     root.querySelectorAll('[data-pkr]').forEach((el) => { el.onchange = () => { const k = cur(); k[+el.dataset.pkr].res = el.value; saveKicks(k); }; });
     root.querySelectorAll('[data-pkdel]').forEach((b) => { b.onclick = () => { const k = cur(); k.splice(+b.dataset.pkdel, 1); saveKicks(k); }; });
   };
