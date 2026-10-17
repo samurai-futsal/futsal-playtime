@@ -1,6 +1,6 @@
 // Random-operation test for the MATCH PLAY engine (spec 10章「自動テスト」).
 // Run: node test/engine.test.mjs
-import { replay, nowElapsed, playerPeriodTime, seatView, periodLen, PERIODS } from '../js/engine.js';
+import { replay, nowElapsed, playerPeriodTime, seatView, perLen, PERIODS, ejectCarryIn, contTime } from '../js/engine.js';
 import { matchModel, checkTotal, setTable, playedTime, replayToFix, checkFix, playerTable } from '../js/model.js';
 
 let seed = Number(process.argv[2] || 12345);
@@ -30,6 +30,11 @@ function check(S, t, ctx) {
     let total = 0; ALL.forEach((pid) => { total += playerPeriodTime(S, pid, k, at); });
     const emptyMs = S.empties.filter((e) => e.period === k).reduce((s, e) => s + ((e.to ?? at) - e.from), 0);
     if (Math.abs(total + emptyMs - 5 * at) > 1) fail(`time sum ${total}+${emptyMs} != 5×${at}`);
+    // 連続出場タイマーはマイナスにならず、ピリオドの経過より長くならない
+    for (const v of seatView(S, at)) if (v.pid) { const c = contTime(S, v.pid, at, v); if (c < 0 || c > at + 1) fail(`cont ${v.pid} ${c} > ${at}`); }
+    // 空席の数は、退場の記録（このピリオドの退場＋前のピリオドから持ち越した空席）を超えない
+    const open = S.empties.filter((e) => e.period === k && e.to == null).length;
+    if (open !== empties) fail(`open empties ${open} != ${empties}`);
   }
   // finished periods
   for (const pk of PERIODS) {
@@ -76,17 +81,22 @@ function checkFixRoundTrip(S, t, sd, step) {
 function runOne(sd, steps = 220) {
   seed = sd; const ops = []; let t = 1e12; let n = 0;
   const add = (o) => { const S0 = replay(ops, cfg); ops.push({ id: 'o' + n, t, n: n++, period: S0.current, ...o }); };
+  const recorded = (S) => PERIODS.map((x) => x.key).filter((k) => S.periods[k].status !== 'none');
   for (let step = 0; step < steps; step++) {
     t += Math.floor(rnd() * 40000);
     const S = replay(ops, cfg);
     const p = S.periods[S.current];
     let op;
-    if (S.matchOver) { if (rnd() < 0.3) op = { type: 'reset', scope: pick(['1H', '2H', 'all']) }; else op = { type: 'undo' }; }
+    if (S.matchOver) { if (rnd() < 0.3) op = { type: 'reset', scope: pick([...recorded(S), 'all']) }; else op = { type: 'undo' }; }
     else if (S.askExtra) op = { type: 'extra', yes: rnd() < 0.5 };
     else if (p.status === 'none') {
       const avail = ALL.filter((x) => !S.ejected.has(x));
       let g = 0; const lineup = [...avail].sort(() => rnd() - 0.5).filter((x) => !(cfg.members[x]?.pos === 'GK' && g++)).slice(0, 5); // スタメンのGKは1人まで（準備画面と同じ）
-      op = rnd() < 0.9 ? { type: 'kickoff', lineup } : { type: 'undo' };
+      // 前のピリオドから持ち越した退場の空席があれば、その数まで枠を空けて始めることもある（決6）
+      const carry = ejectCarryIn(S).length;
+      if (carry && rnd() < 0.7) { const holes = 1 + Math.floor(rnd() * carry); for (let h = 0; h < holes; h++) lineup[Math.floor(rnd() * 5)] = null; }
+      const r0 = rnd();
+      op = r0 < 0.85 ? { type: 'kickoff', lineup, len: perLen(S, S.current) } : r0 < 0.93 ? { type: 'undo' } : { type: 'select', to: pick(['1H', '2H', 'E1', 'E2']) };
     } else {
       const on = S.seats.filter(Boolean);
       const bench = ALL.filter((x) => !on.includes(x) && !S.ejected.has(x));
@@ -100,10 +110,12 @@ function runOne(sd, steps = 220) {
       else if (r < 0.71) op = { type: 'pp', team: pick(['own', 'opp']) };
       else if (r < 0.73) op = { type: 'ppEnd' };
       else if (r < 0.75) op = { type: 'timeout', team: pick(['own', 'opp']) };
-      else if (r < 0.79) op = { type: 'adjust', elapsed: Math.floor(rnd() * periodLen(cfg, S.current)) };
+      else if (r < 0.79) op = { type: 'adjust', elapsed: Math.floor(rnd() * perLen(S, S.current)) };
       else if (r < 0.88) op = { type: 'undo' };
       else if (r < 0.93) op = { type: 'periodEnd' };
-      else if (r < 0.95) op = { type: 'reset', scope: pick([S.current, 'all']) };
+      // リセット：画面では記録中のピリオドか試合全体だけだが、古い記録にあるかもしれないので、記録のあるどのピリオドも試す（試1）
+      else if (r < 0.95) op = { type: 'reset', scope: pick([S.current, ...recorded(S), 'all']) };
+      else if (r < 0.96) op = { type: 'select', to: pick(['1H', '2H', 'E1', 'E2']) };
       else op = { type: 'contReset', pid: pick(ALL) };
     }
     add(op);

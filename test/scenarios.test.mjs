@@ -1,7 +1,7 @@
 // Scenario tests: the cases written in the spec (3章「想定ケース」, 4章 セットプレーの例, 6章 5x4).
 // Run: node test/scenarios.test.mjs
-import { replay, nowElapsed, playerPeriodTime, playerCounts, seatView, contTime, restTime } from '../js/engine.js';
-import { matchModel, playerTable, setTable } from '../js/model.js';
+import { replay, nowElapsed, playerPeriodTime, playerCounts, seatView, contTime, restTime, perLen, ejectLeft, ejectCarryIn, setplayOn, carryOf } from '../js/engine.js';
+import { matchModel, playerTable, setTable, checkTotal, replayToFix, checkFix } from '../js/model.js';
 
 const M = { G: { pos: 'GK' }, A: { pos: 'FP' }, B: { pos: 'FP' }, C: { pos: 'FP' }, D: { pos: 'FP' },
   E: { pos: 'FP' }, F: { pos: 'FP' }, G2: { pos: 'GK' }, H: { pos: 'FP' }, I: { pos: 'FP', pp: true }, J: { pos: 'FP' } };
@@ -198,6 +198,116 @@ T('マッチレビュー：出場時間・回数とセット（パワープレ�
   const sets = setTable(M);
   eq(sets[0].pids.join(), 'B,C,D,E', 'longest set'); eq(sets[0].time / sec, 840, 'B,C,D,E without PP'); eq(sets[0].count, 2, 'two appearances around PP');
   eq(sets[1].time / sec, 300, 'A,B,C,D');
+});
+
+
+T('ピリオド終了で、終わっていない交代は取り消す（決7）：OUTの選手は最後まで、仮に入った選手は記録なし', () => {
+  const b = mk(); ko(b); b.add(1100, { type: 'out', pid: 'A' }); b.add(1110, { type: 'out', pid: 'B' }); b.add(1120, { type: 'in', pid: 'E' });
+  b.add(1200, { type: 'periodEnd' });
+  const S = b.S();
+  eq(playerPeriodTime(S, 'A', '1H', 0) / sec, 1200, 'A full'); eq(playerPeriodTime(S, 'B', '1H', 0) / sec, 1200, 'B full');
+  eq(S.stints.filter((x) => x.pid === 'E').length, 0, 'E no record');
+  b.add(1201, { type: 'undo' }); eq(b.S().batch.ins.join(), 'E', 'undo brings the waiting batch back');
+});
+
+T('退場の空席は残りの時間ごと次のピリオドへ持ち越す（決6）', () => {
+  const b = mk(); ko(b); b.add(1150, { type: 'eject', pid: 'A' }); b.add(1200, { type: 'periodEnd' });
+  let S = b.S(); eq(ejectCarryIn(S).length, 1, 'carry'); eq(ejectCarryIn(S)[0].left, 70 * sec, 'left 1:10');
+  b.add(1300, { type: 'kickoff', lineup: ['G', 'B', 'C', 'D', null] }); // 4人で開始
+  S = b.S(); eq(S.periods['2H'].status, 'live', '2H live with 4'); eq(S.empty[4]?.pid, 'A', 'empty seat for A');
+  eq(ejectLeft(S.empty[4], nowElapsed(S, b.at(1330))), 40 * sec, 'countdown continues');
+  b.add(1330, { type: 'in', pid: 'E', seat: 4 }); // 失点で補充（早い）
+  S = b.S(); eq(S.fills[0].early, false, 'not marked early without afterGoal');
+  const t = b.at(1400); const at = nowElapsed(S, t);
+  let tot = 0; Object.keys(M).forEach((p) => { tot += playerPeriodTime(S, p, '2H', at); });
+  eq(tot, 5 * at - 30 * sec, 'sum = 5×elapsed − empty');
+  const Mo = matchModel(S, t); const ct = checkTotal(Mo); eq(ct.players, ct.expected, 'model total');
+  b.add(1500, { type: 'periodEnd' }); S = b.S();
+  const fp = replayToFix(S, '2H'); eq(fp.startEmpty?.[4], 'A', 'fix: starts empty'); eq(checkFix(fp, cfg).length, 0, 'fix ok');
+  const T2 = playerTable(matchModel(S, b.at(1600), { periods: { '2H': fp } })); eq(T2.E.per['2H'].time / sec, 170, 'fix round trip');
+});
+T('持ち越しより多く枠を空けたキックオフは受け付けない／2:00が過ぎた空席は持ち越さない', () => {
+  const b = mk(); ko(b); b.add(1150, { type: 'eject', pid: 'A' }); b.add(1200, { type: 'periodEnd' });
+  b.add(1300, { type: 'kickoff', lineup: ['G', 'B', 'C', null, null] }); eq(b.S().periods['2H'].status, 'none', 'two holes refused');
+  const c = mk(); ko(c); c.add(900, { type: 'eject', pid: 'A' }); c.add(1200, { type: 'periodEnd' });
+  eq(ejectCarryIn(c.S()).length, 0, 'no carry after 2:00');
+});
+T('退場の空席を持ち越して5人で始めたときは、持ち越しは消える', () => {
+  const b = mk(); ko(b); b.add(1150, { type: 'eject', pid: 'A' }); b.add(1200, { type: 'periodEnd' });
+  b.add(1300, { type: 'kickoff', lineup: ['G', 'B', 'C', 'D', 'E'] }); const S = b.S();
+  eq(S.empty.filter(Boolean).length, 0, 'no empty'); eq(S.seats.filter(Boolean).length, 5, '5 on pitch');
+});
+
+T('5x4の自動開始は、GKがOUTした時刻から（試12）', () => {
+  const b = mk(); ko(b); b.add(300, { type: 'out', pid: 'G' }); b.add(310, { type: 'in', pid: 'I' });
+  const S = b.S(); eq(S.pp[0].from / sec, 300, 'from GK OUT'); eq(S.stints.find((x) => x.pid === 'I').from / sec, 300, 'I from 300');
+});
+
+T('時計を戻す：退場・補充・続きも戻し、長さ0の5x4は消す（試11）', () => {
+  const b = mk(); ko(b); b.add(300, { type: 'pp', team: 'opp' }); b.add(320, { type: 'ppEnd' });
+  b.add(330, { type: 'eject', pid: 'A' }); b.add(340, { type: 'in', pid: 'E', seat: 1, afterGoal: true });
+  b.add(350, { type: 'adjust', elapsed: 280 * sec });
+  const S = b.S(); eq(S.pp.length, 0, 'zero-length 5x4 dropped'); eq(matchModel(S, b.at(360)).oppPPRecorded, true, 'still recorded opp 5x4');
+  eq(S.ejections[0].at / sec, 280, 'ejection cut'); eq(S.fills[0].at / sec, 280, 'fill cut');
+  const c = mk(); ko(c); c.add(500, { type: 'setplay' }); c.add(501, { type: 'out', pid: 'B' }); c.add(502, { type: 'in', pid: 'E' });
+  c.add(503, { type: 'adjust', elapsed: 400 * sec });
+  eq(c.S().carry.B / sec, 400, 'carry capped');
+  c.add(504, { type: 'out', pid: 'E' }); c.add(505, { type: 'in', pid: 'B' });
+  const S2 = c.S(); const at = nowElapsed(S2, c.at(505));
+  eq(Math.round(contTime(S2, 'B', at, seatView(S2, at).find((x) => x.pid === 'B')) / sec), 401, 'B timer: capped 6:40 + 1 s');
+});
+
+T('ピリオドの長さはキックオフのときの長さ（足1）。試合情報で直した試合は設定の長さ', () => {
+  const b = mk(); b.add(0, { type: 'kickoff', lineup: ['G', 'A', 'B', 'C', 'D'], len: 15 * 60 * sec, spAuto: 30 });
+  b.add(100, { type: 'setplay' });
+  let S = b.S(); eq(perLen(S, '1H') / sec, 900, 'kickoff length'); eq((S.setplay.endsAt - S.setplay.from) / sec, 30, 'set play auto from kickoff');
+  eq(nowElapsed(S, b.at(2000)) / sec, 900, 'clock stops at 15:00');
+  S = replay(b.ops, { ...cfg, timesFixed: true }); eq(perLen(S, '1H') / sec, 1200, 'fixed: match settings');
+  const c = mk(); ko(c); eq(perLen(c.S(), '1H') / sec, 1200, 'old log: match settings');
+});
+
+T('並べ方（足4）：同じ端末は押した順、端末の時計が途中で戻っても順番は変わらない', () => {
+  const T0 = 1e12;
+  const ops = [
+    { id: 'a', dev: 'ipad', n: 1, t: T0, period: '1H', type: 'kickoff', lineup: ['G', 'A', 'B', 'C', 'D'] },
+    { id: 'b', dev: 'ipad', n: 2, t: T0 + 100 * sec, period: '1H', type: 'out', pid: 'A' },
+    { id: 'c', dev: 'ipad', n: 3, t: T0 + 95 * sec, period: '1H', type: 'in', pid: 'E' }, // 時計が5秒戻った
+    { id: 'd', dev: 'ipad', n: 4, t: T0 + 96 * sec, period: '1H', type: 'out', pid: 'B' },
+  ];
+  const S = replay(ops, cfg);
+  eq(S.seats.includes('E'), true, 'E in'); eq(S.batch.outs.map((o) => o.pid).join(), 'B', 'B waiting');
+  eq(S.stints.find((x) => x.pid === 'A').to / sec, 100, 'A out at 100'); eq(S.batch.outs[0].outAt / sec, 100, 'no time going backwards');
+  const ops2 = [...ops, { id: 'e', dev: 'pc', n: 1, t: T0 + 50 * sec, period: '1H', type: 'timeout', team: 'own' }];
+  eq(replay(ops2, cfg).timeouts[0].at / sec, 50, 'other device merged by time');
+});
+
+T('記録中に前のピリオドをリセットしても、記録中のピリオドは変わらない（試1）', () => {
+  const b = mk(); ko(b); b.add(1200, { type: 'periodEnd' });
+  b.add(1300, { type: 'kickoff', lineup: ['G', 'E', 'F', 'H', 'J'] }); b.add(1400, { type: 'out', pid: 'E' }); b.add(1401, { type: 'in', pid: 'A' });
+  b.add(1500, { type: 'reset', scope: '1H', period: '2H' });
+  let S = b.S(); eq(S.current, '2H', 'still 2H'); eq(S.periods['2H'].status, 'live', '2H live'); eq(S.periods['1H'].status, 'none', '1H cleared');
+  eq(S.seats.filter(Boolean).sort().join(), ['A', 'F', 'G', 'H', 'J'].sort().join(), 'pitch kept');
+  b.add(2500, { type: 'periodEnd', period: '2H' }); S = b.S();
+  eq(S.current, '1H', 'then 1H can be recorded again'); eq(playerPeriodTime(S, 'A', '2H', 0) / sec, 1100, 'A 2H time');
+});
+
+T('空席を押してから選んだ選手は、交代待ちがあっても空席に入る', () => {
+  const b = mk(); ko(b); b.add(10, { type: 'eject', pid: 'A' }); b.add(200, { type: 'out', pid: 'B' });
+  b.add(201, { type: 'in', pid: 'E', seat: 1 });
+  let S = b.S(); eq(S.seats[1], 'E', 'E fills A seat'); eq(S.batch.outs.map((o) => o.pid).join(), 'B', 'B still waiting');
+  b.add(202, { type: 'in', pid: 'F' }); S = b.S(); eq(S.seats[2], 'F', 'F replaces B');
+  const c = mk(); ko(c); c.add(10, { type: 'eject', pid: 'A' }); c.add(200, { type: 'out', pid: 'G' }); c.add(201, { type: 'in', pid: 'G2', seat: 1 });
+  eq(c.S().seats.includes('G2'), false, 'GK cannot fill while the GK is still on the pitch (waiting)');
+});
+
+T('セットプレーの自動終了：時間を過ぎたら、次の操作の前でも終わったものとして見せる（試2）', () => {
+  const b = mk(); ko(b); b.add(90, { type: 'setplay' }); b.add(91, { type: 'out', pid: 'B' }); b.add(92, { type: 'in', pid: 'E' });
+  const S = b.S(); const at = nowElapsed(S, b.at(200));
+  eq(setplayOn(S, at), false, 'mode over'); eq(carryOf(S, 'B', at), null, 'no 続き shown');
+  eq(carryOf(S, 'B', nowElapsed(S, b.at(120))), 91 * sec, 'shown before 1:00');
+  b.add(200, { type: 'out', pid: 'E' }); b.add(201, { type: 'in', pid: 'B' });
+  const S2 = b.S(); const a2 = nowElapsed(S2, b.at(201));
+  eq(Math.round(contTime(S2, 'B', a2, seatView(S2, a2).find((x) => x.pid === 'B')) / sec), 1, 'B starts from 0 (what the screen showed)');
 });
 
 console.log(`scenarios: ${ok} passed, ${fails.length} failed`);

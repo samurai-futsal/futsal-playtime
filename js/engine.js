@@ -18,16 +18,49 @@ export const PERIODS = [
 ];
 export const periodLabel = (k) => PERIODS.find((p) => p.key === k)?.label || k;
 export const EJECT_WAIT = 120000; // 退場後の補充まで 2:00（プレーイングタイム）
+// 空席の補充まで残り（ms）。ピリオドをまたいだ退場は、前のピリオドで残っていた時間（wait）から数える（決6）
+export const ejectLeft = (e, el) => (e.wait ?? EJECT_WAIT) - (el - e.from);
 
 // cfg: { times:{half, extra, extraHalf}, members:{pid:{no,pos,pp}}, setplayAuto (sec) }
 export function periodLen(cfg, key) {
   const t = cfg.times || {};
   return (PERIODS.find((p) => p.key === key)?.extra ? (t.extraHalf || 5) : (t.half || 20)) * 60000;
 }
+// 記録したピリオドの長さ（足1）：キックオフのときの長さを使う（あとで試合の設定を変えても記録は変わらない）。
+// 記録の修正の「試合情報」で長さを直した試合（cfg.timesFixed）と、長さを持たない古い記録は、試合の設定の長さ。
+export function perLen(S, key) {
+  return S.periods?.[key]?.len || periodLen(S.cfg, key);
+}
 
 // ---- which ops count: undo pops the latest remaining op; reset drops earlier ops of that period ----
+// 並べ方（足4）：同じ端末の操作は押した順（端末ごとの通し番号 n）。途中で端末の時計が直っても順番は変わらない。
+// 端末どうしは、それぞれの次の操作の時刻の早いほうから順に（同じ端末の順番は崩さない）。
+const byId = (a, b) => String(a.id).localeCompare(String(b.id));
+export function orderOps(ops) {
+  const lanes = new Map();
+  for (const op of ops) {
+    const k = op.dev && op.dev !== 'unknown' ? op.dev : ''; // 端末が分からない記録は時刻で並べる
+    if (!lanes.has(k)) lanes.set(k, []);
+    lanes.get(k).push(op);
+  }
+  const L = [...lanes.entries()].map(([k, l]) => l.sort(k && l.every((o) => o.n != null)
+    ? (a, b) => a.n - b.n || a.t - b.t || byId(a, b)
+    : (a, b) => a.t - b.t || (a.n || 0) - (b.n || 0) || byId(a, b)));
+  if (L.length === 1) return L[0];
+  const idx = L.map(() => 0); const out = [];
+  for (;;) {
+    let best = -1;
+    for (let i = 0; i < L.length; i++) {
+      const o = L[i][idx[i]]; if (!o) continue;
+      const b = best >= 0 ? L[best][idx[best]] : null;
+      if (!b || o.t - b.t < 0 || (o.t === b.t && ((o.n || 0) - (b.n || 0) || byId(o, b)) < 0)) best = i;
+    }
+    if (best < 0) return out;
+    out.push(L[best][idx[best]++]);
+  }
+}
 export function effectiveOps(ops) {
-  const sorted = [...ops].sort((a, b) => a.t - b.t || (a.n || 0) - (b.n || 0) || String(a.id).localeCompare(String(b.id)));
+  const sorted = orderOps(ops);
   const stack = [];
   for (const op of sorted) {
     if (op.type === 'undo') { stack.pop(); continue; }
@@ -49,6 +82,16 @@ export function effectiveOps(ops) {
   return { list: out, lastUndoable: stack[stack.length - 1] || null };
 }
 
+// 前のピリオドの終わりに補充を待っていた空席（決6）：一番近い、記録が終わった前のピリオドから持ち越す。
+// [{pid, left}]（left＝補充まで残りのプレーイングタイム）。次のピリオドは、この数まで枠を空けて（4人で）始められる
+export function ejectCarryIn(S, key = S.current) {
+  const idx = PERIODS.findIndex((x) => x.key === key);
+  for (let j = idx - 1; j >= 0; j--) {
+    const q = S.periods[PERIODS[j].key];
+    if (q.status === 'done') return (q.ejOut || []).filter((c) => c.left > 0).sort((a, b) => a.left - b.left);
+  }
+  return [];
+}
 const isGK = (cfg, pid) => cfg.members?.[pid]?.pos === 'GK';
 // Decide which incoming player takes which waiting seat (spec 3章「交代待ち方式」).
 // A GK coming in takes the seat of a GK going out, or else the leftmost seat (seat 0) if it is being
@@ -69,7 +112,8 @@ const isPP = (cfg, pid) => !!cfg.members?.[pid]?.pp;
 
 function newPeriod(key) {
   // kickT / endT / runs: 実際の時刻（ランニングタイム用）。runs = 時計が動いていた区間 {el0, t0, el1, t1}
-  return { key, status: 'none', elapsed: 0, runningSince: null, startedAt: null, endedAt: null, kickT: null, endT: null, runs: [] };
+  // len / spAuto：キックオフのときのピリオドの長さ（ms）とセットプレーの自動終了（秒）。ejOut：終わったときに補充を待っていた空席（次のピリオドへ持ち越す）
+  return { key, status: 'none', elapsed: 0, runningSince: null, startedAt: null, endedAt: null, kickT: null, endT: null, runs: [], len: null, spAuto: null, ejOut: [] };
 }
 
 export function replay(ops, cfg) {
@@ -95,6 +139,7 @@ export function replay(ops, cfg) {
     lastOut: {},             // pid -> cumulative ms when they last left the pitch (rest time)
     setplay: null,           // {from, endsAt, onAtStart:Set, left:Set}
     pp: [],                  // 5x4 periods {team, period, from, to, auto}
+    ppDropped: [],           // 時計を戻して長さが0になった5x4（記録はあったものとして数える）
     ppActive: null,
     timeouts: [],            // {team, period, at}
     adjusts: [],             // {period, at, from, to}
@@ -106,10 +151,11 @@ export function replay(ops, cfg) {
   const P = () => S.periods[S.current];
   const cum = (elapsed) => (S.base[S.current] || 0) + elapsed;
 
+  const lenOf = (k = S.current) => perLen(S, k);
   const elapsedAt = (t) => {
     const p = P();
     if (p.runningSince == null) return p.elapsed;
-    return Math.min(p.elapsed + Math.max(0, t - p.runningSince), periodLen(cfg, S.current));
+    return Math.min(p.elapsed + Math.max(0, t - p.runningSince), lenOf());
   };
   // wf / wt: 出場の始まりと終わりの実際の時刻（ランニングタイム用）。プレーイングタイムの計算には使わない
   let T = 0; // 今読んでいる記録の時刻
@@ -144,7 +190,7 @@ export function replay(ops, cfg) {
       delete S.cont[o.pid];
       S.seats[o.seat] = inPid; S.seatSince[o.seat] = o.outAt;
       openStint(inPid, o.seat, o.outAt, o.outT ?? T);
-      if (S.carry[inPid] != null) { S.cont[inPid] = o.outAt - S.carry[inPid]; delete S.carry[inPid]; }
+      if (S.carry[inPid] != null) { S.cont[inPid] = o.outAt - Math.min(S.carry[inPid], o.outAt); delete S.carry[inPid]; }
       else S.cont[inPid] = o.outAt;
       delete S.lastOut[inPid];
     }
@@ -154,11 +200,13 @@ export function replay(ops, cfg) {
     if (S.setplay && S.setplay.left.size && [...S.setplay.left].every((pid) => S.seats.includes(pid))) endSetplay();
     // GK check / 5x4 auto start (spec 6章・11章)
     const gkOn = onPitch().some((pid) => isGK(cfg, pid));
-    const gkLeft = pairs.some(([o]) => isGK(cfg, o.pid));
-    if (!gkOn && gkLeft) {
+    const gkPair = pairs.find(([o]) => isGK(cfg, o.pid));
+    if (!gkOn && gkPair) {
       const ppIn = pairs.some(([, i]) => isPP(cfg, i));
       if (ppIn) {
-        if (!S.ppActive) { S.ppActive = { team: 'own', period: S.current, from: at, to: null, auto: true, wf: T }; S.pp.push(S.ppActive); S.notices.push({ kind: 'ppAuto' }); }
+        // 5x4はGKが交代した時刻（GKのOUTを押した時刻）から（試12）
+        const g = gkPair[0];
+        if (!S.ppActive) { S.ppActive = { team: 'own', period: S.current, from: g.outAt, to: null, auto: true, wf: g.outT ?? T }; S.pp.push(S.ppActive); S.notices.push({ kind: 'ppAuto' }); }
       } else S.notices.push({ kind: 'noGK' });
     }
   }
@@ -169,20 +217,21 @@ export function replay(ops, cfg) {
     if (pr) S.batch.ins = S.batch.ins.filter((x) => x !== pr[1]);
   }
   // GKはピッチに1人まで：交代で出るGKを除き、すでに入る予定のGKを足して1人以上いれば入れない
-  function gkWouldDouble(pid) {
+  // 空席の補充（fill）は交代ではないので、交代待ちのGKも数える（取り消すと2人になるため）
+  function gkWouldDouble(pid, fill = false) {
     if (!isGK(cfg, pid)) return false;
-    const outIds = new Set(S.batch.outs.map((o) => o.pid));
+    const outIds = new Set(fill ? [] : S.batch.outs.map((o) => o.pid));
     const stay = S.seats.filter((x) => x && !outIds.has(x) && isGK(cfg, x)).length;
     return stay + S.batch.ins.filter((x) => isGK(cfg, x)).length >= 1;
   }
+  const carryInFor = (key) => ejectCarryIn(S, key);
 
   function endPeriod(at) {
     const p = P();
-    // 交代待ちが残っていたら、入った分だけ交代し、残りは最後まで出場したものとする（spec 3章）
-    if (S.batch.outs.length) {
-      if (S.batch.ins.length) commitBatch(at, true);
-      S.batch = { outs: [], ins: [] };
-    }
+    // 交代待ちが残っていたら、終わっていない交代は取り消す：OUTを押した選手は最後まで出場、仮に入った選手はベンチに戻る（決7）
+    S.batch = { outs: [], ins: [] };
+    // 補充を待っている空席は、残りの時間ごと次のピリオドに持ち越す（決6）
+    p.ejOut = S.empty.map((e) => e && { pid: e.pid, left: ejectLeft(e, at) }).filter((x) => x && x.left > 0);
     closeRun(p, at);
     const lastRun = p.runs[p.runs.length - 1];
     p.endT = lastRun ? lastRun.t1 : T; // ピリオドの終わり＝時計が最後に止まった（0:00になった）時刻
@@ -206,19 +255,32 @@ export function replay(ops, cfg) {
     S.matchOver = true;
   }
 
-  for (const op of list) {
+  let lastT = -Infinity;
+  for (const op0 of list) {
     S.notices = [];
+    // 時刻は戻らないものとして読む（同じ端末の操作は押した順に並ぶので、端末の時計が途中で戻っても時間が逆に進まない）
+    const op = op0.t < lastT ? { ...op0, t: lastT } : op0; lastT = op.t;
     if (op.type === 'reset') {
       // restart the replay state for that period (or whole match): handled by effectiveOps dropping ops;
       // here we only rewind what belonged to the period.
       const scope = op.scope;
       const keys = scope === 'all' ? PERIODS.map((p) => p.key) : [scope];
+      const liveK = S.periods[S.current].status === 'live' ? S.current : null;
+      if (scope !== 'all' && liveK && scope !== liveK) {
+        // 記録中のピリオドはそのまま続ける：ほかのピリオドの記録だけを消す（試1。古い記録にあるかもしれないため）
+        if (!S.periods[scope]) continue;
+        S.periods[scope] = newPeriod(scope);
+        for (const f of ['stints', 'squeezed', 'empties', 'pp', 'ppDropped', 'timeouts', 'ejections', 'fills', 'adjusts']) S[f] = S[f].filter((s) => s.period !== scope);
+        S.ejected = new Set(S.ejections.map((e) => e.pid));
+        continue;
+      }
       for (const k of keys) {
         S.periods[k] = newPeriod(k);
         S.stints = S.stints.filter((s) => s.period !== k);
         S.squeezed = S.squeezed.filter((s) => s.period !== k);
         S.empties = S.empties.filter((s) => s.period !== k);
         S.pp = S.pp.filter((s) => s.period !== k);
+        S.ppDropped = S.ppDropped.filter((s) => s.period !== k);
         S.timeouts = S.timeouts.filter((s) => s.period !== k);
         S.ejections = S.ejections.filter((s) => s.period !== k);
         S.fills = S.fills.filter((s) => s.period !== k);
@@ -260,24 +322,38 @@ export function replay(ops, cfg) {
     switch (op.type) {
       case 'kickoff': {
         if (p.status !== 'none' || !Array.isArray(op.lineup) || op.lineup.length !== 5) break;
+        const lineup = Array.from(op.lineup, (x) => x || null); // 抜けた要素も空いた枠として読む
+        const ids = lineup.filter(Boolean);
+        if (new Set(ids).size !== ids.length) break;
+        // 空けた枠：前のピリオドから持ち越した退場の空席（決6）。持ち越しより多くは空けられない
+        const holes = lineup.map((x, i) => (x ? null : i)).filter((i) => i != null);
+        const carryIn = holes.length ? carryInFor(S.current) : [];
+        if (holes.length > carryIn.length) break;
+        p.len = !cfg.timesFixed && op.len > 0 ? op.len : null;
+        p.spAuto = op.spAuto > 0 ? op.spAuto : null;
         p.status = 'live'; p.startedAt = op.t; p.elapsed = 0; p.runningSince = op.t;
         p.kickT = op.t; p.runs = [{ el0: 0, t0: op.t, el1: null, t1: null }];
         if (S.base[S.current] == null) {
           const idx = PERIODS.findIndex((x) => x.key === S.current);
           S.base[S.current] = PERIODS.slice(0, idx).reduce((s, x) => s + (S.periods[x.key].status === 'done' ? S.periods[x.key].elapsed : 0), 0);
         }
-        op.lineup.forEach((pid, i) => { S.seats[i] = pid; S.seatSince[i] = 0; openStint(pid, i, 0); S.cont[pid] = 0; delete S.lastOut[pid]; });
+        lineup.forEach((pid, i) => { if (!pid) return; S.seats[i] = pid; S.seatSince[i] = 0; openStint(pid, i, 0); S.cont[pid] = 0; delete S.lastOut[pid]; });
+        holes.forEach((seat, j) => {
+          const c = carryIn[j];
+          S.empty[seat] = { from: 0, pid: c.pid, wait: c.left, carried: true };
+          S.empties.push({ period: S.current, seat, pid: c.pid, from: 0, to: null, wf: op.t, wt: null, carried: true });
+        });
         break;
       }
       case 'start':
-        if (p.status === 'live' && p.runningSince == null && p.elapsed < periodLen(cfg, S.current)) { p.runningSince = op.t; p.runs.push({ el0: p.elapsed, t0: op.t, el1: null, t1: null }); }
+        if (p.status === 'live' && p.runningSince == null && p.elapsed < lenOf()) { p.runningSince = op.t; p.runs.push({ el0: p.elapsed, t0: op.t, el1: null, t1: null }); }
         break;
       case 'stop':
         if (p.status === 'live' && p.runningSince != null) { closeRun(p, at); p.elapsed = at; p.runningSince = null; }
         break;
       case 'adjust': {
         if (p.status !== 'live') break;
-        const to = Math.max(0, Math.min(periodLen(cfg, S.current), op.elapsed));
+        const to = Math.max(0, Math.min(lenOf(), op.elapsed));
         S.adjusts.push({ period: S.current, at, from: at, to });
         // shift open stints / timers so nobody gets time that never happened, then set the clock
         const d = to - at;
@@ -295,7 +371,12 @@ export function replay(ops, cfg) {
           S.empties.filter((e) => e.period === S.current).forEach((e) => { e.from = cut(e.from); e.to = cut(e.to); });
           S.empty.forEach((e) => { if (e) e.from = cut(e.from); });
           S.pp.filter((x) => x.period === S.current).forEach((x) => { x.from = cut(x.from); x.to = cut(x.to); });
+          // 長さが0になった5x4は消す（記録はあったものとして ppDropped に残す）（試11）
+          S.pp = S.pp.filter((x) => { const gone = x.period === S.current && x.to != null && x.to <= x.from; if (gone) S.ppDropped.push(x); return !gone; });
           S.timeouts.filter((x) => x.period === S.current).forEach((x) => { x.at = cut(x.at); });
+          S.ejections.filter((x) => x.period === S.current).forEach((x) => { x.at = cut(x.at); });
+          S.fills.filter((x) => x.period === S.current).forEach((x) => { x.at = cut(x.at); });
+          Object.keys(S.carry).forEach((k) => { S.carry[k] = Math.min(S.carry[k], to); }); // 「続き」は新しい時刻より長くならない
           S.seatSince = S.seatSince.map(cut);
           const capCum = (S.base[S.current] || 0) + to;
           Object.keys(S.lastOut).forEach((k) => { if (S.lastOut[k] > capCum) S.lastOut[k] = capCum; });
@@ -331,19 +412,21 @@ export function replay(ops, cfg) {
           break;
         }
         if (S.seats.includes(pid) || S.batch.ins.includes(pid)) break;
-        if (gkWouldDouble(pid)) { S.notices.push({ kind: 'twoGK' }); break; } // GKはピッチに1人まで
-        if (S.batch.outs.length > S.batch.ins.length) {
+        // 空席を押してから選んだ選手は、交代待ちがあってもその空席に入る
+        const pressed = op.seat != null && S.empty[op.seat] ? op.seat : -1;
+        if (gkWouldDouble(pid, pressed >= 0)) { S.notices.push({ kind: 'twoGK' }); break; } // GKはピッチに1人まで
+        if (pressed < 0 && S.batch.outs.length > S.batch.ins.length) {
           S.batch.ins.push(pid);
           if (S.batch.ins.length === S.batch.outs.length) commitBatch(at);
           break;
         }
-        const es = op.seat != null && S.empty[op.seat] ? op.seat : S.empty.findIndex((e) => e);
+        const es = pressed >= 0 ? pressed : S.empty.findIndex((e) => e);
         if (es >= 0) { // 退場による空席の補充
           const e = S.empty[es];
-          const early = at - e.from < EJECT_WAIT;
+          const early = ejectLeft(e, at) > 0;
           const rec = S.empties.find((x) => x.period === S.current && x.seat === es && x.to == null); if (rec) { rec.to = at; rec.wt = T; }
           S.empty[es] = null; S.seats[es] = pid; S.seatSince[es] = at; openStint(pid, es, at);
-          S.cont[pid] = S.carry[pid] != null ? at - S.carry[pid] : at; delete S.carry[pid]; delete S.lastOut[pid];
+          S.cont[pid] = S.carry[pid] != null ? at - Math.min(S.carry[pid], at) : at; delete S.carry[pid]; delete S.lastOut[pid];
           S.fills.push({ period: S.current, seat: es, pid, at, early: early && !!op.afterGoal });
           break;
         }
@@ -366,7 +449,7 @@ export function replay(ops, cfg) {
       }
       case 'setplay': {
         if (p.status !== 'live' || S.setplay) break;
-        const auto = (cfg.setplayAuto || 60) * 1000;
+        const auto = (p.spAuto || cfg.setplayAuto || 60) * 1000; // キックオフのときの設定（足1）
         S.setplay = { from: at, endsAt: at + auto, onAtStart: new Set(onPitch()), left: new Set() };
         S.carry = {};
         break;
@@ -401,7 +484,7 @@ export function replay(ops, cfg) {
 export function nowElapsed(S, now = Date.now()) {
   const p = S.periods[S.current];
   if (p.runningSince == null) return p.elapsed;
-  return Math.min(p.elapsed + Math.max(0, now - p.runningSince), periodLen(S.cfg, S.current));
+  return Math.min(p.elapsed + Math.max(0, now - p.runningSince), perLen(S, S.current));
 }
 // Playing time of a player in one period (ms), counting an ongoing stint up to `at`.
 export function playerPeriodTime(S, pid, key, at) {
@@ -427,9 +510,17 @@ export function seatView(S, at) {
     return { seat: i, pid };
   });
 }
+// セットプレーのモードが続いているか（1:00で自動終了したあと、次の操作の前でも終わったものとして見せる。試2）
+export function setplayOn(S, at) {
+  return !!S.setplay && at < S.setplay.endsAt;
+}
+// ベンチのカードの「続き」（モードが終わっていれば出さない）
+export function carryOf(S, pid, at) {
+  return setplayOn(S, at) && S.carry[pid] != null ? S.carry[pid] : null;
+}
 export function contTime(S, pid, at, view) {
   if (view?.waiting) return Math.max(0, view.outAt - (S.cont[pid] ?? view.outAt));
-  if (view?.tentative) return Math.max(0, at - view.since) + (S.carry[pid] || 0);
+  if (view?.tentative) return Math.max(0, at - view.since) + Math.min(carryOf(S, pid, at) || 0, view.since);
   if (S.cont[pid] == null) return 0;
   return Math.max(0, at - S.cont[pid]);
 }

@@ -1,7 +1,7 @@
 // Match model for the review / analysis screens (spec 7章・8章).
 // Built from the MATCH PLAY replay. Every number on the review is computed from this, so the
 // review, analysis and reports always agree (spec 7章「どちらも同じ記録から同じ計算」).
-import { PERIODS, periodLen, nowElapsed, effectiveOps } from './engine.js';
+import { PERIODS, perLen, nowElapsed, effectiveOps } from './engine.js';
 
 const isGK = (cfg, pid) => cfg.members?.[pid]?.pos === 'GK';
 export const SET_MIN = 3000; // ms
@@ -20,7 +20,7 @@ export function matchModel(st, now = Date.now(), fix = null) {
   const periods = shownPeriods(st).map((p) => {
     const ps = st.periods[p.key];
     const elapsed = R(live && p.key === st.current ? at : ps.status === 'none' ? 0 : ps.elapsed);
-    return { key: p.key, label: p.label, extra: p.extra, len: periodLen(cfg, p.key), status: ps.status, elapsed };
+    return { key: p.key, label: p.label, extra: p.extra, len: perLen(st, p.key), status: ps.status, elapsed };
   });
   // close the ongoing appearances at "now" (出場中の選手は、今の時点までの時間を反映する)
   // 表示はすべて秒単位。区切りの時刻を秒に丸めてから計算するので、帯・表・合計の数字が必ず一致する
@@ -33,6 +33,8 @@ export function matchModel(st, now = Date.now(), fix = null) {
     .map((s) => ({ ...s, from: R(s.from), to: R(s.to) }));
   const empties = st.empties.map((e) => ({ ...e, from: R(e.from), to: R(e.to ?? (live && e.period === st.current ? at : e.from)) }));
   const M = { cfg, periods, stints, zero, empties, pp: st.pp, timeouts: st.timeouts, ejections: st.ejections, current: st.current, live, matchOver: st.matchOver, askExtra: st.askExtra, fixed: [] };
+  // 相手の5x4を記録したか（時計を戻して長さが0になった時間帯も、記録したものとして数える）
+  M.oppPPRecorded = [...st.pp, ...(st.ppDropped || [])].some((x) => x.team === 'opp');
   // 記録の修正（spec 8章）で保存したピリオドは、MATCH PLAYの記録の代わりに修正後の記録を使う
   for (const p of periods) {
     const fp = fix?.periods?.[p.key];
@@ -169,7 +171,7 @@ export function toRunning(M, st, now = Date.now()) {
   for (const p of M.periods) {
     const ps = st.periods[p.key];
     if (p.status === 'none' || ps.kickT == null) { out.periods.push({ ...p }); continue; }
-    const len = periodLen(st.cfg, p.key);
+    const len = perLen(st, p.key);
     const runs = ps.runs || [];
     const lastR = runs[runs.length - 1];
     let E;
@@ -290,7 +292,8 @@ export function checkTotal(M) {
 }
 
 // ---------- 記録の修正（spec 8章）：ピリオドごとの「場所（5つのキュー）」の記録 ----------
-// fp = { elapsed, lineup:[pid×5], ev:[{id, kind:'sub'|'eject'|'fill', seat, at, in?, pid?, reason?}], pp:[{id,team,from,to}] }
+// fp = { elapsed, lineup:[pid×5], ev:[{id, kind:'sub'|'eject'|'fill', seat, at, in?, pid?, reason?}], pp:[{id,team,from,to}], startEmpty?:{seat: pid} }
+// startEmpty：前のピリオドの退場で、空席のまま始まった場所（その場所のスタメンは null。決6）
 // 交代は「その場所に入った選手」だけを持つ。OUTした選手は、その直前にその場所にいた選手（並びから決まる）。
 let idn = 0;
 const nid = () => 'e' + Date.now().toString(36) + (idn++).toString(36);
@@ -306,7 +309,7 @@ export function replayToFix(st, key) {
       .map((x) => ({ ...x, from: R(x.rf), to: R(x.rt) }));
     let prev = null;
     for (const it of items) {
-      if (!prev) { if (it.k === 's') fp.lineup[seat] = it.pid; }
+      if (!prev) { if (it.k === 's') fp.lineup[seat] = it.pid; else (fp.startEmpty || (fp.startEmpty = {}))[seat] = it.pid; }
       else if (it.k === 's' && prev.k === 's') fp.ev.push({ id: nid(), kind: 'sub', seat, at: it.from, in: it.pid });
       else if (it.k === 'e') fp.ev.push({ id: nid(), kind: 'eject', seat, at: it.from, reason: st.ejections.find((x) => x.period === key && x.pid === it.pid)?.reason || null });
       else if (it.k === 's' && prev.k === 'e') fp.ev.push({ id: nid(), kind: 'fill', seat, at: it.from, in: it.pid });
@@ -323,7 +326,8 @@ export function seatWalk(fp) {
   const out = [];
   for (let seat = 0; seat < 5; seat++) {
     const evs = fp.ev.filter((e) => e.seat === seat).sort((a, b) => a.at - b.at); // 同じ時刻は記録の順のまま（並べ替えは安定）
-    const segs = []; let cur = { pid: fp.lineup[seat] || null, from: 0, startEv: null };
+    const ce = !fp.lineup[seat] && fp.startEmpty?.[seat]; // 空席のまま始まった場所
+    const segs = []; let cur = ce ? { pid: null, from: 0, startEv: 'carry', ejected: ce } : { pid: fp.lineup[seat] || null, from: 0, startEv: null };
     for (const e of evs) {
       segs.push({ ...cur, to: e.at, endEv: e.id });
       if (e.kind === 'eject') cur = { pid: null, from: e.at, startEv: e.id, ejected: segs[segs.length - 1].pid };
@@ -357,7 +361,7 @@ export function checkFix(fp, cfg, label = '', banned = new Set()) {
   const errs = [];
   const fmt = (ms) => { const r = Math.max(0, Math.round((fp.elapsed - ms) / 1000)); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`; };
   const name = (pid) => `${cfg.members?.[pid]?.no ?? '?'}番`;
-  fp.lineup.forEach((pid, i) => { if (!pid) errs.push(`${label}スタメンの${i + 1}つ目の場所が空いています`); });
+  fp.lineup.forEach((pid, i) => { if (!pid && !fp.startEmpty?.[i]) errs.push(`${label}スタメンの${i + 1}つ目の場所が空いています`); });
   for (const e of fp.ev) if (e.at < 0 || e.at > fp.elapsed) errs.push(`${label}${fmt(e.at)} の記録がピリオドの外にあります`);
   const W = seatWalk(fp);
   for (const { segs } of W) for (const g of segs) if (g.to < g.from) errs.push(`${label}時刻の順番が逆になっている交代があります（残り${fmt(g.from)}）`);
