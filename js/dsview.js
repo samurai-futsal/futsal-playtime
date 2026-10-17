@@ -15,7 +15,7 @@ export function downloadDatasheet(ms) {
     const cfg = { times: m.times || {}, members: m.members || {}, setplayAuto: teamSettings().setplayAuto || 60 };
     const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
     const gts = opts('goalTypes', true);
-    list.push({ m, M: matchModel(st, Date.now(), m.fix), st, evs: evC.list.filter((e) => !e.deleted), goalName: (id) => gts.find((o) => o.id === id)?.name || '', players: S.players, activity: activityById(m.activityId)?.name || '' });
+    list.push({ m, M: matchModel(st, Date.now(), m.fix), st, evs: evC.list.filter((e) => !e.deleted), goalName: (id) => gts.find((o) => o.id === id)?.name || '', players: S.players, activity: activityById(m.activityId)?.name || '', setMin: (teamSettings().setMin ?? 60) * 1000 });
   }
   const bytes = buildXLSX(datasheetSheets(list, S.team?.name || '自チーム'));
   const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

@@ -2,40 +2,70 @@
 // イベント一覧は1行1件。試合情報・選手スタッツ・1分ごとはイベント一覧から数式（COUNTIFS）で集計するので、行を直すと計算し直される。
 // 出場時間・出場記録・セットはアプリで集計した値。複数の試合を選んだときは「試合」の列で全試合を1つのシートにまとめる。
 import { KIND, RESULTS, CLS, SETP, FSP, METHODS, CARD_LABEL, OPP_OG, UNKNOWN, NO_ASSIST, isOG, isSZ, pitchAt, missingLv, cardsOf, sortEvents } from './events.js';
-import { playerTable, setTable } from './model.js';
-import { ppWindows } from './teamstats.js';
+import { playerTable } from './model.js';
+import { ppWindows, windowsOf, winTest, setSplit } from './teamstats.js';
 import { S as ST, colName } from './xlsx.js';
 
 const lab = (list, v) => (list.find((x) => x[0] === v) || [])[1] || '';
 const day = (ms) => Math.round(ms / 1000) / 86400; // Excel の時間（日の割合）。表示は [m]:ss
+// 試合通算の分（終わりを含む）：0:00〜1:00＝1分、9:01〜10:00＝10分
+export const minuteOf = (cum) => Math.max(1, Math.ceil(cum / 60000));
 const H = (t) => ({ v: t, s: 'head' });
 const EVS = "'イベント一覧'";
 // イベント一覧の列（数式で使うので順番を固定）
-const EC = ['試合', '日付', 'ピリオド', '経過', '残り', '試合通算', '通算の分', 'イベント', 'チーム', '選手', '2人目（アシスト・受け手）', '方法', '結果', '得点の種類', '分類', 'セットプレーの種類', 'FINISH SET PLAYの種類', 'SZ内／SZ外', 'ゾーン内の人数', 'ゾーン', 'カード', 'ピッチ1', 'ピッチ2', 'ピッチ3', 'ピッチ4', 'ピッチ5', 'GKがいない区間', '5x4の時間帯', '未入力（基本）', '詳細の空き', '要確認', '入力元', 'シュート', '枠内', '得点・失点'];
+const EC = ['試合', '日付', 'ピリオド', '経過', '残り', '試合通算', '通算の分', 'イベント', 'チーム', '選手', '2人目（アシスト・受け手）', '方法', '結果', '得点の種類', '分類', 'セットプレーの種類', 'FINISH SET PLAYの種類', 'SZ内／SZ外', 'ゾーン内の人数', 'ゾーン', 'カード', 'ピッチ1', 'ピッチ2', 'ピッチ3', 'ピッチ4', 'ピッチ5', 'GKがいない区間', '5x4の時間帯', '退場の時間帯', '未入力（基本）', '詳細の空き', '要確認', '入力元', 'シュート', '枠内', '得点・失点'];
 const COL = Object.fromEntries(EC.map((n, i) => [n, colName(i)]));
-const rng = (name) => `${EVS}!$${COL[name]}$2:$${COL[name]}$5000`;
 
-// ms = [{ m, M, st, evs, goalName, players }]（試合の古い順）。teamName：自チームの名前
+// 試合の名前（「試合」の列。数式で使うので、試合ごとに必ず違う名前にする）：同じ日・同じ相手があればキックオフの時刻を足し、それでも同じなら番号
+export function matchTitles(list) {
+  const base = (m) => `${m.date || ''} vs ${m.opponent || ''}`;
+  const withKo = (m) => `${m.date || ''}${m.kickoff ? ' ' + m.kickoff : ''} vs ${m.opponent || ''}`;
+  const cnt = (f) => list.reduce((o, m) => ((o[f(m)] = (o[f(m)] || 0) + 1), o), {});
+  const c0 = cnt(base); const t1 = (m) => (c0[base(m)] > 1 ? withKo(m) : base(m));
+  const c1 = cnt(t1); const seen = {}; const out = new Map();
+  for (const m of list) { const t = t1(m); if (c1[t] > 1) { seen[t] = (seen[t] || 0) + 1; out.set(m, `${t}（${seen[t]}）`); } else out.set(m, t); }
+  return out;
+}
+// 選手の名前（シートの中で選手を見分ける名前。数式はこの名前で数えるので、選手ごとに必ず違う名前にする）：
+// 名前がない選手は「背番号 n」、同じ名前の選手がいれば「（背番号 n）」を足し、それでも同じなら番号
+export function playerLabels(pids, players, noOf) {
+  const P = (pid) => players.find((p) => p.id === pid);
+  const full = (pid) => { const p = P(pid); return p ? `${p.last || ''} ${p.first || ''}`.trim() : ''; };
+  const b0 = (pid) => full(pid) || (noOf(pid) != null && noOf(pid) !== '' ? `背番号 ${noOf(pid)}` : '名前なし');
+  const cnt = (f) => pids.reduce((o, p) => ((o[f(p)] = (o[f(p)] || 0) + 1), o), {});
+  const c0 = cnt(b0); const b1 = (pid) => (c0[b0(pid)] > 1 && full(pid) && noOf(pid) != null && noOf(pid) !== '' ? `${b0(pid)}（背番号 ${noOf(pid)}）` : b0(pid));
+  const c1 = cnt(b1); const seen = {}; const out = new Map();
+  for (const pid of pids) { const t = b1(pid); if (c1[t] > 1) { seen[t] = (seen[t] || 0) + 1; out.set(pid, `${t}（${seen[t]}）`); } else out.set(pid, t); }
+  return out;
+}
+
+// ms = [{ m, M, st, evs, goalName, players, setMin }]（試合の古い順）。teamName：自チームの名前
 export function datasheetSheets(ms, teamName) {
   const multi = ms.length > 1;
-  const P = (players, pid) => players.find((p) => p.id === pid);
-  const fullName = (players, pid) => { const p = P(players, pid); return p ? `${p.last || ''} ${p.first || ''}`.trim() : ''; };
-  const title = (m) => `${m.date || ''} vs ${m.opponent || ''}`;
+  const titles = matchTitles(ms.map((x) => x.m));
+  const title = (m) => titles.get(m);
+  // 選手は id で見分ける（同じ名前の選手・名前のない選手がいても混ざらない）
+  const allPids = [...new Set(ms.flatMap((x) => Object.keys(x.m.members || {})))];
+  const lastNo = {}; for (const x of ms) for (const [pid, v] of Object.entries(x.m.members || {})) lastNo[pid] = v.no;
+  const labels = playerLabels(allPids, ms[0]?.players || [], (pid) => lastNo[pid]);
+  const fullName = (players, pid) => (pid ? labels.get(pid) || (() => { const p = players.find((q) => q.id === pid); return p ? `${p.last || ''} ${p.first || ''}`.trim() : ''; })() : '');
   // ---------- イベント一覧 ----------
   const evRows = [EC.map(H)];
-  const allPlayers = new Map(); // 名前 → { no, pos, games }
+  const allPlayers = new Map(); // 選手の id → { no, pos, games, name }
   for (const x of ms) {
     const { m, M, evs, goalName: gn, players } = x;
     const nm = (pid) => (pid === OPP_OG ? '相手OG' : pid === UNKNOWN ? '不明' : pid === NO_ASSIST ? 'なし' : pid ? fullName(players, pid) : '');
     const T = playerTable(M);
     for (const pid of Object.keys(m.members || {})) {
       const n = fullName(players, pid); if (!n) continue;
-      const r = allPlayers.get(n) || { no: m.members[pid].no, pos: m.members[pid].pos, games: 0, pid };
-      r.no = m.members[pid].no; r.pos = m.members[pid].pos; if ((T[pid]?.total || 0) > 0) r.games++; allPlayers.set(n, r);
+      const r = allPlayers.get(pid) || { no: m.members[pid].no, pos: m.members[pid].pos, games: 0, pid, name: n };
+      r.no = m.members[pid].no; r.pos = m.members[pid].pos; if ((T[pid]?.total || 0) > 0) r.games++; allPlayers.set(pid, r);
     }
     const order = M.periods.map((p) => p.key);
     const offset = (k) => M.periods.slice(0, order.indexOf(k)).reduce((t, p) => t + p.len, 0);
-    const W = ppWindows(M); const cards = cardsOf(evs, order);
+    // 5x4・退場の時間帯（区間の境目とピリオドの終わりの瞬間は、分析・Sportscode と同じ決め方）
+    const W = ppWindows(M, evs); const cards = cardsOf(evs, order);
+    const inOwn = winTest(W.own, M), inOpp = winTest(W.opp, M), inEjO = winTest(W.ejOwn, M), inEjP = winTest(W.ejOpp, M);
     const isGK = (pid) => m.members?.[pid]?.pos === 'GK';
     for (const e of sortEvents(evs.filter((v) => !v.deleted), order)) {
       const p = M.periods.find((q) => q.key === e.period); if (!p) continue;
@@ -45,22 +75,25 @@ export function datasheetSheets(ms, teamName) {
       const og = (k === 'goal' && e.pid === OPP_OG) || (k === 'conc' && isOG(gn(e.gtype)));
       const shot = (k === 'shot' || k === 'szshot' || (k === 'goal' && !og)) ? '自' : (k === 'oshot' || k === 'oszshot' || (k === 'conc' && !og)) ? '相' : '';
       const sz = isSZ(k) ? 'SZ内' : (k === 'shot' || k === 'oshot') ? 'SZ外' : e.sz === 'in' ? 'SZ内' : e.sz === 'out' ? 'SZ外' : '';
-      const inIv = (iv) => (iv[e.period] || []).some(([a, b]) => e.at >= a && e.at < b);
       const lv = missingLv(e, gn);
       const card = cards.get(e.id) || (e.card && e.card !== 'none' ? e.card : '');
       evRows.push([
-        title(m), m.date || '', p.label, { v: day(e.at), s: 'time' }, { v: day(p.len - e.at), s: 'time' }, { v: day(offset(e.period) + e.at), s: 'time' }, Math.floor((offset(e.period) + e.at) / 60000) + 1,
+        title(m), m.date || '', p.label, { v: day(e.at), s: 'time' }, { v: day(p.len - e.at), s: 'time' }, { v: day(offset(e.period) + e.at), s: 'time' }, minuteOf(offset(e.period) + e.at),
         KIND[k]?.label || k, own ? '自チーム' : '相手', nm(e.pid), nm(e.kind === 'goal' ? e.assist : e.pid2), lab(METHODS, e.method),
         (k === 'goal' || k === 'conc') ? (og ? 'オウンゴール' : 'ゴール') : lab(RESULTS, e.result), e.gtype ? gn(e.gtype) : '', lab(CLS, e.cls), lab(SETP, e.sp), lab(FSP, e.fsp), sz,
         e.n != null && e.n !== '' ? +e.n : '', e.zone || '', card ? CARD_LABEL[card] || card : (k === 'foul' || k === 'fouled' ? 'カードなし' : ''),
         ...[0, 1, 2, 3, 4].map((i) => (on[i] ? fullName(players, on[i]) : '')),
-        on.length && !on.some(isGK) ? 'はい' : '', inIv(W.own) ? '自チーム5x4' : inIv(W.opp) ? '相手5x4' : '',
+        on.length && !on.some(isGK) ? 'はい' : '', inOwn(e) ? '自チーム5x4' : inOpp(e) ? '相手5x4' : '',
+        [inEjO(e) ? '自チームの退場（4対5）' : '', inEjP(e) ? '相手の退場（5対4）' : ''].filter(Boolean).join('・'),
         lv.basic || '', lv.detail || '', e.check ? '要確認' : '', e.src === 'sportscode' ? 'Sportscode' : 'アプリ',
         shot, shot && (k === 'goal' || k === 'conc' || e.result === 'in') ? 1 : '', k === 'goal' ? '得点' : k === 'conc' ? '失点' : '',
       ]);
     }
   }
-  const events = { name: 'イベント一覧', rows: evRows, freeze: 1, filter: true, widths: [20, 11, 7, 7, 7, 8, 6, 16, 8, 14, 14, 8, 11, 12, 12, 12, 10, 8, 6, 6, 12, 14, 14, 14, 14, 14, 8, 11, 7, 7, 7, 10, 6, 5, 7] };
+  const events = { name: 'イベント一覧', rows: evRows, freeze: 1, filter: true, widths: [20, 11, 7, 7, 7, 8, 6, 16, 8, 14, 14, 8, 11, 12, 12, 12, 10, 8, 6, 6, 12, 14, 14, 14, 14, 14, 8, 11, 14, 7, 7, 7, 10, 6, 5, 7] };
+  // 数式の範囲：イベント一覧の最後の行まで（行が多くても数えもれがないように）
+  const lastRow = Math.max(2, evRows.length);
+  const rng = (name) => `${EVS}!$${COL[name]}$2:$${COL[name]}$${lastRow}`;
 
   // ---------- 試合情報（試合ごとの列＋合計。数字はイベント一覧から数式で） ----------
   const cnt = (conds) => `COUNTIFS(${conds.map(([c, v]) => `${rng(c)},${v}`).join(',')})`;
@@ -99,7 +132,7 @@ export function datasheetSheets(ms, teamName) {
   const infoSheet = { name: '試合情報', rows: info, widths: [30, ...ms.map(() => 22), ...(multi ? [12] : [])], freeze: 2, freezeCols: 1 };
 
   // ---------- 選手一覧 ----------
-  const names = [...allPlayers.entries()].sort((a, b) => (a[1].pos === 'GK') - (b[1].pos === 'GK') || (parseInt(a[1].no, 10) || 999) - (parseInt(b[1].no, 10) || 999));
+  const names = [...allPlayers.values()].map((r) => [r.name, r]).sort((a, b) => (a[1].pos === 'GK') - (b[1].pos === 'GK') || (parseInt(a[1].no, 10) || 999) - (parseInt(b[1].no, 10) || 999));
   const plist = { name: '選手一覧', rows: [[H('背番号'), H('名前'), H('ポジション'), H('出場試合数')], ...names.map(([n, r]) => [r.no != null ? (Number.isFinite(+r.no) ? +r.no : r.no) : '', n, r.pos === 'GK' ? 'GK' : 'FP', r.games])], widths: [8, 18, 10, 10], freeze: 1 };
 
   // ---------- 出場時間（アプリで集計した値） ----------
@@ -127,8 +160,20 @@ export function datasheetSheets(ms, teamName) {
   const stintSheet = { name: '出場記録', rows: sRows, freeze: 1, filter: true, widths: [20, 8, 7, 16, 7, 10, 10, 9] };
 
   // ---------- セット（FP4人。アプリで集計した値） ----------
+  // 数的同数の時間帯だけで数える（5×4・4×5と、両チームの退場の時間帯を除く）。マッチレビュー 4 と同じ決め方で、
+  // 出場時間が短いセットと除いた時間は下の行にまとめる（全部足すと試合の時間）
   const setRows = [[H('試合'), H('順位'), H('FP4人のセット'), H('出場時間'), H('回数')]];
-  for (const x of ms) setTable(x.M).forEach((s, i) => setRows.push([title(x.m), i + 1, s.pids.map((pid) => `${x.m.members?.[pid]?.no ?? ''} ${fullName(x.players, pid)}`).join('・'), { v: day(s.time), s: 'time' }, s.count]));
+  for (const x of ms) {
+    const sp = setSplit(x.M, ppWindows(x.M, x.evs)); const setMin = x.setMin ?? 60000;
+    const long = sp.sets.filter((q) => q.time >= setMin), short = sp.sets.filter((q) => q.time < setMin);
+    long.forEach((q, i) => setRows.push([title(x.m), i + 1, q.pids.map((pid) => `${x.m.members?.[pid]?.no ?? ''} ${fullName(x.players, pid)}`).join('・'), { v: day(q.time), s: 'time' }, q.count]));
+    const ex = (label, t, n = '') => setRows.push([title(x.m), '', { v: label, s: 'note' }, { v: day(t), s: 'time' }, n]);
+    if (short.length) ex(`出場時間が${Math.floor(setMin / 60000)}:${String(Math.round(setMin / 1000) % 60).padStart(2, '0')}未満のセット（${short.length}組）`, short.reduce((t, q) => t + q.time, 0), short.reduce((t, q) => t + q.count, 0));
+    if (sp.time.ex) ex('5×4・4×5と退場の時間帯', sp.time.ex);
+    if (sp.time.special) ex('GK1人・FP4人がそろっていない区間', sp.time.special);
+    if (sp.time.other) ex('交代の瞬間の3秒未満の組み合わせ', sp.time.other);
+    setRows.push([title(x.m), '', { v: '合計（試合の時間）', s: 'bold' }, { v: day(sp.time.played), s: 'timeb' }, '']);
+  }
   const setSheet = { name: 'セット', rows: setRows, freeze: 1, filter: true, widths: [20, 6, 60, 10, 6] };
 
   // ---------- 選手スタッツ（イベント一覧から数式で） ----------
@@ -136,10 +181,10 @@ export function datasheetSheets(ms, teamName) {
   const onSum = (a, extra) => pitch.map((c) => cnt([[c, a], ...extra])).join('+');
   const spHead = ['背番号', '選手', '出場試合数', '出場時間', 'シュート', 'うちSZ内', 'シュート関与', '被シュート関与', '枠内', '得点', 'アシスト', '進入関与', 'パス出し手', 'パス受け手', 'リカバリー', 'ロスト', 'ファール', '受けたファール', '得失点±', 'シュート関与／分', '被シュート関与／分'];
   const pRows = [spHead.map(H)];
-  const tsum = new Map(); for (const x of ms) { const T = playerTable(x.M); for (const pid of Object.keys(x.m.members || {})) { const n = fullName(x.players, pid); tsum.set(n, (tsum.get(n) || 0) + (T[pid]?.total || 0)); } }
+  const tsum = new Map(); for (const x of ms) { const T = playerTable(x.M); for (const pid of Object.keys(x.m.members || {})) tsum.set(pid, (tsum.get(pid) || 0) + (T[pid]?.total || 0)); }
   names.forEach(([n, r], i) => {
     const row = i + 2; const a = `$B${row}`;
-    pRows.push([r.no != null && Number.isFinite(+r.no) ? +r.no : r.no || '', n, r.games, { v: day(tsum.get(n) || 0), s: 'time' },
+    pRows.push([r.no != null && Number.isFinite(+r.no) ? +r.no : r.no || '', n, r.games, { v: day(tsum.get(r.pid) || 0), s: 'time' },
       { f: cnt([['選手', a], ['シュート', '"自"']]) }, { f: cnt([['選手', a], ['シュート', '"自"'], ['SZ内／SZ外', '"SZ内"']]) },
       { f: onSum(a, [['シュート', '"自"']]) }, { f: onSum(a, [['シュート', '"相"']]) },
       { f: cnt([['選手', a], ['シュート', '"自"'], ['枠内', '1']]) }, { f: cnt([['選手', a], ['得点・失点', '"得点"']]) },
@@ -165,7 +210,8 @@ export function datasheetSheets(ms, teamName) {
   const mCols = [['シュート', [['シュート', '"自"']]], ['被シュート', [['シュート', '"相"']]], ['Z4進入', [['イベント', '"Z4進入"']]], ['被Z4進入', [['イベント', '"被Z4進入"']]], ['SZ進入', [['イベント', '"SZ進入"']]], ['被SZ進入', [['イベント', '"被SZ進入"']]],
     ['FSP AT', [['イベント', '"FINISH SET PLAY AT"']]], ['FSP DF', [['イベント', '"FINISH SET PLAY DF"']]], ['リカバリー', [['イベント', '"ボールリカバリー"']]], ['ロスト', [['イベント', '"ボールロスト"']]], ['得点', [['得点・失点', '"得点"']]], ['失点', [['得点・失点', '"失点"']]]];
   const minRows = [[H('分（試合通算）'), ...mCols.map(([h]) => H(h))]];
-  for (let i = 1; i <= maxMin; i++) minRows.push([i, ...mCols.map(([, c]) => ({ f: cnt([['通算の分', `$A${i + 1}`], ...c]) }))]);
+  for (let i = 1; i <= maxMin; i++) // 1分目＝0:00〜1:00、10分目＝9:01〜10:00（終わりを含む。マッチスタッツの時間帯と同じ）
+     minRows.push([i, ...mCols.map(([, c]) => ({ f: cnt([['通算の分', `$A${i + 1}`], ...c]) }))]);
   minRows.push([{ v: '合計', s: 'bold' }, ...mCols.map((_, j) => ({ f: `SUM(${colName(j + 1)}2:${colName(j + 1)}${maxMin + 1})`, s: 'bold' }))]);
   const minSheet = { name: '1分ごと', rows: minRows, freeze: 1, widths: [12, ...mCols.map(() => 10)] };
 
@@ -175,12 +221,12 @@ export function datasheetSheets(ms, teamName) {
     [{ v: `対象：${ms.map((x) => title(x.m)).join('、')}（${ms.length}試合）　書き出し：${new Date().toLocaleString('ja-JP')}`, s: 'note' }], [],
     [{ v: 'シート', s: 'sub' }],
     ['試合情報：試合ごとの情報と、チームの数字（得点・シュート・進入・FINISH SET PLAY・リカバリー・ロスト・ファール・カードなど）。数字はイベント一覧から数式で計算'],
-    ['イベント一覧：1行1件。時刻（経過・残り・試合通算）、イベント、選手、結果や種類、ピッチにいた5人、GKがいない区間か、5x4の時間帯か、未入力・要確認、入力元'],
+    ['イベント一覧：1行1件。時刻（経過・残り・試合通算）、イベント、選手、結果や種類、ピッチにいた5人、GKがいない区間か、5x4の時間帯か、退場の時間帯か、未入力・要確認、入力元'],
     ['出場時間：選手ごと・ピリオドごとの出場時間と回数（アプリで集計した値。プレーイングタイム）'],
     ['出場記録：1回ごとの出場（入った・出た時刻と時間。アプリで集計した値）'],
     ['選手スタッツ：選手ごとのシュート・シュート関与・被シュート関与・得点・アシスト・進入関与・リカバリー・ロスト・ファール・得失点±など（イベント一覧から数式で計算）'],
-    ['セット：FP4人の組み合わせごとの出場時間と回数（アプリで集計した値）'],
-    ['1分ごと：試合通算の1分ごとの回数（イベント一覧から数式で計算）'],
+    ['セット：FP4人の組み合わせごとの出場時間と回数（アプリで集計した値。5×4・4×5と退場の時間帯を除き、短いセットと除いた時間は下の行にまとめる）'],
+    ['1分ごと：試合通算の1分ごとの回数（イベント一覧から数式で計算。10分＝9:01〜10:00）'],
     ['選手一覧：背番号・名前・ポジション・出場試合数'], [],
     [{ v: '読み方', s: 'sub' }],
     ['シュートは得点を含み、OGは除く。シュート関与・被シュート関与＝その選手がピッチにいる間の自チーム・相手のシュートの数。得失点±＝ピッチにいる間の得点−失点'],

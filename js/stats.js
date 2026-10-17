@@ -2,17 +2,16 @@
 // いつも使っているシート（リニューアル版）の形：上段＝シュート・進入・FINISH SET PLAY の中身、下段＝時間帯。
 // 「試合全体／前半／後半」で範囲を切り替える。「PDFで書き出す」は印刷の画面から保存する。
 import { S, watchOps, watchEvents, opts, teamSettings, activityById } from './store.js';
-import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
+import { replay, periodLabel } from './engine.js';
 import { matchModel, periodSig } from './model.js';
 import { todoCount } from './events.js';
-import { teamStats } from './teamstats.js';
+import { teamStats, asOfLabel } from './teamstats.js';
 import { esc, fmtDate, toast } from './ui.js';
 import { render } from './views.js';
 import { openTodo } from './evinput.js';
 
 let range = 'all';
 
-const mmssUp = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 // 書き出し（印刷）：選んだ試合のマッチスタッツを1試合1ページで出す（分析画面・試合ページから）
 export function printStats(ms) {
@@ -48,10 +47,8 @@ function calc(m, range0) {
   const own = S.team?.name || '自チーム', opp = m.opponent || '相手';
   const todo = todoCount(evs, goalName);
 
-  // 時点：どこまでの記録か
-  const pDone = (k) => st.periods[k]?.status === 'done';
-  const asOf = st.matchOver ? '試合終了時点' : M.live ? `${periodLabel(st.current)} 残り ${mmssUp(periodLen(cfg, st.current) - nowElapsed(st))} 時点`
-    : (pDone('1H') && !pDone('2H')) ? '前半終了時点' : pDone('2H') ? '後半終了時点' : '試合開始前';
+  // 時点：どこまでの記録か（最後に終わったピリオドから。マッチレビュー・マッチレポートと同じ）
+  const asOf = asOfLabel(M);
   const now = new Date(); const hm = `${now.getHours()}時${String(now.getMinutes()).padStart(2, '0')}分`;
   const rangeLabel = range === 'all' ? '試合全体' : periodLabel(range);
 
@@ -89,11 +86,12 @@ export function vStats(m) {
 export function sheetHTML({ R, M, keys, own, opp, game, place, day, possession }) {
   const { A, B } = R; const has = R.hasEvents;
   const v = (x) => (has ? x : null);
-  const ps = M.periods.filter((p) => !p.extra || p.status !== 'none');
+  // スコアの行：選んだ範囲（試合全体／前半／後半）のピリオドだけ。まだ行っていないピリオドは空欄
+  const ps = M.periods.filter((p) => (!p.extra || p.status !== 'none') && (!keys || keys.includes(p.key)));
   const hd = `<table class="sthd"><tr><td class="g">GAME</td><td class="w">${esc(game)}</td><td class="g">PLACE</td><td>${esc(place)}</td><td class="g">DAY</td><td>${esc(day)}</td></tr></table>`;
-  const sc = (k, side) => (has ? R.score[side][k] ?? 0 : '<span class="na">—</span>');
+  const sc = (p, side) => (!has ? '<span class="na">—</span>' : p.status === 'none' ? '' : R.score[side][p.key] ?? 0);
   const scTot = (side) => (has ? (keys ? R.rangeScore[side] : Object.values(R.score[side]).reduce((a, b) => a + b, 0)) : '<span class="na">—</span>');
-  const scRows = ps.map((p, i) => `<tr>${i === 0 ? `<td class="sttm" rowspan="${ps.length}">${esc(own)}</td><td class="stbig" rowspan="${ps.length}">${scTot('own')}</td>` : ''}<td class="stp">${sc(p.key, 'own')}</td><td class="stp">${p.label}</td><td class="stp">${sc(p.key, 'opp')}</td>${i === 0 ? `<td class="stbig" rowspan="${ps.length}">${scTot('opp')}</td><td class="sttm" rowspan="${ps.length}">${esc(opp)}</td>` : ''}</tr>`).join('');
+  const scRows = ps.map((p, i) => `<tr>${i === 0 ? `<td class="sttm" rowspan="${ps.length}">${esc(own)}</td><td class="stbig" rowspan="${ps.length}">${scTot('own')}</td>` : ''}<td class="stp">${sc(p, 'own')}</td><td class="stp">${p.label}</td><td class="stp">${sc(p, 'opp')}</td>${i === 0 ? `<td class="stbig" rowspan="${ps.length}">${scTot('opp')}</td><td class="sttm" rowspan="${ps.length}">${esc(opp)}</td>` : ''}</tr>`).join('');
   const scT = `<table class="stsc">${scRows}</table>`;
   const pos = `<table class="stpos"><tr><td></td><td class="py">ポゼッション率</td><td></td></tr><tr><td>${possession != null ? possession + '%' : '<span class="na">—</span>'}</td><td class="pl">${possession != null ? '' : '（記録なし）'}</td><td>${possession != null ? (100 - possession) + '%' : '<span class="na">—</span>'}</td></tr></table>`;
   const max = Math.max(1, A.shots, B.shots, A.z4, B.z4, A.fsp, B.fsp);
@@ -101,24 +99,31 @@ export function sheetHTML({ R, M, keys, own, opp, game, place, day, possession }
   const tier = (top) => {
     const rows = [];
     const sec = (t, c) => rows.push(`<tr class="sec"><td></td><td colspan="3" style="background:${c}">${t}</td><td></td></tr>`);
-    const row = (label, a, b, { bold = false, ma = 0, mb = 0 } = {}) => {
-      a = v(a); b = v(b);
-      const cell = (x, mi) => (x == null ? '<span class="na">—</span>' : x) + (x != null && mi ? `<div class="miss">未入力 ${mi}</div>` : '');
+    // na：その内訳がすべて未入力（数字の代わりにグレーの「—」。7章「未入力の表示」）
+    const row = (label, a, b, { bold = false, ma = 0, mb = 0, naA = false, naB = false } = {}) => {
+      a = naA ? null : v(a); b = naB ? null : v(b);
+      const cell = (x, mi) => (x == null ? '<span class="na">—</span>' : x) + (has && mi ? `<div class="miss">未入力 ${mi}</div>` : '');
       rows.push(`<tr class="${bold ? 'b' : ''}"><td class="bl"><i style="width:${a == null ? 0 : W(a)}px"></i></td><td class="v">${cell(a, ma)}</td><td class="lb">${label}</td><td class="v">${cell(b, mb)}</td><td class="br"><i style="width:${b == null ? 0 : W(b)}px"></i></td></tr>`);
     };
+    const allNA = (miss, n) => n > 0 && miss === n;
     const clsL = ['定位置', 'セットプレー(6m/10m含む)', 'トランジション', 'GK活用', '特殊局面'];
     if (top) {
       sec('シュート数', '#1F3FFF'); row('シュート', A.shots, B.shots, { bold: true });
-      sec('シュートエリア', '#7FD3F7'); row('スコアゾーン内シュート', A.sz, B.sz);
-      row('スコアゾーン外S/ゾーン内に人有', A.with, B.with, { ma: A.nMiss, mb: B.nMiss }); row('スコアゾーン外S/ゾーン内に人無', A.without, B.without, { ma: A.nMiss, mb: B.nMiss });
-      sec('シュート結末', '#7FD3F7'); row('枠内(ゴール含む)', A.in, B.in, { ma: A.resMiss, mb: B.resMiss }); row('枠外(ポスト含む)', A.out, B.out); row('ブロック', A.block, B.block);
-      sec('シュート分類', '#7FD3F7'); clsL.forEach((l, i) => row(l, A.cls[i], B.cls[i], i === 0 ? { ma: A.clsMiss, mb: B.clsMiss } : {}));
+      sec('シュートエリア', '#7FD3F7'); row('スコアゾーン内シュート', A.sz, B.sz, { ma: A.szMiss, mb: B.szMiss, naA: allNA(A.szMiss, A.shots), naB: allNA(B.szMiss, B.shots) });
+      const nNA = { ma: A.nMiss, mb: B.nMiss, naA: allNA(A.nMiss, A.outN), naB: allNA(B.nMiss, B.outN) };
+      row('スコアゾーン外S/ゾーン内に人有', A.with, B.with, nNA); row('スコアゾーン外S/ゾーン内に人無', A.without, B.without, nNA);
+      const rNA = { naA: allNA(A.resMiss, A.shots), naB: allNA(B.resMiss, B.shots) };
+      sec('シュート結末', '#7FD3F7'); row('枠内(ゴール含む)', A.in, B.in, { ma: A.resMiss, mb: B.resMiss, ...rNA }); row('枠外(ポスト含む)', A.out, B.out, rNA); row('ブロック', A.block, B.block, rNA);
+      const cNA = { naA: allNA(A.clsMiss, A.shots), naB: allNA(B.clsMiss, B.shots) };
+      sec('シュート分類', '#7FD3F7'); clsL.forEach((l, i) => row(l, A.cls[i], B.cls[i], i === 0 ? { ma: A.clsMiss, mb: B.clsMiss, ...cNA } : cNA));
       sec('ゾーン進入', '#FF0000'); row('ゾーン4進入', A.z4, B.z4, { bold: true }); row('スコアゾーン進入', A.szE, B.szE, { bold: true });
-      sec('Z4進入分類', '#F08080'); clsL.forEach((l, i) => row(l, A.zcls[i], B.zcls[i], i === 0 ? { ma: A.zclsMiss, mb: B.zclsMiss } : {}));
+      const zNA = { naA: allNA(A.zclsMiss, A.z4), naB: allNA(B.zclsMiss, B.z4) };
+      sec('Z4進入分類', '#F08080'); clsL.forEach((l, i) => row(l, A.zcls[i], B.zcls[i], i === 0 ? { ma: A.zclsMiss, mb: B.zclsMiss, ...zNA } : zNA));
+      const fNA = { naA: allNA(A.fspMiss, A.fsp), naB: allNA(B.fspMiss, B.fsp) };
       sec('FINISH SET PLAY', '#00B050'); row('FINISH SET PLAY 合計', A.fsp, B.fsp, { bold: true, ma: A.fspMiss, mb: B.fspMiss });
-      ['CK', 'CK-KICK IN', 'KICK IN', 'FK(6m/10m含む)'].forEach((l, i) => row(l, A.fspT[i], B.fspT[i]));
+      ['CK', 'CK-KICK IN', 'KICK IN', 'FK(6m/10m含む)'].forEach((l, i) => row(l, A.fspT[i], B.fspT[i], fNA));
     } else {
-      const bands = ['0~10', '11~20', '21~30', '31~40', ...(R.hasExtra ? ['延長'] : [])];
+      const bands = R.bands; // 時間帯の名前は試合の長さから（決3・未8）
       sec('シュート数', '#1F3FFF'); row('シュート', A.shots, B.shots, { bold: true });
       sec('シュート時間帯', '#7FD3F7'); bands.forEach((l, i) => row(l, A.shotBand[i], B.shotBand[i]));
       sec('ゾーン進入', '#FF0000'); row('ゾーン4進入', A.z4, B.z4, { bold: true }); row('スコアゾーン進入', A.szE, B.szE, { bold: true });

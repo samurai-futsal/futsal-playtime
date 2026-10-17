@@ -2,9 +2,10 @@
 // 前半・後半（延長も）を別のファイルで出す（2026-10-15 決定）。ピリオドごとに動画上のキックオフの位置を入れ、
 // MATCH PLAY の実際の時刻（ランニングタイム）から動画の時刻を求める。
 // 選手の行（#背番号）：時計が動いていた区間ごとに、ピッチにいた選手1人1本（時計が止まっている間は帯を切る）。
+// GKをFPと入れ替えてGKがいない区間（特殊局面）は帯を分けて「局面＝特殊局面」のラベルを付ける（spec 9章）。
 // イベントの行：今使っているコードウィンドウと同じコード名・色・ラベル（ゾーン4進入、シュート、SETPLAY AT、ROBO など）。
 import { OPP_OG, UNKNOWN, isOG } from './events.js';
-import { ppWindows } from './teamstats.js';
+import { ppWindows, noGkWindows, winTest } from './teamstats.js';
 
 const xesc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const mmss = (ms) => { const x = Math.round(ms / 1000); return `${Math.floor(x / 60)}:${String(x % 60).padStart(2, '0')}`; };
@@ -37,18 +38,28 @@ export function buildXML(o) {
     const runs = (R.clock?.[key]?.runs || ps.runs.map((r) => ({ t0: r.t0, t1: r.t1 ?? ps.endT }))).map((r) => [r.t0 - ps.kickT, (r.t1 ?? ps.endT) - ps.kickT]);
     const stints = R.stints.filter((s) => s.period === key).sort((a, b) => a.from - b.from || (+mem(a.pid).no || 0) - (+mem(b.pid).no || 0));
     const cnt = {};
+    const sp = noGkWindows(R)[key] || []; // 実際の時間（ランニングタイム）での特殊局面
     for (const s of stints) {
       cnt[s.pid] = (cnt[s.pid] || 0) + 1;
       const segs = runs.map(([a, b]) => [Math.max(a, s.from), Math.min(b, s.to)]).filter(([a, b]) => b - a >= 500);
       const play = segs.reduce((t, [a, b]) => t + b - a, 0);
       const labels = [['選手', name(s.pid)], ['ピリオド', per?.label || key], ['出場', `${cnt[s.pid]}回目`], ['この出場の時間', `実際 ${mmss(s.to - s.from)}／プレー ${mmss(play)}`]];
-      for (const [a, b] of segs) inst.push({ start: ko + a / 1000, end: ko + b / 1000, code: '#' + mem(s.pid).no, labels });
+      for (const [a, b] of segs) {
+        // 特殊局面の境目で帯を分ける
+        const cuts = [...new Set([a, b, ...sp.flat().filter((c) => c > a && c < b)])].sort((x, y) => x - y);
+        for (let i = 0; i + 1 < cuts.length; i++) {
+          const x = cuts[i], y = cuts[i + 1]; if (y - x < 500 && cuts.length > 2) continue;
+          const special = sp.some(([p0, p1]) => x >= p0 && y <= p1);
+          inst.push({ start: ko + x / 1000, end: ko + y / 1000, code: '#' + mem(s.pid).no, labels: special ? [...labels, ['局面', '特殊局面']] : labels });
+        }
+      }
     }
   }
   // ---------- イベントの行 ----------
   if (o.withEvents !== false) {
-    const gn = o.goalName; const W = ppWindows(M);
-    const inPP = (e) => ((W.own[key] || []).some(([a, b]) => e.at >= a && e.at < b) ? '自チーム5x4' : (W.opp[key] || []).some(([a, b]) => e.at >= a && e.at < b) ? '相手5x4' : null);
+    // 5x4の時間帯（区間の境目とピリオドの終わりの瞬間は、分析・データシートと同じ決め方）
+    const gn = o.goalName; const W = ppWindows(M); const inOwn = winTest(W.own, M), inOpp = winTest(W.opp, M);
+    const inPP = (e) => (inOwn(e) ? '自チーム5x4' : inOpp(e) ? '相手5x4' : null);
     const offset = M.periods.slice(0, M.periods.findIndex((p) => p.key === key)).reduce((t, p) => t + (p.len || 0), 0);
     // イベントの時刻（試合の時計の経過、1秒単位）→ キックオフからの実際の時間。
     // その1秒の間に時計が止まっていたら、止まった瞬間に起きたとみる（シュートでボールが外に出て時計が止まる、など）

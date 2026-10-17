@@ -1,7 +1,7 @@
 // マッチレビューのイベントを使う項目（5 マッチ・ペース、7 スコアとチームスタッツ、8 スタッツまとめ）と、
 // 出場タイムラインの得点・失点の線（spec 7章、2026-10-16 決定）。時間はいつもプレーイングタイム（経過時間）。
 import { esc } from './ui.js';
-import { OPP_OG, NO_ASSIST, UNKNOWN } from './events.js';
+import { OPP_OG, NO_ASSIST, UNKNOWN, isOG } from './events.js';
 import { teamStats, playerStats } from './teamstats.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -24,13 +24,16 @@ export function stagger(items, w) {
 }
 
 // ---------- 5. マッチ・ペース ----------
-// 下段に並べられる行（分析画面で選べる。マッチレビューは shot・ent・fsp の3段）
+// 下段に並べられる行（分析画面で選べる。マッチレビューは shot・ent・fsp の3段）。数える条件は (e, goalName)。
+// シュートはチームスタッツと同じ：得点・失点を含み、OG（相手OG・自チームのOG）は両チームとも数えない
 export const PACE_ROWS = {
-  shot: ['シュート', '（SZ内・得点を含む）', (e) => ['shot', 'szshot'].includes(e.kind) || (e.kind === 'goal' && e.pid !== OPP_OG), (e) => ['oshot', 'oszshot'].includes(e.kind) || e.kind === 'conc', 'own', 'opp'],
+  shot: ['シュート', '（SZ内・得点を含む）', (e) => ['shot', 'szshot'].includes(e.kind) || (e.kind === 'goal' && e.pid !== OPP_OG), (e, gn) => ['oshot', 'oszshot'].includes(e.kind) || (e.kind === 'conc' && !isOG(gn ? gn(e.gtype) : '')), 'own', 'opp'],
   ent: ['Z4・SZ進入', '（合計）', (e) => e.kind === 'z4' || e.kind === 'sz', (e) => e.kind === 'oz4' || e.kind === 'osz', 'own', 'opp'],
   fsp: ['FINISH SET PLAY', '（AT／DF）', (e) => e.kind === 'fspat', (e) => e.kind === 'fspdf', 'own', 'opp'],
   rl: ['リカバリー／ロスト', '（自チーム）', (e) => e.kind === 'rec', (e) => e.kind === 'lost', 'リカバリー', 'ロスト'],
 };
+// 区切りの番号（終わりを含む）：0:00 → 0、0:00超〜1:00 → 0、1:00超〜2:00 → 1 …
+export const binOf = (at, BIN, n) => Math.max(0, Math.min(n - 1, at <= 0 ? 0 : Math.ceil(at / BIN) - 1));
 // o：{ bin（ms、初めは1分）, rows（PACE_ROWS のキー）, svgOnly, tap（タップで強調できる印を付ける） }
 export function paceSection(c, o = {}) {
   const { M0, order, mem, last, R, T0, own, opp } = c;
@@ -91,7 +94,8 @@ export function paceSection(c, o = {}) {
     const bins = axis.map((p) => {
       const nMin = Math.ceil(p.len / BIN);
       const bo = Array(nMin).fill(0), bp = Array(nMin).fill(0);
-      for (const e of c.evs) { if (e.period !== p.key) continue; const b = Math.min(nMin - 1, Math.floor(e.at / BIN)); if (fo(e)) bo[b]++; if (fp(e)) bp[b]++; }
+      // 区切りは終わりを含む（10:00ちょうどは 9:00〜10:00。0:00は最初の区切り）
+      for (const e of c.evs) { if (e.period !== p.key) continue; const b = binOf(e.at, BIN, nMin); if (fo(e, c.goalName)) bo[b]++; if (fp(e, c.goalName)) bp[b]++; }
       return { p, nMin, bo, bp };
     });
     const half = (GH - 10) / 2, mid = gy + 5 + half;
@@ -118,7 +122,7 @@ export function paceSection(c, o = {}) {
     for (let i = 0; i < nMin; i++) {
       const a = i * BIN, b = Math.min(p.len, (i + 1) * BIN);
       const on = [...new Set(M0.stints.filter((q) => q.period === p.key && q.from < b && q.to > a).map((q) => q.pid))];
-      s += `<rect class="pbin" data-bin="${esc(p.label)} ${mmss(a)}〜${mmss(b)}" data-on="${on.join(',')}" x="${X[p.key] + i * bw0}" y="${top - 2}" width="${bw0}" height="${gy - top + 2}" fill="transparent"/>`;
+      s += `<rect class="pbin" data-bin="${esc(p.label)} ${mmss(a)}〜${mmss(b)}（残り ${mmss(p.len - a)}〜${mmss(p.len - b)}）" data-on="${on.join(',')}" x="${X[p.key] + i * bw0}" y="${top - 2}" width="${bw0}" height="${gy - top + 2}" fill="transparent"/>`;
     }
   }
   s += '</svg>';

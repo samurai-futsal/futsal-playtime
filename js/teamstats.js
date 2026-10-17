@@ -1,7 +1,8 @@
 // チームと選手の集計（マッチレビュー 5・7・8、マッチスタッツ）。spec 7章・9章。
 // 画面を作らない純粋な計算。同じ記録から同じ計算で作るので、レビューとスタッツの数字は必ず一致する。
 // 得点・失点は専用の種類（goal / conc）で記録するが、シュートにも数える（得点＝枠内のシュート）。OGはシュートに数えない。
-import { OPP_OG, NO_ASSIST, UNKNOWN, isOG, isFsp, clsOfGoalType, cardsOf, pitchAt } from './events.js';
+import { OPP_OG, NO_ASSIST, UNKNOWN, isOG, isFsp, clsOfGoalType, cardsOf, pitchAt, SET_COLS } from './events.js';
+import { setTable, SET_MIN } from './model.js';
 
 export const CLS_KEYS = ['pos', 'set', 'trans', 'gk', 'special'];
 const num = (v) => (v == null || v === '' ? null : +v);
@@ -33,27 +34,23 @@ export function teamStats(M, events, goalName, keys = null, win = null) {
   const ev = all.filter(inR);
   const pOrder = M.periods.map((p) => p.key);
   const cardMap = cardsOf(all, pOrder); // 2枚目のイエローは試合全体で数える
-  // 時間帯：前半・後半を10分ずつ（0〜10・11〜20・21〜30・31〜40）。延長は5つ目
-  const bandOf = (e) => {
-    const i = pOrder.indexOf(e.period); const p = M.periods[i];
-    if (!p) return 0; if (p.extra) return 4;
-    return i * 2 + (e.at <= p.len / 2 ? 0 : 1);
-  };
+  // 時間帯（決3・未8）：前半・後半をそれぞれ半分に分け、延長は延長前半・延長後半を1つずつ。境目は試合通算の時間で、終わりを含む
   const hasExtra = M.periods.some((p) => p.extra && p.status !== 'none');
+  const BD = bandsOf(M);
+  const bandOf = (e) => bandIndex(BD, M, e.period, e.at);
   const side = (own) => {
     const sh = shotsOf(ev, goalName, own);
     const outSZ = sh.filter((s) => s.sz !== true);
     const c = (arr, f) => arr.filter(f).length;
     const K = (k) => ev.filter((e) => e.kind === k);
     const z4 = K(own ? 'z4' : 'oz4'), szE = K(own ? 'sz' : 'osz'), fsp = K(own ? 'fspat' : 'fspdf');
-    const nb = hasExtra ? 5 : 4;
-    const band = (arr) => Array.from({ length: nb }, (_, b) => arr.filter((x) => bandOf(x.e || x) === b).length);
+    const band = (arr) => BD.map((_, b) => arr.filter((x) => bandOf(x.e || x) === b).length);
     const cardEv = ev.filter((e) => e.kind === (own ? 'foul' : 'fouled') && cardMap.has(e.id));
     const cardC = { yellow: 0, y2: 0, red: 0 }; for (const e of cardEv) cardC[cardMap.get(e.id)]++;
     return {
       shots: sh.length, sz: c(sh, (s) => s.sz === true),
       with: c(outSZ, (s) => s.sz === false && s.n != null && s.n >= 1), without: c(outSZ, (s) => s.sz === false && s.n === 0),
-      nMiss: c(outSZ, (s) => s.sz == null || s.n == null),
+      nMiss: c(outSZ, (s) => s.sz == null || s.n == null), outN: outSZ.length, szMiss: c(sh, (s) => s.sz == null),
       in: c(sh, (s) => s.result === 'in'), out: c(sh, (s) => s.result === 'out' || s.result === 'post'), block: c(sh, (s) => s.result === 'block'), resMiss: c(sh, (s) => !s.result),
       goals: c(sh, (s) => s.goal),
       cls: CLS_KEYS.map((k) => c(sh, (s) => s.cls === k)), clsMiss: c(sh, (s) => !s.cls),
@@ -84,7 +81,7 @@ export function teamStats(M, events, goalName, keys = null, win = null) {
   return {
     A, B, score, rangeScore, goals, timeouts, ejOwn, ejOpp: B.cards.y2 + B.cards.red,
     rec: ev.filter((e) => e.kind === 'rec').length, lost: ev.filter((e) => e.kind === 'lost').length,
-    hasEvents: all.length > 0, hasExtra, n: ev.length,
+    hasEvents: all.length > 0, hasExtra, n: ev.length, bands: BD.map((b) => b.label),
   };
 }
 
@@ -190,35 +187,131 @@ export function addInto(a, b) {
   return a;
 }
 
-// ---------- パワープレー（5×4）の時間帯で分ける（2026-10-16 決定） ----------
-// 自チームの5×4＝MATCH PLAY・記録の修正のパワープレー（自チーム）と、GKがピッチにいない区間。相手の5×4＝パワープレー（相手）。
+// ---------- 時間帯（決3・未8、2026-10-17） ----------
+// 前半・後半をそれぞれ半分に分け、延長は延長前半・延長後半を1つずつ（延長を行ったときだけ）。
+// 境目は試合通算の時間で、終わりを含む（0:00〜10:00＝「0~10」、10:01〜20:00＝「11~20」。後半の0:00＝通算20:00は「11~20」）。
+// 区切りがすべて分ちょうどなら「0~10」の形、そうでなければ「0~7:30」「7:31~15:00」の形。
+const mmssT = (ms) => { const x = Math.round(ms / 1000); return `${Math.floor(x / 60)}:${String(x % 60).padStart(2, '0')}`; };
+export function bandsOf(M) {
+  const reg = M.periods.filter((p) => !p.extra);
+  const ext = M.periods.some((p) => p.extra && p.status !== 'none') ? M.periods.filter((p) => p.extra) : [];
+  const out = []; let t = 0;
+  for (const p of [...reg, ...ext]) {
+    const parts = p.extra ? [p.len] : [Math.round(p.len / 2000) * 1000, p.len];
+    let prev = 0;
+    for (const x of parts) { out.push({ period: p.key, from: t + prev, to: t + x }); prev = x; }
+    t += p.len;
+  }
+  const whole = out.every((b) => b.to % 60000 === 0);
+  for (const b of out) b.label = whole ? `${b.from ? b.from / 60000 + 1 : 0}~${b.to / 60000}` : `${b.from ? mmssT(b.from + 1000) : '0'}~${mmssT(b.to)}`;
+  return out;
+}
+// 試合通算の時間（ピリオドの前までの長さ＋経過）
+export const cumAt = (M, period, at) => { const i = M.periods.findIndex((p) => p.key === period); return M.periods.slice(0, Math.max(0, i)).reduce((t, p) => t + p.len, 0) + at; };
+export function bandIndex(BD, M, period, at) {
+  if (!BD.length) return 0;
+  const c = cumAt(M, period, at); const i = BD.findIndex((b) => c <= b.to);
+  return i < 0 ? BD.length - 1 : i;
+}
+
+// どこまでの記録か（マッチスタッツ・マッチレビュー・マッチレポートで同じ）：最後に終わったピリオドから
+const mmssUpT = (ms) => { const x = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(x / 60)}:${String(x % 60).padStart(2, '0')}`; };
+export function asOfLabel(M) {
+  if (M.matchOver) return '試合終了時点';
+  const cur = M.periods.find((p) => p.key === M.current);
+  if (M.live && cur) return `${cur.label} 残り ${mmssUpT(cur.len - cur.elapsed)} 時点`;
+  const done = M.periods.filter((p) => p.status === 'done');
+  return done.length ? `${done[done.length - 1].label}終了時点` : '試合開始前';
+}
+
+// ---------- パワープレー（5×4）と退場の時間帯で分ける（2026-10-16・17 決定） ----------
+// 自チームの5×4＝MATCH PLAY・記録の修正のパワープレー（自チーム）と、GKをFPと入れ替えてGKがいない区間（決1）。
+// 退場でGKがいない区間（空席）や、初めからGKがいない並びは5×4に入れない。相手の5×4＝パワープレー（相手）。
 const mergeIv = (list) => { const a = list.filter((x) => x[1] > x[0]).sort((x, y) => x[0] - y[0]); const out = []; for (const x of a) { const l = out[out.length - 1]; if (l && x[0] <= l[1]) l[1] = Math.max(l[1], x[1]); else out.push([x[0], x[1]]); } return out; };
-export function ppWindows(M) {
+// list から cut の区間を取り除く
+const subIv = (list, cut) => { let res = mergeIv(list); for (const [c0, c1] of mergeIv(cut)) res = res.flatMap(([a, b]) => (c1 <= a || c0 >= b ? [[a, b]] : [[a, Math.min(b, c0)], [Math.max(a, c1), b]].filter(([x, y]) => y > x))); return res; };
+// GKをFPと入れ替えてGKがいない区間（特殊局面）。ピリオドごと
+export function noGkWindows(M) {
   const isGK = (pid) => M.cfg.members?.[pid]?.pos === 'GK';
+  const out = {};
+  for (const p of M.periods) {
+    out[p.key] = [];
+    if (p.status === 'none') continue;
+    const end = p.elapsed;
+    const ss = M.stints.filter((x) => x.period === p.key);
+    const em = (M.empties || []).filter((x) => x.period === p.key).map((x) => [Math.max(0, x.from), Math.min(end, x.to ?? end)]);
+    const emp = (M.empties || []).filter((x) => x.period === p.key);
+    const cuts = [...new Set([0, end, ...ss.flatMap((x) => [x.from, x.to]), ...em.flat()])].filter((c) => c >= 0 && c <= end).sort((a, b) => a - b);
+    const runs = []; let cur = null;
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const a = cuts[i], b = cuts[i + 1]; const on = ss.filter((x) => x.from <= a && x.to >= b);
+      if (on.length && !on.some((x) => isGK(x.pid))) { if (cur && cur[1] === a) cur[1] = b; else runs.push(cur = [a, b]); } else cur = null;
+    }
+    // GKが交代で出た瞬間に始まる区間だけ（GKの退場・初めからGKがいない並びは除く）
+    const ok = runs.filter(([a]) => a > 0 && ss.some((x) => isGK(x.pid) && x.to === a) && !emp.some((e) => e.from === a && isGK(e.pid)));
+    out[p.key] = subIv(ok, em); // 退場で空席の間は、退場の時間帯に入れる
+  }
+  return out;
+}
+// 退場の時間帯：自チーム＝MATCH PLAYの退場で空席の区間（4対5）、相手＝相手の退場の記録（5対4）
+// 相手の退場（イベントの 'oej'）の区間。events.js の oppEjWindows(events, M) ができたら、ejWindows の中をそれに置きかえる
+export function oppEjWindowsLocal(events, M) {
+  const out = {}; for (const p of M.periods) out[p.key] = [];
+  const order = M.periods.map((p) => p.key);
+  for (const e of events || []) {
+    if (e.deleted || e.kind !== 'oej') continue;
+    const i0 = order.indexOf(e.period); if (i0 < 0) continue;
+    let i1 = e.endPeriod ? order.indexOf(e.endPeriod) : i0; if (i1 < i0) i1 = i0;
+    for (let i = i0; i <= i1; i++) {
+      const p = M.periods[i]; if (p.status === 'none') continue;
+      const a = i === i0 ? e.at : 0; const b = i === i1 && e.endAt != null ? e.endAt : p.elapsed;
+      out[p.key].push([a, Math.min(b, p.elapsed)]);
+    }
+  }
+  for (const k of Object.keys(out)) out[k] = mergeIv(out[k]);
+  return out;
+}
+export function ejWindows(M, events = null) {
+  const own = {};
+  for (const p of M.periods) own[p.key] = p.status === 'none' ? [] : mergeIv((M.empties || []).filter((x) => x.period === p.key).map((x) => [Math.max(0, x.from), Math.min(p.elapsed, x.to ?? p.elapsed)]));
+  // ランニングタイムの試合の形（M.relOf がある）のときは、相手の退場の時刻（試合の時計）を実際の時間に置きかえる
+  const Mp = M.relOf ? { ...M, periods: M.periods.map((p) => ({ ...p, elapsed: p.playing ?? p.elapsed })) } : M;
+  let opp = oppEjWindowsLocal(events, Mp); // ← 切り替え先：oppEjWindows(events, Mp)（events.js）
+  if (M.relOf) opp = Object.fromEntries(Object.entries(opp).map(([k, iv]) => [k, mergeIv(iv.map(([a, b]) => [M.relOf(k, a), M.relOf(k, b)]))]));
+  return { own, opp };
+}
+// events を渡すと、退場の時間帯（ejOwn・ejOpp）も入る（分析の「数的同数だけ」・セットの表で除く）
+export function ppWindows(M, events = null) {
   const own = {}, opp = {};
+  const ng = noGkWindows(M);
   for (const p of M.periods) {
     if (p.status === 'none') { own[p.key] = []; opp[p.key] = []; continue; }
     const end = p.elapsed;
     const pp = (team) => (M.pp || []).filter((x) => x.period === p.key && x.team === team).map((x) => [x.from, Math.min(end, x.to ?? end)]);
-    const ss = M.stints.filter((x) => x.period === p.key);
-    const cuts = [...new Set([0, end, ...ss.flatMap((x) => [x.from, x.to])])].filter((c) => c >= 0 && c <= end).sort((a, b) => a - b);
-    const noGK = [];
-    for (let i = 0; i + 1 < cuts.length; i++) { const a = cuts[i], b = cuts[i + 1]; const on = ss.filter((x) => x.from <= a && x.to >= b); if (on.length && !on.some((x) => isGK(x.pid))) noGK.push([a, b]); }
-    own[p.key] = mergeIv([...pp('own'), ...noGK]); opp[p.key] = mergeIv(pp('opp'));
+    own[p.key] = mergeIv([...pp('own'), ...ng[p.key]]); opp[p.key] = mergeIv(pp('opp'));
   }
   const hasOpp = (M.pp || []).some((x) => x.team === 'opp');
-  return { own, opp, hasOpp };
+  const E = ejWindows(M, events);
+  return { own, opp, hasOpp, ejOwn: E.own, ejOpp: E.opp, hasOppEj: (events || []).some((e) => !e.deleted && e.kind === 'oej') };
 }
-// mode：all / ex（5×4を除く）/ pp（5×4すべて）/ own（自チームの5×4）/ opp（相手の5×4）→ ピリオドごとの数える区間
+// mode → ピリオドごとの数える区間。重ならないように分ける（退場を先に、次に自チームの5×4、相手の5×4）：
+//  all（すべて＝null）/ ex（数的同数だけ＝5×4・4×5・両チームの退場を除く）/ pp（5×4・4×5）/ own（自チームの5×4）/ opp（相手の5×4）
+//  / ejown（自チームの退場＝4対5）/ ejopp（相手の退場＝5対4）。ex＋own＋opp＋ejown＋ejopp＝試合全体
 export function windowsOf(M, W, mode) {
   if (mode === 'all') return null;
   const out = {};
   for (const p of M.periods) {
-    const both = mergeIv([...(W.own[p.key] || []), ...(W.opp[p.key] || [])]);
-    if (mode === 'own') out[p.key] = W.own[p.key] || [];
-    else if (mode === 'opp') out[p.key] = W.opp[p.key] || [];
-    else if (mode === 'pp') out[p.key] = both;
-    else { const c = []; let t = 0; for (const [a, b] of both) { if (a > t) c.push([t, a]); t = Math.max(t, b); } if (t < p.elapsed) c.push([t, p.elapsed]); out[p.key] = c; }
+    const k = p.key;
+    const eo = W.ejOwn?.[k] || [], ep = subIv(W.ejOpp?.[k] || [], eo), ej = mergeIv([...eo, ...ep]);
+    const ow = subIv(W.own[k] || [], ej), op = subIv(W.opp[k] || [], [...ej, ...ow]);
+    const all = mergeIv([...ej, ...ow, ...op]);
+    if (mode === 'own') out[k] = ow;
+    else if (mode === 'opp') out[k] = op;
+    else if (mode === 'pp') out[k] = mergeIv([...ow, ...op]);
+    else if (mode === 'ejown') out[k] = eo;
+    else if (mode === 'ejopp') out[k] = ep;
+    else if (mode === 'ej') out[k] = ej;
+    else out[k] = subIv(p.status === 'none' ? [] : [[0, p.elapsed]], all);
   }
   return out;
 }
@@ -243,4 +336,68 @@ export function ppTime(M, W, pid) {
   let own = 0, opp = 0;
   for (const s of M.stints) if (s.pid === pid) { own += ov(s.from, s.to, W.own[s.period] || []); opp += ov(s.from, s.to, W.opp[s.period] || []); }
   return { own, opp };
+}
+
+// ---------- セットの表（決4・決8、2026-10-17）：マッチレビュー 4・6、分析のセット、データシートのセットで同じ決め方 ----------
+// セットの時間と回数は「数的同数」の時間帯だけで数える（5×4・4×5と、両チームの退場の時間帯を除く）。
+// 返り値：sets（すべてのセット。長い順）、classify(e)（そのイベントの行：セットのキー／'ex'＝5×4・4×5と退場の時間帯／
+// 'special'＝GK1人・FP4人がそろっていない／'other'＝交代の瞬間の3秒未満）、time（それぞれの時間と、試合の時間 played）
+export function setSplit(M, W, keys = null) {
+  const isGK = (pid) => M.cfg.members?.[pid]?.pos === 'GK';
+  const inK = (k) => !keys || keys.includes(k);
+  const wins = windowsOf(M, W, 'ex'); const inEx = winTest(wins, M);
+  const Mx = clipModel(M, wins);
+  const Mk = { ...Mx, periods: Mx.periods.filter((p) => inK(p.key)) };
+  const sets = setTable(Mk);
+  const time = { sets: sets.reduce((t, x) => t + x.time, 0), special: 0, other: 0, ex: 0, played: 0 };
+  for (const p of M.periods) if (p.status !== 'none' && inK(p.key)) time.played += p.elapsed;
+  for (const p of Mk.periods) {
+    if (p.status === 'none') continue;
+    time.ex += (M.periods.find((q) => q.key === p.key)?.elapsed || 0) - p.elapsed;
+    const ss = Mk.stints.filter((x) => x.period === p.key);
+    const cuts = [...new Set(ss.flatMap((x) => [x.from, x.to]))].sort((a, b) => a - b);
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const a = cuts[i], b = cuts[i + 1]; const on = ss.filter((x) => x.from <= a && x.to >= b).map((x) => x.pid);
+      if (!on.length) continue; // 除いた時間帯
+      const ok = on.filter(isGK).length === 1 && on.filter((x) => !isGK(x)).length === 4;
+      if (!ok) time.special += b - a; else if (b - a < SET_MIN) time.other += b - a;
+    }
+  }
+  const byKey = new Map(sets.map((x) => [x.key, x]));
+  const classify = (e) => {
+    if (!inEx(e)) return 'ex';
+    const on = pitchAt(M, e.period, e.at, e.side || (isFsp(e.kind) ? 'after' : 'before'));
+    const gks = on.filter(isGK), fps = on.filter((x) => !isGK(x));
+    const key = gks.length === 1 && fps.length === 4 ? fps.slice().sort().join('|') : null;
+    return key ? (byKey.has(key) ? key : 'other') : 'special';
+  };
+  return { sets, classify, time, wins };
+}
+// マッチレビュー 6・データシート：セットごとの回数（シュート・被シュート・Z4進入…）。出場時間が setMin 未満のセットは short にまとめる。
+// rows＋short＋ex＋special＋other ＝ total（時間も回数も）
+export function setCountTable(M, W, events, goalName, { keys = null, setMin = 60000 } = {}) {
+  const S = setSplit(M, W, keys);
+  const col = (e) => {
+    const k = e.kind;
+    if (k === 'shot' || k === 'szshot') return 0;
+    if (k === 'goal') return e.pid === OPP_OG ? -1 : 0;
+    if (k === 'oshot' || k === 'oszshot') return 1;
+    if (k === 'conc') return isOG(goalName(e.gtype)) ? -1 : 1;
+    const i = ['z4', 'oz4', 'sz', 'osz', 'fspat', 'fspdf'].indexOf(k);
+    return i < 0 ? -1 : i + 2;
+  };
+  const zero = () => SET_COLS.map(() => 0);
+  const rows = S.sets.filter((x) => x.time >= setMin).map((x) => ({ key: x.key, pids: x.pids, time: x.time, count: x.count, c: zero() }));
+  const shortL = S.sets.filter((x) => x.time < setMin);
+  const short = { n: shortL.length, time: shortL.reduce((t, x) => t + x.time, 0), count: shortL.reduce((t, x) => t + x.count, 0), c: zero() };
+  const ex = { time: S.time.ex, c: zero() }, special = { time: S.time.special, c: zero() }, other = { time: S.time.other, c: zero() }, total = { time: S.time.played, c: zero() };
+  const shortK = new Set(shortL.map((x) => x.key));
+  for (const e of events) {
+    if (e.deleted || (keys && !keys.includes(e.period))) continue;
+    const ci = col(e); if (ci < 0) continue;
+    const r = S.classify(e);
+    const row = r === 'ex' ? ex : r === 'special' ? special : r === 'other' ? other : shortK.has(r) ? short : rows.find((x) => x.key === r);
+    row.c[ci]++; total.c[ci]++;
+  }
+  return { cols: SET_COLS, rows, short, ex, special, other, total };
 }

@@ -2,9 +2,9 @@
 // マッチレビューと同じ記録から同じ計算で作るので、数字は必ず一致する。
 // 画面全体はスクロールせず、選手の表の中だけをスクロールする（条件を切り替えて見比べる画面のため）。
 import { S, watchOps, watchEvents, opts, teamSettings, playerById, activityById, matchStatus } from './store.js';
-import { replay, periodLabel, periodLen, nowElapsed } from './engine.js';
-import { matchModel, playerTable, periodSig, setTable, entryOrder } from './model.js';
-import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppWindows, windowsOf, clipModel, winTest, ppTime } from './teamstats.js';
+import { replay, periodLabel } from './engine.js';
+import { matchModel, playerTable, periodSig, entryOrder } from './model.js';
+import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppWindows, windowsOf, clipModel, winTest, ppTime, setSplit, asOfLabel } from './teamstats.js';
 import { missing, pitchAt, isFsp, OPP_OG, isOG } from './events.js';
 import { shotsOf, CLS_KEYS } from './teamstats.js';
 import { paceSection, goalMarks, PACE_ROWS, teamSection } from './review58.js';
@@ -19,7 +19,8 @@ const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${M
 const PCOL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const MCOL = ['#1F5FBF', '#E0832B', '#2E8B57', '#8A5AC8', '#C8312B', '#0E8A9E', '#B5600F', '#5F6B80'];
 const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '種類別'], ['pace', 'マッチ・ペース']];
-const PPM = [['all', 'すべて'], ['ex', '5×4/4×5を除く']]; // 2026-10-16：この2つだけ
+// 2026-10-16：この2つだけ。2026-10-17（決8）：「5×4/4×5を除く」→「数的同数だけ」（5×4・4×5と、両チームの退場の時間帯を除く）
+const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と、両チームの退場の時間帯を除く']];
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
 const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
@@ -39,11 +40,16 @@ function filtered() {
       && (!f.from || (m.date || '') >= f.from) && (!f.to || (m.date || '') <= f.to);
   });
 }
+// 複数の試合（全試合・選んだ試合）は、試合中の試合を入れない（未7、2026-10-17 決定）。「この試合」は試合中でも見られる
+let skippedLive = 0;
 function selected() {
+  skippedLive = 0;
   if (A.scope === 'match') { const m = candidates().find((x) => x.id === A.matchId) || candidates()[0]; if (m) A.matchId = m.id; return m ? [m] : []; }
-  if (A.scope === 'pick') { const set = new Set(A.picked || []); return filtered().filter((m) => set.has(m.id)); }
-  return filtered();
+  const list = A.scope === 'pick' ? (() => { const set = new Set(A.picked || []); return filtered().filter((m) => set.has(m.id)); })() : filtered();
+  const done = list.filter((m) => m.status !== 'playing'); skippedLive = list.length - done.length;
+  return done;
 }
+export const liveSkipped = () => skippedLive;
 
 // 1試合ぶんの計算（選んだピリオドの範囲）
 function oneMatch(m, per) {
@@ -56,7 +62,7 @@ function oneMatch(m, per) {
   const gn = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
   const evs = evC.list.filter((e) => !e.deleted);
   // パワープレー（5×4）の時間帯で分ける：出場時間もイベントも、選んだ時間帯の中だけで数える
-  const W = ppWindows(M); const wins = windowsOf(M, W, A.pp); const win = winTest(wins, M);
+  const W = ppWindows(M, evs); const wins = windowsOf(M, W, A.pp); const win = winTest(wins, M);
   const Mw = clipModel(M, wins);
   const T = playerTable(Mw);
   if (wins) for (const r of Object.values(T)) { // 回数は、元の出場（1回の帯）で数える（区間で切れても1回）
@@ -110,20 +116,20 @@ export function vAnalysis(r, mFrom = null) {
 
   // ---------- 上：対象・切り替え ----------
   const cand = candidates();
-  const seg = (key, list) => `<span class="anseg">${list.map(([v, l]) => `<button class="${A[key] === v ? 'on' : ''}" data-set="${key}" data-v="${v}">${l}</button>`).join('')}</span>`;
+  const seg = (key, list) => `<span class="anseg">${list.map(([v, l, t]) => `<button class="${A[key] === v ? 'on' : ''}" data-set="${key}" data-v="${v}"${t ? ` title="${t}"` : ''}>${l}</button>`).join('')}</span>`;
   const one = A.scope === 'match' ? `<select id="anMatch" class="ansel">${cand.map((m) => `<option value="${m.id}" ${m.id === A.matchId ? 'selected' : ''}>${fmtShort(m.date)} vs ${esc(m.opponent)}</option>`).join('')}</select>` : '';
   const multi = A.scope !== 'match' ? `<button class="btn sm" id="anPick">${A.scope === 'pick' ? '試合を選ぶ' : '絞り込み'}（${ms.length}試合）</button>` : '';
   const todoN = ok.filter((x) => x.todo).length; const noOpp = ok.filter((x) => !x.hasOpp).length;
   const head = `<div class="anhead">
     <div class="anrow"><b class="antt">分析</b>${seg('scope', [['match', 'この試合'], ['all', '全試合'], ['pick', '選んだ試合']])}${one}${multi}
       ${A.scope === 'match' ? '' : seg('agg', [['sum', '合計'], ['avg', '1試合平均']])}${seg('per', [['all', '全体'], ['1H', '前半'], ['2H', '後半']])}
-      <span class="anpp">パワープレー${seg('pp', PPM)}</span>
+      <span class="anpp" title="数的同数だけ＝5×4・4×5と、両チームの退場の時間帯を除く">時間帯${seg('pp', PPM)}</span>
       ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4（こちらの4×5）の記録なし ${noOpp}試合</span>` : ''}
-      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span><span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span></div>
+      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${skippedLive ? `<span class="anlive" title="試合が終わると含めます。試合中の試合は「この試合」で見られます">試合中の ${skippedLive}試合は含めていません</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span><span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span></div>
     <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} " data-tab="${v}">${l}</button>`).join('')}</div></div>`;
 
   let body;
-  if (!ms.length) body = '<div class="card empty">対象の試合がありません（試合が始まると分析できます）</div>';
+  if (!ms.length) body = skippedLive ? `<div class="card empty">対象の試合は試合中の ${skippedLive}試合だけです。試合が終わると含めます（試合中の試合は「この試合」で見られます）</div>` : '<div class="card empty">対象の試合がありません（試合が始まると分析できます）</div>';
   else if (A.tab === 'time') body = timeTab(ctx);
   else if (A.tab === 'stats') body = statsTab(ctx);
   else if (A.tab === 'set') body = setTab(ctx);
@@ -142,7 +148,9 @@ function cellFns(ctx) {
   return { avg, n, pm };
 }
 const badge = (ctx, pid) => `<span class="no ${ctx.pos[pid] === 'GK' ? 'gk' : 'fp'}">${esc(ctx.no[pid] ?? '')}</span>`;
-const name = (pid) => esc(playerById(pid)?.last || '');
+// 過去所属（移籍・退団）の選手には小さな印を付ける（spec 13章「集計では『過去所属』と印を付ける」）
+const lastN = (pid) => esc(playerById(pid)?.last || '');
+const name = (pid) => lastN(pid) + (playerById(pid)?.status === 'former' ? '<span class="anpast">過去所属</span>' : '');
 
 // 列の定義で表を作る：cols=[{k, h, v(d,pid)→数値, f(数値,d)→表示, tot(team)→表示, grp}]
 function table(ctx, cols, { note = '' } = {}) {
@@ -184,7 +192,7 @@ function timeTab(ctx) {
       : periods.map((p) => [PCOL[p.key], P[pid].per?.[p.key]?.time || 0]);
     for (const [c, t] of parts) { if (!t) continue; const h = H * t / max; y -= h; sv += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${c}"/>`; }
     sv += `<text x="${x + bw / 2}" y="${y - 5}" font-size="13" font-weight="800" fill="#0B2D6B" text-anchor="middle">${mmss(val(pid))}</text>`;
-    sv += `<text x="${x + bw / 2}" y="${18 + H + 17}" font-size="13" font-weight="800" fill="#1F5FBF" text-anchor="middle">${esc(ctx.no[pid] ?? '')}</text><text x="${x + bw / 2}" y="${18 + H + 33}" font-size="11.5" fill="#5F6B80" text-anchor="middle">${name(pid)}</text>`;
+    sv += `<text x="${x + bw / 2}" y="${18 + H + 17}" font-size="13" font-weight="800" fill="#1F5FBF" text-anchor="middle">${esc(ctx.no[pid] ?? '')}</text><text x="${x + bw / 2}" y="${18 + H + 33}" font-size="11.5" fill="#5F6B80" text-anchor="middle">${lastN(pid)}${playerById(pid)?.status === 'former' ? '（過去所属）' : ''}</text>`;
   });
   sv += '</svg>';
   const lg = multi ? ok.map((o, j) => `<span class="lg"><i style="background:${MCOL[j % MCOL.length]}"></i>${fmtShort(o.m.date)} vs ${esc(o.m.opponent)}</span>`).join('') : periods.map((p) => `<span class="lg"><i style="background:${PCOL[p.key]}"></i>${p.label}</span>`).join('');
@@ -302,7 +310,7 @@ function bindAnalysis(root) {
     const info = root.querySelector('#paceInfo');
     svg.querySelectorAll('.on').forEach((x) => x.classList.remove('on'));
     if (bin) { const on = new Set(bin.dataset.on.split(',')); bin.classList.add('on'); svg.querySelectorAll('[data-prow]').forEach((g) => g.classList.toggle('on', on.has(g.dataset.prow))); if (info) info.textContent = `${bin.dataset.bin} にピッチにいた選手を黄色にしています（もう一度押すと戻ります）`; if (paceSel === bin.dataset.bin) { svg.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); paceSel = null; if (info) info.textContent = ''; } else paceSel = bin.dataset.bin; }
-    else if (nmEl) { const pid = nmEl.dataset.pname; if (paceSel === pid) { paceSel = null; if (info) info.textContent = ''; return; } paceSel = pid; svg.querySelector(`[data-prow="${pid}"]`)?.classList.add('on'); svg.querySelectorAll('.pbin').forEach((b) => b.classList.toggle('on', b.dataset.on.split(',').includes(pid))); if (info) info.textContent = `${name(pid)} がピッチにいた区切りを黄色にしています（もう一度押すと戻ります）`; }
+    else if (nmEl) { const pid = nmEl.dataset.pname; if (paceSel === pid) { paceSel = null; if (info) info.textContent = ''; return; } paceSel = pid; svg.querySelector(`[data-prow="${pid}"]`)?.classList.add('on'); svg.querySelectorAll('.pbin').forEach((b) => b.classList.toggle('on', b.dataset.on.split(',').includes(pid))); if (info) info.textContent = `${playerById(pid)?.last || ''} がピッチにいた区切りを黄色にしています（もう一度押すと戻ります）`; }
   });
 }
 function pickModal() {
@@ -352,26 +360,24 @@ function tlView(ctx) {
 
 // ---------- セット ----------
 function setTab(ctx) {
-  const rows = new Map(); let special = null, other = null, ppRow = null;
+  const rows = new Map();
   const blank = () => ({ time: 0, count: 0, sh: 0, osh: 0, gf: 0, ga: 0, en: 0, oen: 0, games: new Set() });
-  const isGK = (x, pid) => x.m.members?.[pid]?.pos === 'GK';
+  // 下の行：5×4・4×5と退場の時間帯／GKがそろっていない区間／3秒未満の組み合わせ（時間も出して、全部足すと試合全体になる）
+  const ppRow = blank(), special = blank(), other = blank(), total = blank();
   for (const x of ctx.ok) {
-    // セットの時間と回数は、5×4・4×5の時間帯をいつも除いて数える（2026-10-16 決定）
-    const Wex = windowsOf(x.M, x.W, 'ex'); const inEx = winTest(Wex, x.M); const Mx = clipModel(x.M, Wex);
-    const Mk = { ...Mx, periods: Mx.periods.filter((p) => !x.keys || x.keys.includes(p.key)) };
-    for (const st of setTable(Mk)) { const r = rows.get(st.key) || rows.set(st.key, { ...blank(), pids: st.pids }).get(st.key); r.time += st.time; r.count += st.count; r.games.add(x.m.id); }
+    // セットの時間と回数は、数的同数の時間帯だけで数える（5×4・4×5と、両チームの退場の時間帯を除く。2026-10-16・17 決定）
+    const sp = setSplit(x.M, x.W, x.keys);
+    ppRow.time += sp.time.ex; special.time += sp.time.special; other.time += sp.time.other; total.time += sp.time.played;
+    for (const st of sp.sets) { const r = rows.get(st.key) || rows.set(st.key, { ...blank(), pids: st.pids }).get(st.key); r.time += st.time; r.count += st.count; r.games.add(x.m.id); }
     const ev = x.evs.filter((e) => !x.keys || x.keys.includes(e.period));
     const own = new Set(shotsOf(ev, x.gn, true).map((s) => s.e)), opp = new Set(shotsOf(ev, x.gn, false).map((s) => s.e));
     for (const e of ev) {
       const f = own.has(e) ? 'sh' : opp.has(e) ? 'osh' : (e.kind === 'z4' || e.kind === 'sz') ? 'en' : (e.kind === 'oz4' || e.kind === 'osz') ? 'oen' : null;
       const g = e.kind === 'goal' ? 'gf' : e.kind === 'conc' ? 'ga' : null;
       if (!f && !g) continue;
-      const on = pitchAt(x.M, e.period, e.at, e.side || (isFsp(e.kind) ? 'after' : 'before'));
-      const gks = on.filter((p) => isGK(x, p)), fps = on.filter((p) => !isGK(x, p));
-      const key = gks.length === 1 && fps.length === 4 ? fps.slice().sort().join('|') : null;
-      let r = !inEx(e) ? (ppRow = ppRow || blank()) : key ? rows.get(key) : null;
-      if (!r) { if (key) { other = other || blank(); r = other; } else { special = special || blank(); r = special; } }
-      if (f) r[f]++; if (g) r[g]++;
+      const c = sp.classify(e);
+      const r = c === 'ex' ? ppRow : c === 'special' ? special : c === 'other' ? other : rows.get(c);
+      for (const q of [r, total]) { if (f) q[f]++; if (g) q[g]++; }
     }
   }
   // 出場時間が短いセット（設定画面の基準、初めは1分未満）は表に出さず、下の行にまとめる
@@ -386,32 +392,36 @@ function setTab(ctx) {
   const nm = (pid) => { const no = ctx.no[pid]; return `<span class="no fp">${esc(no ?? '')}</span><small>${name(pid)}</small>`; };
   const fpSort = (pids) => pids.slice().sort((a, b) => (parseInt(ctx.no[a], 10) || 999) - (parseInt(ctx.no[b], 10) || 999));
   const ref = (teamSettings().refMin || 120) * 1000;
-  const row = (r, i, label) => `<tr class="${label ? 'ex' : ''} ${!label && r.time < ref ? 'low' : ''}"><td>${label ? '' : (i + 1) + '位'}</td><td class="setn">${label || fpSort(r.pids).map(nm).join('')}</td>
-    <td>${label ? '—' : mmss(r.time)}</td><td>${label ? '—' : r.count}</td>${ctx.ok.length > 1 ? `<td>${label ? '—' : r.games.size}</td>` : ''}
+  const row = (r, i, label, cls = 'ex') => `<tr class="${label ? cls : ''} ${!label && r.time < ref ? 'low' : ''}"><td>${label ? '' : (i + 1) + '位'}</td><td class="setn">${label || fpSort(r.pids).map(nm).join('')}</td>
+    <td>${mmss(r.time)}</td><td>${label && !r.count ? '—' : r.count}</td>${ctx.ok.length > 1 ? `<td>${label ? '—' : r.games.size}</td>` : ''}
     <td class="w">${r.sh}</td><td class="o">${r.osh}</td><td class="w">${r.gf}</td><td class="o">${r.ga}</td><td><b>${sgn(r.gf - r.ga)}</b></td><td class="w">${r.en}</td><td class="o">${r.oen}</td>
     <td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.sh - r.osh, r.time)}</td><td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.en - r.oen, r.time)}</td></tr>`;
   const th = (k, h, cls = '') => `<th class="srt ${A.sort.col === k ? 'on' : ''} ${cls}" data-sort="${k}">${h}</th>`;
   const head = `<tr><th>順位</th><th style="text-align:left">FP4人のセット</th>${th('time', '出場時間')}<th>回数</th>${ctx.ok.length > 1 ? '<th>試合数</th>' : ''}${th('sh', 'シュート', 'w')}${th('osh', '被シュート', 'o')}${th('gf', '得点', 'w')}${th('ga', '失点', 'o')}${th('pm', '±')}${th('en', 'Z4・SZ<br>進入', 'w')}${th('oen', '被Z4・SZ<br>進入', 'o')}${th('dsh', 'シュート差<br>／分')}${th('den', '進入差<br>／分')}</tr>`;
-  const body = list.map((r, i) => row(r, i)).join('') + (short ? row(short, 0, `出場時間が${mmss(setMin)}未満のセット（${shortN}組・合計 ${mmss(short.time)}）`) : '') + (ppRow ? row(ppRow, 0, 'パワープレー（5×4・4×5）の時間帯') : '') + (special ? row(special, 0, 'GKがいない区間・退場で空席の区間') : '') + (other ? row(other, 0, '交代の瞬間の3秒未満の組み合わせ') : '');
+  const has = (r) => r.time > 0 || r.sh || r.osh || r.gf || r.ga || r.en || r.oen;
+  const body = list.map((r, i) => row(r, i)).join('') + (short ? row(short, 0, `出場時間が${mmss(setMin)}未満のセット（${shortN}組）`) : '') + (has(ppRow) ? row(ppRow, 0, '5×4・4×5と退場の時間帯') : '') + (has(special) ? row(special, 0, 'GK1人・FP4人がそろっていない区間') : '') + (has(other) ? row(other, 0, '交代の瞬間の3秒未満の組み合わせ') : '')
+    + (list.length || short ? row(total, 0, '合計', 'tot') : '');
   return `<div class="antbl"><table class="antb anset"><thead>${head}</thead><tbody>${body || '<tr><td colspan="14" class="mu">GKが1人・FPが4人そろった時間がありません</td></tr>'}</tbody></table></div>
-    <p class="anhint">FP4人の組み合わせごと（出場時間の長い順。見出しで並べ替え）。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。差／分＝（自チーム−相手）÷出場時間。出場時間が${mmss(setMin)}未満のセット（設定画面で変えられます）、パワープレー（5×4・4×5）の時間帯、退場で空席の区間、交代の瞬間の3秒未満の組み合わせは表に出さず、下の行にまとめます（全部足すとチーム全体の数になります）。薄い数字＝出場時間が${mmss(ref)}未満で参考値</p>`;
+    <p class="anhint">FP4人の組み合わせごと（出場時間の長い順。見出しで並べ替え）。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。差／分＝（自チーム−相手）÷出場時間。セットは数的同数の時間帯だけで数えます。出場時間が${mmss(setMin)}未満のセット（設定画面で変えられます）、パワープレー（5×4・4×5）と両チームの退場の時間帯、GK1人・FP4人がそろっていない区間、交代の瞬間の3秒未満の組み合わせは表に出さず、下の行にまとめます（全部足すと合計の行になります）。薄い数字＝出場時間が${mmss(ref)}未満で参考値</p>`;
 }
 
 // ---------- パワープレー ----------
+// 時間帯は重ならないように分ける（退場を先に、次に自チームの5×4、相手の5×4）。数的同数＋5×4＋4×5＋退場（4対5）＋退場（5対4）＝合計
+const PPK = [['own', '自チームの5×4', '（攻撃・GKを入れ替え）', '5×4'], ['opp', '相手の5×4', '（こちらは4×5・守備）', '4×5'], ['ejown', '自チームの退場', '（4対5）', '退場<br><small>4対5</small>'], ['ejopp', '相手の退場', '（5対4）', '退場<br><small>5対4</small>']];
 function ppTab(ctx) {
-  const occ = []; const split = { ex: null, own: null, opp: null, all: null };
+  const occ = []; const split = {};
   for (const x of ctx.ok) {
     const inK = (k) => !x.keys || x.keys.includes(k);
-    for (const [team, W] of [['own', x.W.own], ['opp', x.W.opp]]) for (const [k, iv] of Object.entries(W)) {
+    for (const [team] of PPK) for (const [k, iv] of Object.entries(windowsOf(x.M, x.W, team))) {
       if (!inK(k)) continue;
       const pl = x.M.periods.find((p) => p.key === k);
       for (const [a, b] of iv) {
-        const pe = x.M.periods.find((p) => p.key === k)?.elapsed; const ev = x.evs.filter((e) => e.period === k && e.at >= a && (e.at < b || (e.at === b && b === pe)));
+        const test = winTest({ [k]: [[a, b]] }, x.M); const ev = x.evs.filter((e) => e.period === k && test(e));
         occ.push({ m: x.m, team, label: pl?.label || k, a, b, sh: shotsOf(ev, x.gn, true).length, osh: shotsOf(ev, x.gn, false).length, gf: ev.filter((e) => e.kind === 'goal').length, ga: ev.filter((e) => e.kind === 'conc').length });
       }
     }
-    for (const mode of ['ex', 'own', 'opp', 'all']) {
-      const wins = windowsOf(x.M, x.W, mode === 'all' ? 'all' : mode);
+    for (const mode of ['ex', ...PPK.map(([k]) => k), 'all']) {
+      const wins = windowsOf(x.M, x.W, mode);
       const R = teamStats(x.M, x.evs, x.gn, x.keys, winTest(wins, x.M));
       const Mk = clipModel(x.M, wins);
       const len = Mk.periods.filter((p) => p.status !== 'none' && (!x.keys || x.keys.includes(p.key))).reduce((t, p) => t + p.elapsed, 0);
@@ -419,19 +429,23 @@ function ppTab(ctx) {
     }
   }
   const sum = (team) => { const l = occ.filter((o) => o.team === team); return { n: l.length, t: l.reduce((s, o) => s + o.b - o.a, 0), sh: l.reduce((s, o) => s + o.sh, 0), osh: l.reduce((s, o) => s + o.osh, 0), gf: l.reduce((s, o) => s + o.gf, 0), ga: l.reduce((s, o) => s + o.ga, 0) }; };
-  const so = sum('own'), sp = sum('opp');
   const noOpp = ctx.ok.filter((x) => !x.hasOpp).length;
-  const top = `<table class="antb anpp1"><thead><tr><th></th><th>回数</th><th>時間</th><th>シュート</th><th>被シュート</th><th>得点</th><th>失点</th></tr></thead><tbody>
-    <tr><td class="apl"><b>自チームの5×4</b>（攻撃・GKを入れ替え）</td><td>${so.n}</td><td>${mmss(so.t)}</td><td class="w">${so.sh}</td><td class="o">${so.osh}</td><td class="w">${so.gf}</td><td class="o">${so.ga}<small>${so.ga ? '（PP返し）' : ''}</small></td></tr>
-    <tr><td class="apl"><b>相手の5×4</b>（こちらは4×5・守備）</td><td>${noOpp === ctx.ok.length ? '<span class="z">記録なし</span>' : sp.n}</td><td>${mmss(sp.t)}</td><td class="w">${sp.sh}</td><td class="o">${sp.osh}</td><td class="w">${sp.gf}<small>${sp.gf ? '（PP返し）' : ''}</small></td><td class="o">${sp.ga}</td></tr></tbody></table>`;
-  const S2 = split; const tm = (o, f) => (o ? f(o) : 0);
+  const topRow = ([team, label, sub]) => {
+    const o = sum(team);
+    const n = team === 'opp' && noOpp === ctx.ok.length ? '<span class="z">記録なし</span>' : o.n;
+    return `<tr><td class="apl"><b>${label}</b>${sub}</td><td>${n}</td><td>${mmss(o.t)}</td><td class="w">${o.sh}</td><td class="o">${o.osh}</td><td class="w">${o.gf}${team === 'opp' && o.gf ? '<small>（PP返し）</small>' : ''}</td><td class="o">${o.ga}${team === 'own' && o.ga ? '<small>（PP返し）</small>' : ''}</td></tr>`;
+  };
+  const top = `<table class="antb anpp1"><thead><tr><th></th><th>回数</th><th>時間</th><th>シュート</th><th>被シュート</th><th>得点</th><th>失点</th></tr></thead><tbody>${PPK.map(topRow).join('')}</tbody></table>`;
+  const S2 = split;
   const metrics = [['時間', (o) => mmss(o.len)], ['得点', (o) => o.gf], ['失点', (o) => o.ga], ['シュート', (o) => o.A.shots], ['被シュート', (o) => o.B.shots], ['枠内', (o) => o.A.in], ['被枠内', (o) => o.B.in],
     ['Z4・SZ進入', (o) => o.A.z4 + o.A.szE], ['被Z4・SZ進入', (o) => o.B.z4 + o.B.szE], ['FINISH SET PLAY AT', (o) => o.A.fsp], ['FINISH SET PLAY DF', (o) => o.B.fsp], ['リカバリー', (o) => o.rec], ['ロスト', (o) => o.lost], ['ファール', (o) => o.A.foul], ['被ファール', (o) => o.B.foul]];
-  const mid = `<table class="antb anpp2"><thead><tr><th class="apl">チームの数字</th><th>5×4/4×5を除く</th><th>5×4（攻撃）</th><th>4×5（守備）</th><th>合計</th></tr></thead><tbody>${metrics.map(([l, f]) => `<tr><td class="apl">${l}</td>${['ex', 'own', 'opp', 'all'].map((k) => `<td>${S2[k] ? f(S2[k]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-  const list = occ.sort((a, b) => (a.m.date || '').localeCompare(b.m.date || '') || a.label.localeCompare(b.label) || a.a - b.a).map((o) => `<tr><td>${fmtShort(o.m.date)} vs ${esc(o.m.opponent)}</td><td>${o.label} ${mmss(o.a)}〜${mmss(o.b)}</td><td>${mmss(o.b - o.a)}</td><td class="${o.team === 'own' ? 'w' : 'o'}">${o.team === 'own' ? '自チームの5×4' : '相手の5×4'}</td><td class="w">${o.sh}</td><td class="o">${o.osh}</td><td class="w">${o.gf}</td><td class="o">${o.ga}</td></tr>`).join('');
-  const bottom = `<table class="antb"><thead><tr><th>試合</th><th>時間帯（経過時間）</th><th>長さ</th><th>どちら</th><th>シュート</th><th>被シュート</th><th>得点</th><th>失点</th></tr></thead><tbody>${list || '<tr><td colspan="8" class="mu">パワープレーの時間帯はありません</td></tr>'}</tbody></table>`;
-  return `<div class="antbl anscroll"><h3 class="anh3">回数と時間</h3>${top}<h3 class="anh3">5×4/4×5 の前後で分けたチームの数字</h3>${mid}<h3 class="anh3">1回ごとの一覧</h3>${bottom}</div>
-    <p class="anhint">自チームの5×4＝パワープレー（自チーム）の記録と、GKがピッチにいない区間。相手の5×4＝MATCH PLAY・記録の修正で入れたパワープレー（相手）${noOpp ? `。相手の5×4の記録がない試合：${noOpp}試合` : ''}。「PP返し」＝5×4の間に相手に決められた得点（守備側から見ると得点）。上の「パワープレー」の切り替えに関係なく、両方を出します</p>`;
+  const cols = [['ex', '数的同数'], ...PPK.map(([k, , , h]) => [k, h]), ['all', '合計']];
+  const mid = `<table class="antb anpp2"><thead><tr><th class="apl">チームの数字</th>${cols.map(([k, h]) => `<th class="${k === 'all' ? 'antot' : ''}">${h}</th>`).join('')}</tr></thead><tbody>${metrics.map(([l, f]) => `<tr><td class="apl">${l}</td>${cols.map(([k]) => `<td class="${k === 'all' ? 'antot' : ''}">${S2[k] ? f(S2[k]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const who = Object.fromEntries(PPK.map(([k, l, sub]) => [k, l + sub]));
+  const list = occ.sort((a, b) => (a.m.date || '').localeCompare(b.m.date || '') || a.label.localeCompare(b.label) || a.a - b.a).map((o) => `<tr><td>${fmtShort(o.m.date)} vs ${esc(o.m.opponent)}</td><td>${o.label} ${mmss(o.a)}〜${mmss(o.b)}</td><td>${mmss(o.b - o.a)}</td><td class="${o.team === 'own' || o.team === 'ejopp' ? 'w' : 'o'}">${who[o.team]}</td><td class="w">${o.sh}</td><td class="o">${o.osh}</td><td class="w">${o.gf}</td><td class="o">${o.ga}</td></tr>`).join('');
+  const bottom = `<table class="antb"><thead><tr><th>試合</th><th>時間帯（経過時間）</th><th>長さ</th><th>どちら</th><th>シュート</th><th>被シュート</th><th>得点</th><th>失点</th></tr></thead><tbody>${list || '<tr><td colspan="8" class="mu">パワープレー・退場の時間帯はありません</td></tr>'}</tbody></table>`;
+  return `<div class="antbl anscroll"><h3 class="anh3">回数と時間</h3>${top}<h3 class="anh3">数的同数・5×4・4×5・退場の時間帯で分けたチームの数字</h3>${mid}<h3 class="anh3">1回ごとの一覧</h3>${bottom}</div>
+    <p class="anhint">自チームの5×4＝パワープレー（自チーム）の記録と、GKをFPと入れ替えてGKがピッチにいない区間（退場でGKがいない区間は入れない）。相手の5×4＝MATCH PLAY・記録の修正で入れたパワープレー（相手）${noOpp ? `。相手の5×4の記録がない試合：${noOpp}試合` : ''}。自チームの退場＝MATCH PLAYの退場で空席の区間、相手の退場＝相手の退場の記録。時間帯が重なるときは、退場 → 自チームの5×4 → 相手の5×4 の順に1つだけに数えます（数的同数＋5×4＋4×5＋退場＝合計）。「PP返し」＝5×4の間に相手に決められた得点（守備側から見ると得点）。上の「時間帯」の切り替えに関係なく、全部を出します</p>`;
 }
 
 // ---------- 種類別 ----------
@@ -514,13 +528,8 @@ function pushCommon(pages, ctx, who) {
   add('FINISH SET PLAY の内訳', sub('fsp'));
   add('ファールとカード', sub('foul'));
 }
-const mmssUp = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 1e-6)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-function asOfX(x) {
-  const st = x.st; const cfg = { times: x.m.times || {} };
-  const pDone = (k) => st.periods[k]?.status === 'done';
-  return st.matchOver ? '試合終了時点' : x.M.live ? `${periodLabel(st.current)} 残り ${mmssUp(periodLen(cfg, st.current) - nowElapsed(st))} 時点`
-    : (pDone('1H') && !pDone('2H')) ? '前半終了時点' : pDone('2H') ? '後半終了時点' : '';
-}
+// どこまでの記録か（マッチスタッツ・マッチレビューと同じ）
+const asOfX = (x) => asOfLabel(x.M);
 function infoLine(x) {
   const m = x.m; const act = activityById(m.activityId);
   return [fmtShort(m.date) + (m.kickoff ? ` ${esc(m.kickoff)}キックオフ` : ''), esc(act?.name || ''), esc(m.category || ''), esc(m.venue || '')].filter(Boolean).map((t) => `<span>${t}</span>`).join('');
@@ -553,12 +562,12 @@ function summaryPage(ctx) {
   // 得点者・アシスト（選手ごとの合計）
   const sc = ctx.pids.filter((p) => ctx.P[p].goals || ctx.P[p].assists).sort((x, y) => ctx.P[y].goals - ctx.P[x].goals || ctx.P[y].assists - ctx.P[x].assists);
   const scT = `<table class="antb rpsc"><thead><tr><th class="apl">選手</th><th>得点</th><th>アシスト</th><th>出場試合数</th></tr></thead><tbody>${sc.map((p) => `<tr><td class="apl">${badge(ctx, p)} ${name(p)}</td><td><b>${ctx.P[p].goals}</b></td><td>${ctx.P[p].assists}</td><td>${ctx.P[p].games}</td></tr>`).join('') || '<tr><td colspan="4" class="mu">得点・アシストはまだありません</td></tr>'}</tbody></table>`;
-  return `<h3 class="anh3">試合ごとの結果</h3>${list}<div class="rpsum2"><div><h3 class="anh3">チームの合計と1試合平均</h3>${cm}</div><div><h3 class="anh3">得点者・アシスト（${n}試合の合計）</h3>${scT}</div></div><p class="anhint">シュートは得点を含む（OGは除く）。相手のファール・カード＝自チームの被ファールで記録したもの。このあとに${n}試合の合計のページ、そのあとに試合ごとのページが続きます</p>`;
+  return `<h3 class="anh3">試合ごとの結果</h3>${list}<div class="rpsum2"><div><h3 class="anh3">チームの合計と1試合平均</h3>${cm}</div><div><h3 class="anh3">得点者・アシスト（${n}試合の合計）</h3>${scT}</div></div><p class="anhint">${skippedLive ? `試合中の ${skippedLive}試合は含めていません。` : ''}シュートは得点を含む（OGは除く）。相手のファール・カード＝自チームの被ファールで記録したもの。このあとに${n}試合の合計のページ、そのあとに試合ごとのページが続きます</p>`;
 }
-// 時間帯ごとの数（マッチスタッツの下段と同じ区切り：試合通算の0〜10・11〜20・21〜30・31〜40分、延長）
+// 時間帯ごとの数（マッチスタッツの下段と同じ区切り：前半・後半をそれぞれ半分に、延長は延長前半・延長後半。名前は試合の長さから）
 function bandTable(c) {
   const { R, own, opp } = c; const { A: a, B: b } = R;
-  const L = ['0〜10分', '11〜20分', '21〜30分', '31〜40分', '延長'].slice(0, a.shotBand.length);
+  const L = R.bands.map((l) => `${l.replace('~', '〜')}${/:/.test(l) ? '' : '分'}`);
   const row = (lab, x, y) => `<tr><td class="apl">${lab}</td>${x.map((v, i) => `<td class="w">${v}</td><td class="o">${y[i]}</td>`).join('')}<td class="w"><b>${x.reduce((s, v) => s + v, 0)}</b></td><td class="o"><b>${y.reduce((s, v) => s + v, 0)}</b></td></tr>`;
   return `<div class="rpband"><h3 class="anh3">時間帯ごとの数<small>試合の時計（プレーイングタイム）。左＝${esc(own)}、右＝${esc(opp)}</small></h3><table class="antb"><thead><tr><th class="apl"></th>${L.map((l) => `<th colspan="2">${l}</th>`).join('')}<th colspan="2">合計</th></tr></thead><tbody>
     ${row('シュート', a.shotBand, b.shotBand)}${row('Z4進入', a.z4Band, b.z4Band)}${row('FINISH SET PLAY', a.fspBand, b.fspBand)}</tbody></table></div>`;
