@@ -26,7 +26,7 @@ export function vScImport(m) {
   const M = matchModel(st, Date.now(), m.fix); const R = toRunning(M, st);
   const started = M.periods.filter((p) => st.periods[p.key]?.kickT != null);
   const crumb = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › Sportscodeから取り込み</div>`;
-  const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML か CSV を選ぶと、イベント入力に自動で記録します（シュート、ゾーン進入、SETPLAY、ROBO・PERDIDA、ファウル）。時刻は Kick Off の印と MATCH PLAY の時計の記録から試合の時計に直します。出場（#背番号の行）は取り込みません（MATCH PLAY の記録を使います）。</p>`;
+  const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML か CSV を選ぶと、イベント入力に自動で記録します（シュート、ゾーン進入、FINISH SET PLAY（SETPLAY）、リカバリー・ロスト（ROBO・PERDIDA）、ファール（ファウル））。時刻は Kick Off の印と MATCH PLAY の時計の記録から試合の時計に直します。出場（#背番号の行）は取り込みません（MATCH PLAY の記録を使います）。</p>`;
   const pick = `<div class="card"><div class="scrow"><label class="filebtn btn pri">ファイルを選ぶ（XML・CSV）<input type="file" id="siFile" accept=".xml,.csv,.XML,.CSV,text/xml,text/csv,application/xml" hidden></label>
     ${st8.file ? `<span class="scpos">${esc(st8.file)}（${st8.parsed?.kind === 'csv' ? 'CSV' : 'XML'}・${st8.parsed?.instances.length || 0}件）</span>` : '<span class="mu">前半だけ・後半だけ・両方入ったファイルのどれでも取り込めます</span>'}</div></div>`;
   if (!started.length) return { active: 'acts', html: `<div class="scw">${crumb}${intro}<div class="card empty">MATCH PLAY でキックオフを押したピリオドがありません。時計の記録を使うので、先に MATCH PLAY の記録が必要です。</div></div>` };
@@ -57,9 +57,9 @@ export function vScImport(m) {
       const mode = (a) => { const c = {}; let best = null; for (const v of a) { c[v] = (c[v] || 0) + 1; if (best == null || c[v] > c[best]) best = v; } return best; };
       const nowLen = Object.fromEntries(Object.entries(lens).map(([k, a]) => [k, mode(a)]));
       const prevLen = teamSettings().scLens || {};
-      const lenWarn = Object.entries(nowLen).filter(([k, v]) => prevLen[k] != null && Math.abs(prevLen[k] - v) >= 0.5).map(([k, v]) => `${LEN_NAME[k]}の長さが${prevLen[k]}秒 → ${v}秒に変わっています。下の「コードごとのリード」を確かめてください`);
+      const lenWarn = Object.entries(nowLen).filter(([k, v]) => prevLen[k] != null && Math.abs(prevLen[k] - v) >= 0.5).map(([k, v]) => `${LEN_NAME[k]}の長さが${prevLen[k]}秒 → ${v}秒に変わっています。下の「コードごとの前後の秒数」を確かめてください`);
       st8.nowLen = nowLen;
-      const per = periods.map((p, i) => `<div class="sirow"><b>Kick Off ${i + 1}（動画 ${mmss(kos[i].start * 1000)}）</b>→<select data-asg="${i}">${started.map((x) => `<option value="${x.key}" ${x.key === p.key ? 'selected' : ''}>${x.label}</option>`).join('')}</select>
+      const per = periods.map((p, i) => `<div class="sirow"><span class="sikick"><b>Kick Off ${i + 1}（動画 ${mmss(kos[i].start * 1000)}）</b><span class="siar">→</span><select data-asg="${i}">${started.map((x) => `<option value="${x.key}" ${x.key === p.key ? 'selected' : ''}>${x.label}</option>`).join('')}</select></span>
         <label>全体をずらす（秒）<input data-sh="${p.key}" value="${st8.shift[p.key] ?? ''}" placeholder="0" inputmode="decimal"></label></div>`).join('');
       const cnt = {}; for (const e of res.events) cnt[e.kind] = (cnt[e.kind] || 0) + 1;
       const order = ['shot', 'szshot', 'goal', 'z4', 'sz', 'fspat', 'oshot', 'oszshot', 'conc', 'oz4', 'osz', 'fspdf', 'rec', 'lost', 'foul', 'fouled'];
@@ -76,13 +76,13 @@ export function vScImport(m) {
         ...(res.warnings || []).map(([w, n]) => `${esc(w)}：${n}件`),
         ...(res.events.some((e) => e.impWhy) ? [`同じグループに2つ以上のラベルが付いたイベント：${res.events.filter((e) => e.impWhy).length}件（1つ目のラベルで取り込み、「要確認」にします。イベント入力で確かめてください）`] : []),
       ];
-      const leadT = `<table class="sctb"><tr><th>コード</th><th>コードの開始から何秒後がプレーの瞬間か（リード）</th></tr>${Object.keys(DEFAULT_LEAD).map((k) => `<tr><td>${LEAD_LABEL[k]}</td><td><input data-ld="${k}" value="${lead[k]}" inputmode="decimal"> 秒</td></tr>`).join('')}</table>`;
+      const leadT = `<table class="sctb"><tr><th>コード</th><th>コードの開始から何秒後がプレーの瞬間か</th></tr>${Object.keys(DEFAULT_LEAD).map((k) => `<tr><td>${LEAD_LABEL[k]}</td><td><input data-ld="${k}" value="${lead[k]}" inputmode="decimal"> 秒</td></tr>`).join('')}</table>`;
       body = `<div class="card"><h3>ピリオドと時刻合わせ</h3>${per}</div>
         <div class="card"><h3>取り込むイベント ${res.events.length}件</h3>${cntT}${gT}
           ${warn.length ? `<div class="siwarn">${warn.map((w) => `<div>⚠ ${w}</div>`).join('')}</div>` : ''}
           <p class="mu sm">${[...keys].map((k) => periodLabel(k)).join('・')}：前回 Sportscode から取り込んだイベント ${old.length}件を、この${res.events.length}件に置き換えます${edited.length ? `（そのうち <b>${edited.length}件はアプリで直してあります</b>）` : ''}。アプリで入力したイベント ${appMade}件と MATCH PLAY の記録はそのまま残ります。アシスト・進入の方法などファイルにない項目は未入力のまま残るので、あとでイベント入力で埋められます。</p>
           <div class="row end"><button class="btn pri" id="siGo" ${res.events.length ? '' : 'disabled'}>取り込む（${res.events.length}件）</button></div></div>
-        <details class="card"><summary><b>コードごとのリード</b>　チームで覚えます</summary>${leadT}<p class="mu sm">リードを直したあとは、もう一度「取り込む」（置き換え）を押すと時刻がすべて直ります</p></details>`;
+        <details class="card"><summary><b>コードごとの前後の秒数</b>　チームで覚えます</summary>${leadT}<p class="mu sm">秒数を直したあとは、もう一度「取り込む」（置き換え）を押すと時刻がすべて直ります</p></details>`;
       st8.old = old; st8.edited = edited;
     }
   }

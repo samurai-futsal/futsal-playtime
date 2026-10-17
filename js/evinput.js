@@ -99,7 +99,7 @@ export function vSplit(m) {
         ${PRESETS.map(([id, l]) => `<button data-sp="${id}"><b>${l}</b><small>${Array.from({ length: sp.n }, (_, i) => `担当${i + 1}＝${ALLK.filter((k) => presetAssign(id, sp.n)[k] === i).map(kindLabel).join('・')}`).join('　')}</small></button>`).join('')}
         <button data-sp="prev" ${prev ? '' : 'disabled'}><b>前の試合と同じ</b><small>${prev ? `vs ${esc(prev.opponent)}（${esc(prev.date || '')}）の分担をそのまま使う` : '分担を決めた前の試合がありません'}</small></button></div>
         <div class="card"><h3>各端末では</h3><p class="mu" style="margin:0">イベント入力を開くと「どの担当ですか？」と聞かれ、担当を押すだけ。その担当のイベントだけが大きく出ます（担当以外のイベントは出ません）。③で担当者を決めてあれば、その端末の担当者の名前も自動でその人になります。</p></div></div></div>`
-    : '<div class="card"><p class="mu" style="margin:0">1人で全部のイベントを入力します（今までと同じ）。何人かで分ける時は、上で人数を選んでください。</p></div>'}`;
+    : '<div class="card"><p class="mu" style="margin:0">1人で全部のイベントを入力します。何人かで分ける時は、上で人数を選んでください。</p></div>'}`;
   return {
     active: 'acts', html,
     bind: (root) => {
@@ -166,7 +166,11 @@ function diffText(a, b, nm, periods) {
 }
 const ACT = { add: '記録した', edit: '直した', del: '削除した', revert: '取り消した' };
 
-export function vEvents(m) {
+// 担当者の表示：名前を入れていなければ「未設定」（記録の印には今までどおり iPad・PC が付く）
+const whoLabel = () => { try { return localStorage.getItem('fpt.deviceName') || '未設定'; } catch { return '未設定'; } };
+// rt：試合ページの「リアルタイム入力」から開いたとき（中身は同じ。見出しだけ変える）
+export function vEvents(m, { rt = false } = {}) {
+  const title = rt ? 'リアルタイム入力' : 'イベント入力';
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
   if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
   const cfg = cfgOf(m);
@@ -189,11 +193,11 @@ export function vEvents(m) {
   const events = sortEvents(liveEvents(evC.list), pOrder);
   const nm = (pid) => `${cfg.members?.[pid]?.no ?? '?'} ${playerById(pid)?.last || ''}`.trim();
   const sp = splitOf(m); const role = roleOf(m, sp.n);
-  const crumbE = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › イベント入力</div>`;
+  const crumbE = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › ${title}</div>`;
   // 分担しているのに、この端末の担当がまだ決まっていない → まず担当を選ぶ
   if (sp.n > 1 && role == null) {
-    return { active: 'acts', html: `${crumbE}<h1>イベント入力：どの担当ですか？</h1>
-      <p class="mu">この試合は ${sp.n}人で分けて入力します。この端末で入力する担当を押してください（あとから変えられます）。担当者：<b>${esc(devName())}</b> <button class="btn xs" id="evWho">変える</button></p>
+    return { active: 'acts', html: `${crumbE}<h1>${title}：どの担当ですか？</h1>
+      <p class="mu">この試合は ${sp.n}人で分けて入力します。この端末で入力する担当を押してください（あとから変えられます）。担当者：<b>${esc(whoLabel())}</b> <button class="btn xs" id="evWho">変える</button></p>
       <div class="rolepick">${Array.from({ length: sp.n }, (_, i) => `<button class="card" data-role="${i}"><b>${roleName(m, i)}</b><span>${kindsOf(sp, i).map(kindLabel).join('・')}</span></button>`).join('')}</div>
       <p><a class="btn" href="#/m/${m.id}/split">入力担当の設定</a></p>`,
       bind: (root) => { root.querySelectorAll('[data-role]').forEach((b) => { b.onclick = () => {
@@ -237,12 +241,12 @@ export function vEvents(m) {
   const ltabs = `<div class="ltabs"><button class="${ui.ltab !== 'hist' ? 'on' : ''}" data-ltab="ev">イベント</button><button class="${ui.ltab === 'hist' ? 'on' : ''}" data-ltab="hist">直した履歴</button></div>`;
   const list = ui.ltab === 'hist' ? `<div class="card evlist evhist">${ltabs}<h3>直した履歴（新しい順）</h3><div class="hrows">${histHTML}</div>
     <p class="mu" style="font-size:12px">取り消すと、そのイベントだけが前の状態に戻ります（ほかの人の入力はそのまま）。同じイベントは、新しい変更から順に取り消せます。</p></div>` : `<div class="card evlist">${ltabs}<h3>入力したイベント（時刻順）</h3>
-    <div class="perh">${periods.map((p) => `<button class="btn sm ${!ui.todo && !ui.det && p.key === ui.listPer ? 'pri' : ''}" data-lper="${p.key}">${p.label} ${counts[p.key]}件</button>`).join('')}${todoN ? `<button class="btn sm todo ${ui.todo ? 'on' : ''}" id="evTodo">未入力・要確認 ${todoN}件</button>` : ''}${detN ? `<button class="btn sm det ${ui.det ? 'on' : ''}" id="evDet">詳細の空き ${detN}件</button>` : ''}</div>
+    <div class="perh">${periods.map((p) => `<button class="btn sm ${!ui.todo && !ui.det && p.key === ui.listPer ? 'pri' : ''}" data-lper="${p.key}">${p.label} ${counts[p.key]}件</button>`).join('')}${todoN ? `<button class="btn sm todo ${ui.todo ? 'on' : ''}" id="evTodo">未入力・要確認 ${todoN}件</button>` : ''}${detN ? `<button class="btn sm det ${ui.det ? 'on' : ''}" id="evDet">○詳細が空き ${detN}件</button>` : ''}</div>
     ${ui.todo ? '<div class="evtodo">●基本の項目が空いているか ⚠ 要確認が残っているイベントだけを並べています（前半・後半とも）。押すと直せます。埋め終わると一覧から消えます</div>' : ui.det ? '<div class="evtodo det">○詳細の項目が空いているイベントだけを並べています（前半・後半とも）。埋めると資料が充実します。空いていても「記録完了」にはなります</div>' : ''}
     <div class="evrows">${rows}</div></div>`;
 
   // ---------- 右：入力 ----------
-  const evBtn = (k) => `<button class="btn ${KIND[k].team === 'opp' ? 'o' : ''} ${ui.kind === k ? 'on' : ''}" data-kind="${k}">${KIND[k].short || KIND[k].label}</button>`;
+  const evBtn = (k) => `<button class="btn ${KIND[k].team === 'opp' ? 'o' : ''} ${ui.kind === k ? 'on' : ''}" data-kind="${k}">${sp.n <= 1 && (k === 'fspat' || k === 'fspdf') ? KIND[k].label : KIND[k].short || KIND[k].label}</button>`; // 1人のときは FINISH SET PLAY も1行
   const step1 = `<div class="step"><span class="num">1</span><div>
       <div class="st">時刻<small>映像のスコアボードと同じ残り時間。「1205」で 12:05</small></div>
       <div class="evtime"><div class="evper">${periods.map((p) => `<button class="btn ${p.key === ui.period ? 'pri' : ''}" data-per="${p.key}">${p.label}</button>`).join('')}</div>
@@ -268,10 +272,10 @@ export function vEvents(m) {
 
   return {
     active: 'acts',
-    html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › イベント入力</div>
-      <div class="row between"><h1 style="margin:0">イベント入力</h1><span class="mu">記録した時点で試合の記録になり、マッチレビューにすぐ反映されます</span></div>
+    html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › ${title}</div>
+      <div class="row between"><h1 style="margin:0">${title}</h1><span class="mu">記録した時点で試合の記録になり、マッチレビューにすぐ反映されます</span></div>
       <div class="evrole"><span class="rl">入力の担当人数</span><b>${sp.n}人</b>${sp.n > 1 ? `<span class="rl">この端末</span><b>${roleName(m, role)}</b><span class="mu">${mine.map(kindLabel).join('・')}</span><button class="btn sm" id="evRoleChange">担当を変える</button>` : '<span class="mu">（1人で全部のイベントを入力）</span>'}
-        <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><button class="dev" id="evWho">担当者：<b>${esc(devName())}</b> <span>変える</span></button></div>
+        <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><button class="dev" id="evWho">担当者：<b>${esc(whoLabel())}</b> <span>変える</span></button></div>
       <div class="evw mt">${list}${form}</div>`,
     bind: (root) => bindEv(root, ctx),
   };
@@ -548,7 +552,8 @@ export function recheckEvents(m, M, list, { quiet = false } = {}) {
   if (!ch.length) return ch;
   for (const { ev, check, why } of ch) patchEvent(m.id, ev.id, { check, checkWhy: why });
   const on = ch.filter((x) => x.check && !x.ev.check).length, off = ch.filter((x) => !x.check && x.ev.check).length;
-  if (!quiet && (on || off)) toast(`要確認（⚠）を今の記録で付け直しました：新しく ${on}件・外れた ${off}件`);
+  // 知らせるのはイベント入力の画面を開いているときだけ（ほかの画面では黙って直す）
+  if (!quiet && (on || off) && location.hash.startsWith(`#/m/${m.id}/events`)) toast(`⚠要確認を見直しました（新しく ${on}件／外れた ${off}件）`);
   return ch;
 }
 // 出場の記録が変わったときだけ⚠を付け直す（開いたとき・MATCH PLAYの記録や記録の修正が変わったとき。記4）

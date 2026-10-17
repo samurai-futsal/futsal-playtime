@@ -8,7 +8,7 @@ import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppW
 import { missing, pitchAt, isFsp, OPP_OG, isOG } from './events.js';
 import { shotsOf, CLS_KEYS } from './teamstats.js';
 import { paceSection, goalMarks, PACE_ROWS, teamSection } from './review58.js';
-import { timelineHTML } from './review.js';
+import { timelineHTML, declutterTimeline } from './review.js';
 import { esc, fmtShort, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 import { printStats } from './stats.js';
@@ -303,6 +303,12 @@ function statsTab(ctx) {
 // ---------- 操作 ----------
 function bindAnalysis(root) {
   const bar = document.querySelector('.bar'); if (bar) document.documentElement.style.setProperty('--barh', bar.offsetHeight + 'px');
+  // 表が横に入りきらないとき、右端をぼかして「まだ右にある」と分かるようにする（右端まで動かしたら消す）
+  declutterTimeline(root);
+  root.querySelectorAll('.antbl').forEach((el) => {
+    const upd = () => el.classList.toggle('more', el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+    upd(); el.addEventListener('scroll', upd, { passive: true });
+  });
   root.querySelectorAll('[data-set]').forEach((b) => b.onclick = () => { A[b.dataset.set] = b.dataset.v; if (b.dataset.set === 'scope' && b.dataset.v === 'pick' && !A.picked) A.picked = filtered().map((m) => m.id); keep(); render(); });
   root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { A.tab = b.dataset.tab; A.sort = { col: '', dir: 'desc' }; keep(); render(); });
   root.querySelectorAll('[data-sub]').forEach((b) => b.onclick = () => { A.sub = b.dataset.sub; A.sort = { col: '', dir: 'desc' }; keep(); render(); });

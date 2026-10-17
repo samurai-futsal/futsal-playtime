@@ -554,7 +554,7 @@ export function describeOp(op, name) {
     case 'setplayEnd': return 'セットプレー終了';
     case 'contReset': return `${n(op.pid)} の「続き」を0:00に`;
     case 'pp': return 'パワープレー開始';
-    case 'ppEnd': return '5x4 終了';
+    case 'ppEnd': return '5×4 終了';
     case 'timeout': return `タイムアウト（${op.team === 'own' ? '自チーム' : '相手'}）`;
     case 'periodEnd': return 'ピリオド終了';
     case 'extra': return op.yes ? '延長戦あり' : '延長戦なし';

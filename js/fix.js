@@ -68,7 +68,7 @@ function clockNote(m, st, sig, k) {
   const len = perLen(st, k); const rem = (el) => mmss(len - el);
   const lines = [...c.added.map((a) => `<li>残り ${rem(a.el0)}〜${rem(a.el1)}（${mmss(a.t1 - a.t0)}）：実際には <b>${hms(a.t0)}〜${hms(a.t1)}</b> に時計が動いていたとしました</li>`),
     ...c.removed.map((a) => `<li>記録では ${hms(a.t0)}〜${hms(a.t1)} に時計が動いていましたが、この間は<b>止まっていた</b>としました</li>`)];
-  return `<div class="fxinfo"><b>時計の記録も、交代の修正に合わせて直しています（${periodLabel(k)}）</b><ul>${lines.join('')}</ul><small>交代を押した実際の時刻は正しいとして、時計が動いた・止まった時刻の方を直しています。ランニングタイム・Sportscode の帯・フィジカルコーチの数字は、直した時計で数えます。間に交代がないので、時計を足す・削る位置で誰の時間も変わりません。</small></div>`;
+  return `<div class="fxinfo"><b>時計の記録も合わせて直しました（${periodLabel(k)}。ランニングタイムの表示にも反映されます）</b><details><summary>くわしく</summary><ul>${lines.join('')}</ul><small>交代を押した実際の時刻は正しいとして、時計が動いた・止まった時刻の方を直しています。ランニングタイム・Sportscode の帯・フィジカルコーチの数字は、直した時計で数えます。間に交代がないので、時計を足す・削る位置で誰の時間も変わりません。</small></details></div>`;
 }
 export function vFix(m) {
   const opsC = watchOps(m.id);
@@ -151,19 +151,26 @@ function tabSub(m, d, k, fp, cfg) {
   const W = seatWalk(fp); const L = fp.elapsed || 1;
   const pc = (v) => (v / L * 100).toFixed(3);
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => `<span style="left:${f * 100}%">${mmss(lenOf(fp) - f * fp.elapsed)}</span>`).join('');
-  const rows = W.map((w) => `<div class="gtr"><span class="gtl">場所${w.seat + 1}</span><div class="gtt">${w.segs.map((g) => {
+  // 交代の印：押しやすい大きさ。近い2つは左右に少しずらして重ならないようにする
+  const marks = (w) => {
+    const ms = w.segs.filter((g) => g.startEv).map((g) => ({ g, e: fp.ev.find((x) => x.id === g.startEv) })).filter((x) => x.e?.kind === 'sub').sort((a, b) => a.g.from - b.g.from);
+    const sh = ms.map(() => 0);
+    for (let i = 1; i < ms.length; i++) if (!sh[i - 1] && (ms[i].g.from - ms[i - 1].g.from) / L < 0.035) { sh[i - 1] = -1; sh[i] = 1; }
+    return ms.map(({ g, e }, i) => `<button class="gtk" style="left:${sh[i] ? `calc(${pc(g.from)}% ${sh[i] < 0 ? '-' : '+'} 15px)` : `${pc(g.from)}%`}" data-edit="${e.id}" title="この交代を直す" aria-label="この交代を直す"></button>`).join('');
+  };
+  const rows = W.map((w) => `<div class="gtr"><span class="gtl">枠${w.seat + 1}</span><div class="gtt">${w.segs.map((g) => {
     const wide = (g.to - g.from) / L > 0.07;
     const cls = !g.pid ? 'emp' : cfg.members?.[g.pid]?.pos === 'GK' ? 'gk' : '';
     return `<span class="gts ${cls}" style="left:${pc(g.from)}%;width:${pc(g.to - g.from)}%" title="${esc(plain(cfg, g.pid))}">${wide ? esc(g.pid ? plain(cfg, g.pid) : '空席') : ''}</span>`;
-  }).join('')}${w.segs.filter((g) => g.startEv).map((g) => { const e = fp.ev.find((x) => x.id === g.startEv); return e?.kind === 'sub' ? `<button class="gtk" style="left:${pc(g.from)}%" data-edit="${e.id}" title="この交代を直す"></button>` : ''; }).join('')}</div></div>`).join('');
+  }).join('')}${marks(w)}</div></div>`).join('');
   const subs = fp.ev.filter((e) => e.kind === 'sub').sort((a, b) => a.at - b.at);
-  const list = subs.length ? subs.map((e) => `<tr><td>${remEl(fp, e.at)}</td><td>場所${e.seat + 1}</td><td>${nm(cfg, outOf(fp, e))}</td><td>→</td><td>${nm(cfg, e.in)}</td>
+  const list = subs.length ? subs.map((e) => `<tr><td>${remEl(fp, e.at)}</td><td>枠${e.seat + 1}</td><td>${nm(cfg, outOf(fp, e))}</td><td>→</td><td>${nm(cfg, e.in)}</td>
       <td class="fxact"><button class="btn sm" data-edit="${e.id}">直す</button><button class="btn sm" data-miss="${e.id}">押し間違い</button></td></tr>`).join('')
     : '<tr><td colspan="6" class="mu" style="text-align:center">このピリオドの交代はありません</td></tr>';
   return `<div class="card"><div class="gtax"><span></span><div>${ticks}</div></div>${rows}
       <p class="mu" style="margin:8px 0 0">○の印（交代の区切り）か、下の一覧の「直す」を押すと、時刻・OUT・INを直せます。</p></div>
     <div class="card"><div class="row between"><h2 class="h" style="margin:0">${periodLabel(k)}の交代（${subs.length}回）</h2><button class="btn pri" id="fxAddSub">＋ 交代を追加</button></div>
-    <table class="fxtb"><tr><th>残り時間</th><th>場所</th><th>OUT</th><th></th><th>IN</th><th></th></tr>${list}</table>
+    <table class="fxtb"><tr><th>残り時間</th><th>枠</th><th>OUT</th><th></th><th>IN</th><th></th></tr>${list}</table>
     <p class="mu">「押し間違い」：その交代と、それを直すためにあとで押した逆の交代（同じ選手同士を戻した交代）をまとめて消し、出場をつなげます。</p></div>`;
 }
 
@@ -171,9 +178,9 @@ function tabSub(m, d, k, fp, cfg) {
 function tabLineup(m, d, k, fp, cfg) {
   const ms = memberList(cfg); const banned = bannedBefore(d, k);
   const why = (i) => (x) => { const f2 = clone(fp); f2.lineup[i] = x; return whyNot(f2, cfg, x, i, null, banned); };
-  return `<div class="card"><h2 class="h" style="margin-top:0">${periodLabel(k)}のスタメン（各場所の最初の選手）</h2>
-    <div class="fxlu">${fp.lineup.map((pid, i) => (pid == null && fp.startEmpty?.[i] ? `<label>場所${i + 1}</label><span class="mu">空席（前のピリオドの退場：${esc(plain(cfg, fp.startEmpty[i]))}）</span>` : `<label>場所${i + 1}</label><select data-lu="${i}">${pickOpts(cfg, ms, pid, why(i))}</select>`)).join('')}</div>
-    <p class="mu">変えると、その場所の最初の交代まで、選んだ選手が出場していたことになります。</p></div>`;
+  return `<div class="card"><h2 class="h" style="margin-top:0">${periodLabel(k)}のスタメン（各枠の最初の選手）</h2>
+    <div class="fxlu">${fp.lineup.map((pid, i) => (pid == null && fp.startEmpty?.[i] ? `<label>枠${i + 1}</label><span class="mu">空席（前のピリオドの退場：${esc(plain(cfg, fp.startEmpty[i]))}）</span>` : `<label>枠${i + 1}</label><select data-lu="${i}">${pickOpts(cfg, ms, pid, why(i))}</select>`)).join('')}</div>
+    <p class="mu">変えると、その枠の最初の交代まで、選んだ選手が出場していたことになります。</p></div>`;
 }
 
 // ---------- 退場・空席 ----------
@@ -374,7 +381,7 @@ function bindFix(root, m, d, k, cfg, st, sig) {
   });
   root.addEventListener('change', (e) => {
     const t = e.target;
-    if (t.dataset.lu != null) { const i = +t.dataset.lu; const old = fp.lineup[i]; commit('スタメン', `場所${i + 1}のスタメン ${plain(cfg, old)} → ${plain(cfg, t.value)}`, () => { fp.lineup[i] = t.value; }); }
+    if (t.dataset.lu != null) { const i = +t.dataset.lu; const old = fp.lineup[i]; commit('スタメン', `枠${i + 1}のスタメン ${plain(cfg, old)} → ${plain(cfg, t.value)}`, () => { fp.lineup[i] = t.value; }); }
     if (t.dataset.info) { const f = t.dataset.info; const lab = { date: '日付', opponent: '対戦相手', category: '試合の区分', kickoff: 'キックオフ時刻', venue: '会場', memo: 'メモ' }[f]; const old = d.info[f]; if ((f === 'date' || f === 'opponent') && !t.value.trim()) { toast('日付と対戦相手は空にできません'); t.value = old; return; } if (old !== t.value) commit('試合情報', `${lab} ${old || '（なし）'} → ${t.value || '（なし）'}`, () => { d.info[f] = t.value; }); }
     if (t.id === 'fxLogType') { ui.logType = t.value; render(); }
   });
@@ -397,7 +404,7 @@ function subModal(m, d, k, fp, cfg, id, commit) {
   const md = openModal(`<h2>${ev ? `交代を直す（${periodLabel(k)} 残り${rem(fp, ev.at)}）` : `交代を追加（${periodLabel(k)}）`}</h2>
     <div class="fxmod">${timeField(fp, 'kpSub', ev ? ev.at : fp.elapsed / 2, lo, hi, '交代の時刻（残り時間）', ev ? ev.at : null)}
       <div class="fxside">
-        <label>OUT（その場所に座っていた選手）</label><select id="fxOut"></select>
+        <label>OUT（その枠に座っていた選手）</label><select id="fxOut"></select>
         <label>IN（入った選手）</label><select id="fxIn"></select>
         <p class="mu fxnote">灰色の選手は、その時間に出られないため選べません（理由つき）。</p>
         <div id="fxPrev" class="fxprev"></div></div></div>
@@ -433,7 +440,7 @@ function subModal(m, d, k, fp, cfg, id, commit) {
   const refresh = () => {
     const v = kp.value();
     if (!ev) { // 追加：その時刻にピッチにいる選手からOUTを選ぶ
-      if (v.ok) { const at = remToAt(fp, v.sec); const on = onPitchAt(fp, at).filter((x) => x.pid); if (!on.some((x) => x.pid === curOut)) curOut = on[0]?.pid || ''; outSel.innerHTML = on.map((x) => `<option value="${x.pid}" ${x.pid === curOut ? 'selected' : ''}>${esc(plain(cfg, x.pid))}（場所${x.seat + 1}）</option>`).join(''); }
+      if (v.ok) { const at = remToAt(fp, v.sec); const on = onPitchAt(fp, at).filter((x) => x.pid); if (!on.some((x) => x.pid === curOut)) curOut = on[0]?.pid || ''; outSel.innerHTML = on.map((x) => `<option value="${x.pid}" ${x.pid === curOut ? 'selected' : ''}>${esc(plain(cfg, x.pid))}（枠${x.seat + 1}）</option>`).join(''); }
     } else outSel.innerHTML = pickOpts(cfg, ms, curOut, whyOut);
     if (v.ok) { inSel.innerHTML = pickOpts(cfg, ms, curIn, whyIn); if (!curIn) curIn = inSel.value; }
     preview();
@@ -543,7 +550,7 @@ function ejectModal(d, k, fp, cfg, id, commit) {
     if (!ev && v.ok) {
       const at = remToAt(fp, v.sec); const cur = who.value;
       const on = onPitchAt(fp, at).filter((x) => x.pid);
-      who.innerHTML = on.map((x) => `<option value="${x.pid}" ${x.pid === cur ? 'selected' : ''}>${esc(plain(cfg, x.pid))}（場所${x.seat + 1}）</option>`).join('');
+      who.innerHTML = on.map((x) => `<option value="${x.pid}" ${x.pid === cur ? 'selected' : ''}>${esc(plain(cfg, x.pid))}（枠${x.seat + 1}）</option>`).join('');
     }
     fillWho.innerHTML = pickOpts(cfg, ms, curFill, whyFill); if (!curFill) curFill = fillWho.value;
     const r = check(); md.querySelector('#ejErr').textContent = r.err || ''; okBtn.disabled = !!r.err;

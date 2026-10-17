@@ -70,7 +70,7 @@ const go = (h) => { location.hash = h; };
 
 function route() {
   const parts = (location.hash || '#/home').replace(/^#\/?/, '').split('/').filter(Boolean);
-  return { name: parts[0] || 'home', id: parts[1], sub: parts[2] };
+  return { name: parts[0] || 'home', id: parts[1], sub: parts[2], x: parts[3] };
 }
 
 // ---------- frame ----------
@@ -86,7 +86,7 @@ function topbar(active) {
     <button class="bk" id="btnBack">‹ 戻る</button>
     <a class="tm" href="#/teams">${esc(t ? t.name : 'チームを選ぶ')} ▾</a>
     ${t ? nav('home', 'ホーム', '#/home') + nav('players', '選手', '#/players') + nav('acts', '活動と試合', '#/acts') + nav('analysis', '分析', '#/analysis')
-      + `<a class="nv srch ${active === 'search' ? 'on' : ''}" href="#/search">⌕ 試合を探す</a>` : ''}
+      + `<a class="nv srch ${active === 'search' ? 'on' : ''}" href="#/search">⌕ <span class="wide">試合を</span>探す</a>` : ''}
     <span class="sp"></span>${syncLabel()}
     <a class="nv ${active === 'settings' ? 'on' : ''}" href="#/settings">設定</a>
   </header>`;
@@ -94,7 +94,7 @@ function topbar(active) {
 
 const VIEWS = {
   home: vHome, teams: vTeams, players: vPlayers, acts: vActivities, a: vActivity, m: vMatch,
-  search: vSearch, settings: vSettings, analysis: (r) => vAnalysis(r), soon: vSoon,
+  search: vSearch, settings: vSettings, analysis: (r) => vAnalysis(r),
 };
 
 export function render() {
@@ -160,7 +160,7 @@ function vHome() {
         <div class="mu">${fmtDate(next.date)}${next.kickoff ? ' ' + esc(next.kickoff) + ' キックオフ' : ''}${next.venue ? '　' + esc(next.venue) : ''}</div></div>
         <div class="nm-r">${chip(matchStatus(next), next)}<span class="go">試合ページへ ›</span></div></a>`;
   const actName = (m) => activityById(m.activityId)?.name || '';
-  const tile = (href, t, sub, soon = false) => `<a class="tile ${soon ? 'soon' : ''}" href="${href}"><b>${t}</b><span>${sub}</span></a>`;
+  const tile = (href, t, sub) => `<a class="tile" href="${href}"><b>${t}</b><span>${sub}</span></a>`;
   const activePlayers = S.players.filter((p) => p.status !== 'former').length;
   const backupNote = backupOverdue() ? `<div class="note warn">しばらくバックアップをしていません。<a href="#/settings">設定</a>から書き出してください。</div>` : '';
   return {
@@ -401,6 +401,7 @@ function activityForm(a) {
 }
 
 // ---------- 活動のページ（招集メンバーと試合） ----------
+let actEditOrder = null; // 編集を始めたときの並び { id: 活動, ids }
 function vActivity(r) {
   const a = activityById(r.id);
   if (!a) return { active: 'acts', html: '<div class="card empty">この活動は見つかりません（削除された可能性があります）。<a href="#/acts">活動と試合へ</a></div>' };
@@ -408,9 +409,12 @@ function vActivity(r) {
   const mem = a.members || {};
   const played = playedPlayerIds(a.id);
   const ids = Object.keys(mem).filter((id) => playerById(id));
-  // While editing, keep a fixed order (GK→FP, ふりがな順) so boxes don't jump as numbers are typed.
-  const sorted = editMode ? sortPlayers(ids.map(playerById))
-    : sortPlayers(ids.map(playerById)).sort((x, y) => (x.pos === y.pos ? 0 : x.pos === 'GK' ? -1 : 1) || (parseInt(mem[x.id]?.no, 10) || 999) - (parseInt(mem[y.id]?.no, 10) || 999));
+  // 見るときも編集のときも同じ並び（GK→FP、背番号順）。編集中は、編集を始めたときの並びのまま動かさない（番号を打っている間に枠が動かないように）
+  const byNo = sortPlayers(ids.map(playerById)).sort((x, y) => (x.pos === y.pos ? 0 : x.pos === 'GK' ? -1 : 1) || (parseInt(mem[x.id]?.no, 10) || 999) - (parseInt(mem[y.id]?.no, 10) || 999));
+  if (!editMode) actEditOrder = null;
+  else if (!actEditOrder || actEditOrder.id !== a.id) actEditOrder = { id: a.id, ids: byNo.map((p) => p.id) };
+  const at = (p) => { const k = actEditOrder.ids.indexOf(p.id); return k < 0 ? 1e9 : k; };
+  const sorted = editMode ? byNo.slice().sort((x, y) => at(x) - at(y)) : byNo;
   const counts = {}; ids.forEach((id) => { const n = String(mem[id]?.no ?? '').trim(); if (n) counts[n] = (counts[n] || 0) + 1; });
   const dup = Object.keys(counts).filter((n) => counts[n] > 1);
   const tile = (p) => {
@@ -433,7 +437,7 @@ function vActivity(r) {
       <div class="row">${editMode ? '<button class="btn pri" id="btnDone">完了</button>' : '<button class="btn" id="btnAddM">＋ メンバーを追加</button><a class="btn" href="#/a/' + a.id + '/edit">編集</a>'}</div></div>
     ${editMode ? `<p class="mu">背番号を直したり、招集から外したりできます。この活動の試合に出場した選手は外せません。</p>` : ''}
     ${dup.length ? `<div class="note bad">背番号 ${dup.map(esc).join('・')} が重なっています</div>` : ''}
-    <div class="card"><div class="mgrid">${sorted.length ? sorted.map(tile).join('') : '<div class="empty">まだいません。「＋ メンバーを追加」から選んでください。</div>'}</div></div>
+    <div class="card"><div class="mgrid ${editMode ? 'edit' : ''}">${sorted.length ? sorted.map(tile).join('') : '<div class="empty">まだいません。「＋ メンバーを追加」から選んでください。</div>'}</div></div>
 
     <div class="row between mt"><h2 class="h">試合（${ms.length}件）</h2><button class="btn pri" id="btnAddMatch">＋ 試合を作る</button></div>
     <div class="card list">${ms.length ? ms.map((m) => `<div class="lrow static"><span class="d">${fmtShort(m.date)}${m.kickoff ? `<small>${esc(m.kickoff)}</small>` : ''}</span>
@@ -538,7 +542,7 @@ function vMatch(r) {
   if (r.sub === 'members') return vMatchMembers(m);
   if (r.sub === 'review') return vReview(m);
   if (r.sub === 'fix') return vFix(m);
-  if (r.sub === 'events') return vEvents(m);
+  if (r.sub === 'events') return vEvents(m, { rt: r.x === 'rt' });
   if (r.sub === 'split') return vSplit(m);
   if (r.sub === 'stats') return vStats(m);
   if (r.sub === 'analysis') return vAnalysis(r, m);
@@ -556,8 +560,8 @@ function vMatch(r) {
   const nMem = Object.keys(m.members || {}).length;
   const t = { ...DEFAULT_TIMES, ...(m.times || {}) };
   // ボタン：説明は短く、改行する位置を決めておく（変な位置で折り返さない）。kind：rec＝記録する／see＝見るだけ／out＝書き出す
-  const btn = (label, sub, href, { soon = false, soonText = '次の版で入ります', done = null, pri = false, kind = '' } = {}) => `<a class="act ${kind} ${soon ? 'soon' : ''} ${pri ? 'pri' : ''}" href="${soon ? '#/soon/' + encodeURIComponent(label) : href}">
-      <b>${label}${done === true ? ' <span class="ok">✓</span>' : done === false ? ' <span class="wait">未</span>' : ''}</b><span>${sub.split('\n').map((x) => `<span class="ln">${x}</span>`).join('')}</span>${soon ? `<em>${soonText}</em>` : ''}</a>`;
+  const btn = (label, sub, href, { done = null, pri = false, kind = '' } = {}) => `<a class="act ${kind} ${pri ? 'pri' : ''}" href="${href}">
+      <b>${label}${done === true ? ' <span class="ok">✓</span>' : done === false ? ' <span class="wait">未</span>' : ''}</b><span>${sub.split('\n').map((x) => `<span class="ln">${x}</span>`).join('')}</span></a>`;
   return {
     active: 'acts',
     bind: bindPostInputs(m),
@@ -573,7 +577,7 @@ function vMatch(r) {
     <div class="grp">記録する</div>
     <div class="acts acts2">
       ${btn('MATCH PLAY', 'ベンチの記録係が使う\n交代・時計・出場時間（1試合に1台）', `#/m/${m.id}/play`, { pri: nMem >= 5, kind: 'rec' })}
-      ${btn('リアルタイム入力', 'ベンチ外スタッフが使う\nPC・iPadでイベントを入力', `#/m/${m.id}/events`, { kind: 'rec' })}
+      ${btn('リアルタイム入力', 'ベンチ外スタッフが使う\nPC・iPadでイベントを入力', `#/m/${m.id}/events/rt`, { kind: 'rec' })}
     </div>
     <div class="grp">見る（記録はしない）</div>
     <div class="acts acts3">
@@ -589,7 +593,7 @@ function vMatch(r) {
       ${btn('Sportscodeから取り込み', 'XML・CSVを読み込んで\nイベント入力に自動で記録', `#/m/${m.id}/scimport`, { kind: 'rec' })}
     </div>
     ${postInputs(m)}
-    <div class="grp">見る（ハーフタイムでも、いつでも）</div>
+    <div class="grp">見る（記録はしない）</div>
     <div class="acts acts2">
       ${btn('分析', 'この試合・大会全体\n選手ごとのスタッツ', `#/m/${m.id}/analysis`, { kind: 'see' })}
     </div>
@@ -726,14 +730,14 @@ function vMatchMembers(m) {
     const num = sel ? mem[p.id].no : info?.no;
     return `<div class="pcard ${sel ? 'sel' : ''}">
       <button class="pc-main" data-tog="${p.id}">${no(num || '—', p.pos)}<span>${esc(playerName(p))}</span>${sel ? '<b class="ok">✓</b>' : ''}</button>
-      ${sel && p.pos !== 'GK' ? `<button class="pc-pp ${pp ? 'on' : ''}" data-pp="${p.id}">${pp ? 'PP可能' : 'PP'}</button>` : ''}</div>`;
+      ${sel && p.pos !== 'GK' ? `<button class="pc-pp ${pp ? 'on' : ''}" data-pp="${p.id}">${pp ? 'パワープレー可 ✓' : 'パワープレー可'}</button>` : ''}</div>`;
   };
   return {
     active: 'acts',
     html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › 試合メンバー</div>
     <div class="row between"><h1 class="inl">試合メンバー <span class="cnt ${n > 25 ? 'ng' : ''}">${n} / 25人</span></h1>
       ${prev ? `<button class="btn" id="btnCopy">前の試合のメンバーをコピー</button>` : ''}</div>
-    <p class="mu">招集メンバーから、この試合に出る選手を押して選びます（最大25人）。選んだFPの「PP」を押すと、パワープレー可能な選手になります（MATCH PLAYで番号が黄色になります）。選んだ時点の背番号とポジションが、この試合の記録として残ります。</p>
+    <p class="mu">招集メンバーから、この試合に出る選手を押して選びます（最大25人）。選んだFPの「パワープレー可」を押すと、パワープレー可能な選手になります（MATCH PLAYで番号が黄色になります）。選んだ時点の背番号とポジションが、この試合の記録として残ります。</p>
     ${ids.length ? '' : `<div class="note warn">この活動の招集メンバーがいません。先に<a href="#/a/${a?.id}">活動のページ</a>で招集メンバーを追加してください。</div>`}
     <div class="pgrid">${ps.map((p) => card(p, call[p.id])).join('')}</div>
     ${orphan.length ? `<h2 class="h">招集から外れた選手</h2><div class="pgrid">${orphan.map((id) => playerById(id) && card(playerById(id))).join('')}</div>` : ''}
@@ -810,12 +814,6 @@ function vSearch() {
   };
 }
 
-// ---------- 準備中の画面 ----------
-function vSoon(r) {
-  const what = r.name === 'analysis' ? '分析' : decodeURIComponent(r.id || 'この機能');
-  return { active: r.name === 'analysis' ? 'analysis' : '', html: `<div class="card empty"><h1>${esc(what)}</h1><p>この画面は、これからの作業の段階で入ります（分析は⑤、書き出しは⑥、マッチスタッツは④の続き）。</p><p><button class="btn" id="b2">‹ 戻る</button></p></div>`, bind() { $('#b2').onclick = goBack; } };
-}
-
 // ---------- 設定 ----------
 function vSettings() {
   const ts = teamSettings();
@@ -824,9 +822,9 @@ function vSettings() {
     const list = S.global[key];
     return `<div class="opted"><h3>${title}</h3>${list.map((o, i) => `<div class="optrow ${o.hidden ? 'hid' : ''}">
       <input id="opt_${key}_${esc(o.id)}" data-ok="${key}" data-oid="${esc(o.id)}" value="${esc(o.name)}" aria-label="${esc(title)}：${esc(o.name)}">
-      <button class="btn xs" data-up="${key}:${esc(o.id)}" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
-      <button class="btn xs" data-down="${key}:${esc(o.id)}" ${i === list.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
-      <button class="btn xs" data-hide="${key}:${esc(o.id)}">${o.hidden ? '表示する' : '非表示'}</button></div>`).join('')}
+      <button class="btn xs opb" data-up="${key}:${esc(o.id)}" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
+      <button class="btn xs opb" data-down="${key}:${esc(o.id)}" ${i === list.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
+      <button class="btn xs opb" data-hide="${key}:${esc(o.id)}">${o.hidden ? '表示する' : '非表示'}</button></div>`).join('')}
       <div class="row"><input id="optnew_${key}" placeholder="追加する名前"><button class="btn sm" data-add="${key}">追加</button></div></div>`;
   };
   return {
@@ -855,7 +853,7 @@ function vSettings() {
       <div><label for="tOr">カラータイマー：オレンジ（分:秒）</label><input id="tOr" name="colorOrange" value="${mmss(ts.colorOrange)}"></div>
       <div><label for="tRed">カラータイマー：赤（分:秒）</label><input id="tRed" name="colorRed" value="${mmss(ts.colorRed)}"></div>
       <div><label for="tSp">セットプレーの自動終了（分:秒）</label><input id="tSp" name="setplayAuto" value="${mmss(ts.setplayAuto)}"></div>
-      <div><label for="tRef">「参考値」にする出場時間（分:秒未満）</label><input id="tRef" name="refMin" value="${mmss(ts.refMin)}"></div>
+      <div><label for="tRef">これより短い出場は参考値（分:秒）</label><input id="tRef" name="refMin" value="${mmss(ts.refMin)}"></div>
       <div><label for="tSetMin">セットの表に出す出場時間（分:秒以上）</label><input id="tSetMin" name="setMin" value="${mmss(ts.setMin)}"></div>
       <div><label for="tROr">フィジカルコーチ用：オレンジ（実際の時間・分:秒）</label><input id="tROr" name="runOrange" value="${mmss(ts.runOrange)}"></div>
       <div><label for="tRRed">フィジカルコーチ用：赤（実際の時間・分:秒）</label><input id="tRRed" name="runRed" value="${mmss(ts.runRed)}"></div>

@@ -127,7 +127,7 @@ export function paceSection(c, o = {}) {
   }
   s += '</svg>';
   if (o.svgOnly) return s;
-  return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯（GKは赤。並び＝GK、先発のFP（背番号順）、そのあとは初めてピッチに入った順。ピリオドの間にも背番号と名前）と得点（緑）・失点（赤）の線。線の上の文字＝経過時間と得点者。オレンジの細い線＝時計が止まっている間だけの出場（0:00）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）。時間はプレーイングタイム（ピリオドごとの経過時間）</span></div><div class="rvbox">${s}</div></section>`;
+  return `<section class="rvsec" id="rv5"><div class="rvtt"><b>5. マッチ・ペース</b><span>上段＝出場の帯と得点（緑）・失点（赤）。下段＝1分ごとの回数（上＝${esc(own)}、下＝${esc(opp)}）</span></div><div class="rvbox">${s}</div></section>`;
 }
 
 // ---------- 7. スコアとチームスタッツ ----------
@@ -163,7 +163,7 @@ ${cmp('シュート', A.shots, B.shots, [`SZ内 ${A.sz}`, `SZ内 ${B.sz}`])}${cm
 <div class="rvrl"><b>${esc(own)}のリカバリーとロスト</b><span>リカバリー <b>${R.rec}</b></span><span>ロスト <b>${R.lost}</b></span><span>差 <b>${R.rec - R.lost}</b></span></div>
 <p class="rvhint">シュートは得点を含む（OGは除く）。${esc(opp)}のファール・カード＝${esc(own)}の被ファールで記録したもの。同じ選手の2枚目のイエローは「2枚目」に数える。退場：${esc(own)}はMATCH PLAYの退場の記録、${esc(opp)}は被ファールのイエロー2枚目とレッド。タイムアウトはMATCH PLAYの記録</p>`;
   if (o.plain) return inner;
-  return `<section class="rvsec" id="rv7"><div class="rvtt"><b>7. スコアとチームスタッツ</b><span>得点経過と、${esc(own)}と${esc(opp)}の比較。SZ内シュートの数、FINISH SET PLAYとカードの内訳は数字の下に表示。時間は経過時間</span></div>
+  return `<section class="rvsec" id="rv7"><div class="rvtt"><b>7. スコアとチームスタッツ</b><span>得点経過と、${esc(own)}と${esc(opp)}の比較。時間は経過時間</span></div>
 <div class="rvbox">${inner}</div></section>`;
 }
 
@@ -179,7 +179,7 @@ export function playerSection(c) {
   }).join('');
   const tot = (side) => Object.values(R.score[side]).reduce((a, b) => a + b, 0);
   const goalsN = tot('own');
-  return `<section class="rvsec" id="rv8"><div class="rvtt"><b>8. スタッツまとめ</b><span>選手ごと（背番号順、GKは一番下）。出場＝プレーイングタイム。シュート関与・被シュート関与＝ピッチにいる間の自チームのシュート・相手のシュートの数（得点・失点を含む、OGは除く）。得失点±＝ピッチにいる間の得点−失点</span></div>
+  return `<section class="rvsec" id="rv8"><div class="rvtt"><b>8. スタッツまとめ</b><span>選手ごと（背番号順、GKは一番下）。関与＝ピッチにいる間の数。±＝得点−失点</span></div>
 <div class="rvbox"><table class="rvtb rvs8"><tr><th>選手</th><th>出場</th><th>シュート<br><small>（SZ内）</small></th><th class="w">シュート<br>関与</th><th class="o">被シュート<br>関与</th><th>枠内</th><th>得点</th><th>アシスト</th><th>進入関与</th><th>パス<br>出し手</th><th>パス<br>受け手</th><th>リカバリー</th><th>ロスト</th><th>ファール</th><th>得失点±</th></tr>${rows}
 <tr class="tot"><td>チーム合計</td><td>${mmss(played)}</td><td>${R.A.shots}<small>（${R.A.sz}）</small></td><td class="w">${R.A.shots}</td><td class="o">${R.B.shots}</td><td>${R.A.in}</td><td>${goalsN}</td><td>${sum('assists')}${P.assistMiss ? `<div class="miss">未入力 ${P.assistMiss}</div>` : ''}</td><td>${sum('inv')}</td><td>${sum('passFrom')}</td><td>${sum('passTo')}</td><td>${R.rec}</td><td>${R.lost}</td><td>${R.A.foul}</td><td>${goalsN - tot('opp') > 0 ? '+' : ''}${goalsN - tot('opp')}</td></tr></table>
 <p class="rvhint">シュートは得点を含む。進入関与＝Z4進入・SZ進入に選手（パスの出し手・受け手を含む）として付いている回数。チーム合計のシュート・リカバリーなどは、選手が「不明」や未入力のものも含むので、選手の合計と合わないことがあります。得点には相手OGを含む</p></div></section>`;

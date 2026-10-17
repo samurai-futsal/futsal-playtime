@@ -411,7 +411,7 @@ export function whyNot(f2, cfg, pid, seat, startEv, banned = new Set()) {
   if (si > 0 && segs[si - 1].pid === pid) return 'この場所の前の交代で出た選手です';
   const others = W.flatMap((w) => w.segs.filter((g) => g.pid && g.to > g.from && !(w.seat === seat && g.from === seg.from)).map((g) => ({ ...g, seat: w.seat })));
   const same = others.find((g) => g.pid === pid && g.from < seg.to && seg.from < g.to);
-  if (same) return `残り${fmt(same.from)}〜${fmt(same.to)}に場所${same.seat + 1}で出場しています`;
+  if (same) return `残り${fmt(same.from)}〜${fmt(same.to)}に枠${same.seat + 1}で出場しています`;
   if (isGK(cfg, pid)) {
     const gk = others.find((g) => g.pid !== pid && isGK(cfg, g.pid) && g.from < seg.to && seg.from < g.to);
     if (gk) return `GK（${name(gk.pid)}）が出ています（残り${fmt(Math.max(gk.from, seg.from))}〜${fmt(Math.min(gk.to, seg.to))}）`;

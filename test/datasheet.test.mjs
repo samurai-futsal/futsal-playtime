@@ -3,6 +3,7 @@
 import { datasheetSheets, matchTitles, playerLabels, minuteOf } from '../js/datasheet.js';
 import { buildXLSX, colName } from '../js/xlsx.js';
 import { buildXML } from '../js/sportscode.js';
+import { inflateRawSync } from 'node:zlib';
 let pass = 0, fail = 0;
 const eq = (a, b, msg) => { const ok = JSON.stringify(a) === JSON.stringify(b); ok ? pass++ : (fail++, console.log('FAIL', msg, '\n  got', JSON.stringify(a), '\n  want', JSON.stringify(b))); };
 const members = { g1: { no: '1', pos: 'GK' }, a: { no: '4', pos: 'FP' }, b: { no: '5', pos: 'FP' }, c: { no: '6', pos: 'FP' }, d: { no: '7', pos: 'FP' }, e: { no: '8', pos: 'FP' } };
@@ -18,10 +19,29 @@ eq(ev.length, 4, 'one row per event + header');
 eq([ev[1][7], ev[1][9], ev[1][33], ev[1][34], ev[1][6]], ['シュート', 'A 太郎', '自', 1, 1], 'shot row: kind, player, shot side, on target, minute');
 eq([ev[3][7], ev[3][10], ev[3][35], ev[3][21]], ['得点', 'B 太郎', '得点', 'G1 太郎'], 'goal row: assist in 2人目, goal flag, pitch');
 eq([colName(0), colName(25), colName(26), colName(34)], ['A', 'Z', 'AA', 'AI'], 'column names');
-const z = buildXLSX(sh);
+const z = await buildXLSX(sh);
 eq([z[0], z[1], z[2], z[3]], [0x50, 0x4b, 3, 4], 'zip header');
-const txt = new TextDecoder().decode(z);
-eq(['xl/workbook.xml', 'xl/worksheets/sheet9.xml', 'COUNTIFS(', 'fullCalcOnLoad'].map((s) => txt.includes(s)), [true, true, true, true], 'xlsx parts and formulas');
+// ZIP を開く（中央ディレクトリから。method 8＝deflate、0＝そのまま）。CRC は圧縮前のデータのもの
+const unzip = (b) => {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength); let e = b.length - 22; while (dv.getUint32(e, true) !== 0x06054b50) e--;
+  const n = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true); const out = {};
+  for (let i = 0; i < n; i++) {
+    const method = dv.getUint16(p + 10, true), crc = dv.getUint32(p + 16, true), csz = dv.getUint32(p + 20, true), usz = dv.getUint32(p + 24, true);
+    const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lo = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(b.subarray(p + 46, p + 46 + nl));
+    const ds = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true);
+    const raw = b.subarray(ds, ds + csz); const data = method === 8 ? new Uint8Array(inflateRawSync(raw)) : raw;
+    out[name] = { method, crc, usz, data, okCrc: crc32(data) === crc && data.length === usz };
+    p += 46 + nl + xl + cl;
+  }
+  return out;
+};
+const crc32 = (d) => { let c = 0xFFFFFFFF; for (const x of d) { c ^= x; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; } return (c ^ 0xFFFFFFFF) >>> 0; };
+const U = unzip(z); const txt = Object.values(U).map((f) => new TextDecoder().decode(f.data)).join('\n');
+eq([Object.keys(U).includes('xl/workbook.xml'), Object.keys(U).includes('xl/worksheets/sheet9.xml'), txt.includes('COUNTIFS('), txt.includes('fullCalcOnLoad')], [true, true, true, true], 'xlsx parts and formulas');
+eq([Object.values(U).every((f) => f.okCrc), Object.values(U).some((f) => f.method === 8)], [true, true], 'zip: deflate used, CRC and sizes of the uncompressed data');
+{ const z0 = await buildXLSX(sh, { compress: false }); const U0 = unzip(z0);
+  eq([Object.values(U0).every((f) => f.method === 0 && f.okCrc), z.length < z0.length, Object.keys(U0).every((k) => Buffer.compare(Buffer.from(U0[k].data), Buffer.from(U[k].data)) === 0)], [true, true, true], 'zip: stored fallback has the same contents'); }
 
 // ---------- 2026-10-17 ----------
 // 1分ごと：終わりを含む（10:00ちょうど＝10分）
@@ -40,7 +60,7 @@ eq([0, 1000, 60000, 61000, 600000, 601000].map(minuteOf), [1, 1, 1, 2, 10, 11], 
   const sh2 = datasheetSheets([{ m: { id: 'm1', date: '2026-10-14', opponent: 'ペルー', members }, M: M2, evs: ev2, goalName: () => '定位置', players, activity: '大会', setMin: 60000 }], 'チーム');
   const er = sh2.find((s) => s.name === 'イベント一覧').rows; const hd = er[0].map((c) => c.v);
   const col = (n) => hd.indexOf(n); const row = (id) => er.find((r, i) => i && r[col('経過')].v === ({ 4: 1200000, 5: 120000, 6: 600000, 7: 700000 })[id] / 86400000);
-  eq([row(4)[col('5x4の時間帯')], row(5)[col('退場の時間帯')], row(7)[col('退場の時間帯')], row(6)[col('通算の分')]], ['相手5x4', '自チームの退場（4対5）', '相手の退場（5対4）', 10], 'event list: 5x4 at period end, ejection column, minute');
+  eq([row(4)[col('5×4の時間帯')], row(5)[col('退場の時間帯')], row(7)[col('退場の時間帯')], row(6)[col('通算の分')]], ['相手5×4', '自チームの退場（4対5）', '相手の退場（5対4）', 10], 'event list: 5x4 at period end, ejection column, minute');
   const info = sh2.find((s) => s.name === '試合情報').rows.flat().filter((c) => c && c.f).map((c) => c.f);
   eq([info.some((f) => f.includes(`$${er.length}`)), info.some((f) => f.includes('$5000'))], [true, false], 'COUNTIFS ranges end at the last event row');
   const sets = sh2.find((s) => s.name === 'セット').rows.slice(1);

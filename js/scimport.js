@@ -61,7 +61,7 @@ const fspOf = (v) => FSP[String(v).replace(/(\s*DF|-D)$/, '').trim()] || null;
 const RES = { 枠内: 'in', 枠外: 'out', 'ポスト': 'post', '枠外(ポスト)': 'out', ブロック: 'block' };
 // 動画の時刻＝コードの開始＋リード（コードごとに違う。取り込み画面で変えられる）
 export const DEFAULT_LEAD = { shot: 15, ent: 15, foul: 15, rl: 13, sp: 3 };
-export const LEAD_LABEL = { shot: 'シュート（被・SZ内も）', ent: 'ゾーン4・スコアゾーン進入（被も）', foul: 'ファウル・被ファウル', rl: 'ROBO・PERDIDA', sp: 'SETPLAY AT／DF' };
+export const LEAD_LABEL = { shot: 'シュート（被・SZ内も）', ent: 'ゾーン4・スコアゾーン進入（被も）', foul: 'ファール・被ファール（ファウル）', rl: 'リカバリー・ロスト（ROBO・PERDIDA）', sp: 'FINISH SET PLAY AT／DF（SETPLAY）' };
 const leadKey = (k) => (['shot', 'szshot', 'oshot', 'oszshot'].includes(k) ? 'shot' : ['z4', 'oz4', 'sz', 'osz'].includes(k) ? 'ent' : (k === 'rec' || k === 'lost') ? 'rl' : (k === 'fspat' || k === 'fspdf') ? 'sp' : 'foul');
 
 // Kick Off の印（ピリオドの始まり）

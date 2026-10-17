@@ -138,12 +138,12 @@ export function vPlay(m) {
   };
   const benchCard = (mb) => {
     const pid = mb.pid;
-    if (onPitch.has(pid)) return `<div class="bc ghost"><span class="gx"><b>${esc(mb.no ?? '')}</b>出場中</span></div>`;
+    if (onPitch.has(pid)) return `<div class="bc ghost"><span class="gx"><b>${esc(mb.no ?? '')}</b>${live ? '出場中' : '先発'}</span></div>`;
     const ej = st.ejected.has(pid);
     const waitingOut = replacedOuts.includes(pid);
     const carry = live ? carryOf(st, pid, el) : null;
     const rest = live ? restTime(st, pid, el) : restTime(st, pid, 0);
-    return `<button class="bc ${ej ? 'ej' : ''} ${waitingOut ? 'wout' : ''}" data-b="${pid}" ${ej ? 'disabled' : ''}>
+    return `<button class="bc ${ej ? 'ej' : ''} ${waitingOut ? 'wout' : ''} ${carry != null ? 'hascont' : ''}" data-b="${pid}" ${ej ? 'disabled' : ''}>
       ${nameRow(pid, mb.p?.last)}
       ${ej ? '<div class="tag ej">退場</div>' : waitingOut ? '<div class="tag w">交代待ち（押すと取り消し）</div>' : ''}
       ${carry != null ? `<span class="cont" data-cont="${pid}">続き ${mmssFloor(carry)}</span>` : ''}
@@ -151,8 +151,13 @@ export function vPlay(m) {
   };
 
   const btn = (id, label, sub = '', cls = '', dis = false) => `<button class="cb ${cls}" id="${id}" ${dis ? 'disabled' : ''}>${label}${sub ? `<small>${sub}</small>` : ''}</button>`;
-  const ppLabel = st.ppActive ? '5x4 終了' : 'パワープレー開始';
-  const stateMsg = st.matchOver ? '試合終了' : st.askExtra ? '後半終了' : !live ? (per.status === 'none' ? '開始前' : '') : running ? '計測中' : '停止中';
+  const ppLabel = st.ppActive ? '5×4 終了' : 'パワープレー開始';
+  // ピリオドの間の表示はマッチレビューと同じ（前半のあと＝ハーフタイム、後半のあと＝後半終了）
+  const anyDone = PERIODS.some((p) => st.periods[p.key].status === 'done');
+  const halfTime = st.periods['1H']?.status === 'done' && st.periods['2H']?.status !== 'done';
+  const stateMsg = st.matchOver ? '試合終了' : st.askExtra ? '後半終了' : !live ? (per.status === 'none' ? (!anyDone ? '開始前' : halfTime ? 'ハーフタイム' : 'ピリオドの間') : '') : running ? '計測中' : '停止中';
+  // 見出しの行に表示が重なるときは、退場の表示の後ろの説明を省いて短くする（切れないように）
+  const ejTail = st.ppActive || spOn || st.empty.filter(Boolean).length > 1 ? '' : '（失点で補充するときは、空席を押す）';
   const banner = [];
   if (other) banner.push(`<div class="pbanner warn">別の端末（${esc(other)}）で記録中です。同じ試合を2台で操作しないでください。<button class="btn sm" id="btnTake">この端末で記録する</button></div>`);
 
@@ -197,7 +202,7 @@ export function vPlay(m) {
         if (!e) return '';
         if (fillSeat && fillSeat.seat === i) return '<span class="stchip pick">ベンチから補充する選手を押してください</span><button class="btn sm" id="btnFillCancel">やめる</button>';
         const left = ejectLeft(e, el); const nm = esc(playerName(playerById(e.pid)));
-        return left > 0 ? `<span class="stchip ej" data-ejc="${i}">退場：${nm}　補充まで ${mmss(left)}（失点で補充するときは、空席を押す）</span>`
+        return left > 0 ? `<span class="stchip ej" data-ejc="${i}" data-tail="${ejTail ? 1 : ''}">退場：${nm}　補充まで ${mmss(left)}${ejTail}</span>`
           : '<span class="stchip ejok">補充できます：空席を押して、入る選手を選ぶ</span>';
       }).join('') : ''}
       ${st.ppActive ? `<span class="stchip pp ${t - lastPpAuto < 4000 ? 'flash' : ''}">5×4（パワープレー）${st.ppActive.team === 'own' ? '自チーム' : '相手チーム'}</span>` : ''}
@@ -252,7 +257,7 @@ function bindPlay(root, m, st, cfg, draft) {
       if (nt.kind === 'needOut') toast('先に交代する選手のOUTを押してください');
       if (nt.kind === 'noGK') toast('GKがピッチにいません');
       if (nt.kind === 'twoGK') toast('GKはピッチに1人までです。先にピッチのGKを押してください');
-      if (nt.kind === 'ppAuto') { lastPpAuto = Date.now(); toast('5x4（自チームのパワープレー）を開始しました'); }
+      if (nt.kind === 'ppAuto') { lastPpAuto = Date.now(); toast('5×4（自チームのパワープレー）を開始しました'); }
     });
     return o;
   };
@@ -374,7 +379,7 @@ function bindPlay(root, m, st, cfg, draft) {
   on('btnTO', () => timeoutModal(st, send));
   on('btnPP', () => {
     if (st.ppActive) { send({ type: 'ppEnd' }); return; }
-    const md = openModal(`<h2>パワープレー開始</h2><div class="mbody"><p class="mu">5x4の時間帯を記録します。終わったら「5x4 終了」を押してください（ピリオドの終了でも終わります）。</p>
+    const md = openModal(`<h2>パワープレー開始</h2><div class="mbody"><p class="mu">5×4の時間帯を記録します。終わったら「5×4 終了」を押してください（ピリオドの終了でも終わります）。</p>
       <div class="row"><button class="btn pri" data-t="own">自チーム</button><button class="btn pri" data-t="opp">相手チーム</button></div></div>
       <div class="mfoot"><button class="btn" data-c>やめる</button></div>`);
     md.querySelector('[data-c]').onclick = closeModal;
@@ -458,7 +463,7 @@ function updateTick(m0) {
       return;
     }
     const w = document.querySelector(`[data-ej="${i}"]`); if (w) w.textContent = `補充まで ${mmss(left)}`;
-    const c = document.querySelector(`[data-ejc="${i}"]`); if (c) c.textContent = `退場：${playerName(playerById(e.pid))}　補充まで ${mmss(left)}（失点で補充するときは、空席を押す）`;
+    const c = document.querySelector(`[data-ejc="${i}"]`); if (c) c.textContent = `退場：${playerName(playerById(e.pid))}　補充まで ${mmss(left)}${c.dataset.tail ? '（失点で補充するときは、空席を押す）' : ''}`;
   });
   if (needRerender) rerender();
   // セットプレーの自動終了：時間になったら1回だけ描き直す（描き直したあとは表示が消えるので、続けて描き直さない。試2）

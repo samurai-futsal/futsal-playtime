@@ -90,7 +90,6 @@ input[type=checkbox],input[type=radio]{width:auto;margin:0 6px 0 0;transform:sca
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;color:var(--ink);display:flex;flex-direction:column;gap:4px}
 .tile b{font-size:19px;color:var(--navy)}.tile span{color:var(--mute);font-size:14px}
-.tile.soon{opacity:.6}
 .nextm{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--ink);flex-wrap:wrap}
 .nextm .vs{font-size:22px;font-weight:800;color:var(--navy)}
 .nm-r{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
@@ -113,7 +112,6 @@ input[type=checkbox],input[type=radio]{width:auto;margin:0 6px 0 0;transform:sca
 .act{display:flex;flex-direction:column;gap:3px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;color:var(--ink)}
 .act b{font-size:16px;color:var(--navy)}.act span{color:var(--mute);font-size:13px}
 .act em{font-style:normal;font-size:12px;color:var(--mute);background:var(--soft);border-radius:6px;padding:1px 7px;align-self:flex-start;margin-top:4px}
-.act.soon{opacity:.6}
 .act.pri{border:2px solid var(--blue)}
 
 /* match members */
@@ -926,3 +924,72 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .postin .pktb select.ok{border-color:#1E7A3C;color:#1E7A3C;font-weight:700}.postin .pktb select.ng{border-color:#C42A1F;color:#C42A1F;font-weight:700}
 .postin .pkno{font-weight:800;color:#0B2D6B;white-space:nowrap}.postin .pkauto{font-size:18px;min-width:40px;text-align:center}
 .rvpk{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:14px;margin:0 0 8px;grid-column:1}.rvpk>b{color:#0B2D6B}
+
+/* ---------- 画面の見直し（polish-a）：文字が切れない・押しやすい大きさ・重ならない ---------- */
+/* 上のバー：押せる高さ40px以上。iPad縦では1行に収める（「試合を探す」→「探す」） */
+.bar .bk,.bar .tm,.bar .nv{min-height:40px;display:inline-flex;align-items:center}
+@media (max-width:900px){
+  .bar{padding-left:10px;padding-right:10px;gap:2px}
+  .bar .srch .wide{display:none}
+  .bar .nv{padding:8px 9px}.bar .tm{margin-right:4px;padding:7px 10px}.bar .bk{margin-right:2px;padding:7px 10px}
+  .bar .sy{margin-right:2px;font-size:12px}
+}
+/* MATCH PLAY：見出しの行（退場・5×4・セットプレー）は2行まで広がる。何も切れない */
+.plabel.st{height:auto;min-height:40px}
+.plabel.st .stmid{flex-wrap:wrap;overflow:visible;row-gap:6px;padding:2px 0}
+.plabel.st .stchip{white-space:normal;max-width:100%;text-align:center}
+/* MATCH PLAY：iPad縦は上のボタンを2段に（重ならない） */
+@media (orientation:portrait){
+  .ptop{grid-template-columns:auto minmax(0,1fr) auto}
+  .ptop .ss{grid-column:3;grid-row:1}
+  .ptop .cbs{grid-column:1/-1;grid-row:2}
+}
+/* MATCH PLAY：押しやすい大きさ */
+.play .cb.back{min-height:44px}
+.pbanner .btn.sm{min-height:44px}
+.bc .cont{top:0;right:0;min-height:40px;min-width:40px;display:flex;align-items:center;justify-content:center;padding:0 10px;border-radius:0 12px 0 10px;font-size:max(12px,min(8cqi,9cqh))}
+/* MATCH PLAY：知らせは上に出す（下のベンチのカードを隠さない） */
+body.playmode #toast{top:calc(10px + env(safe-area-inset-top));bottom:auto;transform:translateX(-50%) translateY(-20px)}
+body.playmode #toast.show{transform:translateX(-50%) translateY(0)}
+/* 招集メンバーの編集：名前が切れない */
+.mgrid.edit{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.mtile.edit span{white-space:normal;overflow:visible}.mtile.edit span.mu{flex:none;white-space:nowrap}
+/* 試合メンバー：「パワープレー可」 */
+.pgrid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+.pc-pp{white-space:nowrap}
+/* 設定：↑ ↓ 非表示 */
+.optrow .opb{min-height:40px;min-width:40px}
+/* イベント入力：iPad縦は入力が先、一覧が下。FINISH SET PLAY は1行。タブ・担当者・Z1〜Z4 は40px以上 */
+@media (max-width:900px){.evw .evform{order:-1}}
+.evw .mainev:not(.bigrow){grid-template-columns:72px repeat(5,minmax(0,1fr)) minmax(0,1.7fr)}
+.evw .mainev .btn[data-kind=fspat],.evw .mainev .btn[data-kind=fspdf]{white-space:nowrap}
+.ltabs button{min-height:40px;padding:5px 14px}
+.evrole button.dev{min-height:40px}
+.evw .zch .btn{min-height:44px}
+/* 記録の修正：交代の印は押しやすく（見た目の丸は小さめ、押せる範囲は32px） */
+.gtk{width:32px;height:32px;margin:-16px 0 0 -16px;border:0;background:transparent}
+.gtk::before{content:'';position:absolute;inset:6px;border-radius:50%;border:3px solid #E3A21C;background:#fff;box-sizing:border-box}
+.gtk:hover{background:transparent}.gtk:hover::before{background:#FFF4D6}
+.fxinfo details{margin-top:2px}.fxinfo summary{cursor:pointer;font-size:13px;font-weight:700;color:#1F6E46}
+/* マッチレビュー：縮小表示は幅が足りないとき1列。上のボタンは状態で動かない（操作は2段目にまとめる） */
+.rvw.compact .rvbody{grid-template-columns:repeat(2,minmax(0,1fr))}.rvw.compact .rvsec{min-width:0}
+@media (max-width:1300px){.rvw.compact .rvbody{grid-template-columns:minmax(0,1fr)}}
+.rvstate{display:inline-flex;align-items:center;gap:12px;flex-wrap:wrap}
+.rvctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex-basis:100%}
+/* 分析：押しやすい大きさ。表が横に入りきらないときは右端をぼかす。注の文字を少し大きく */
+.anseg button,.antabs button,.ansubs button{min-height:40px}
+.ansel,.anpp select{min-height:40px}
+.anhint{font-size:12.5px;line-height:1.65}
+.antbl.more{-webkit-mask-image:linear-gradient(to left,transparent 0,#000 44px);mask-image:linear-gradient(to left,transparent 0,#000 44px)}
+/* フィジカルコーチ用：並べ方は2つに名前を付けて、押しやすく */
+.phsort.ph2{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:0 4px;margin:0 0 6px}
+.phsg{display:inline-flex;align-items:center;gap:8px}
+.phsort.ph2 .seg button{min-height:40px;padding:0 12px}
+/* Sportscodeから取り込み：ボタンの文字の大きさ、Kick Off → の並び */
+.scrow:has(.filebtn){align-items:center}
+.scrow label.filebtn{flex-direction:row;font-size:15px;color:#fff;margin:0;min-height:44px}
+.sikick{display:inline-flex;align-items:center;gap:8px;align-self:flex-end;min-height:38px}
+/* マッチスタッツ：右のボタン2つはいつも一緒に並べる */
+.stbtns{display:inline-flex;gap:10px;flex-wrap:nowrap}
+.bc.hascont{padding-top:40px}
+.evw .sp2 .ch .btn{min-height:40px}

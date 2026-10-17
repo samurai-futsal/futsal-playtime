@@ -66,7 +66,7 @@ export function vStats(m) {
     : todo ? `<button class="ststat todo" id="stTodo">イベント ${evs.length}件・未入力あり ${todo}件 ›</button>` : `<span class="ststat ok">イベント ${evs.length}件・未入力なし</span>`;
   const head = `<div class="crumb noprint"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › マッチスタッツ</div>
     <div class="sthead noprint"><h1>マッチスタッツ</h1><span class="rvmode strange">${segs}</span><span class="stasof">${asOf}（${hm}に表示）</span>${status}<span class="sp"></span>
-      <button class="btn" id="stPdf">PDFで書き出す</button><a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></div>`;
+      <span class="stbtns"><button class="btn" id="stPdf">PDFで書き出す</button><a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></span></div>`;
 
   return {
     active: 'acts',

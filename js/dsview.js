@@ -6,7 +6,7 @@ import { buildXLSX } from './xlsx.js';
 import { esc, toast } from './ui.js';
 
 // 選んだ試合のデータシートを作ってダウンロードする（押したときに呼ぶ。記録の読み込みがまだなら知らせる）
-export function downloadDatasheet(ms) {
+export async function downloadDatasheet(ms) {
   const list = [];
   for (const m of ms.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.kickoff || '').localeCompare(b.kickoff || ''))) {
     const opsC = watchOps(m.id); const evC = watchEvents(m.id);
@@ -16,7 +16,7 @@ export function downloadDatasheet(ms) {
     const gts = opts('goalTypes', true);
     list.push({ m, M, st, evs: evC.list.filter((e) => !e.deleted), goalName: (id) => gts.find((o) => o.id === id)?.name || '', players: S.players, activity: activityById(m.activityId)?.name || '', setMin: (teamSettings().setMin ?? 60) * 1000 });
   }
-  const bytes = buildXLSX(datasheetSheets(list, S.team?.name || '自チーム'));
+  const bytes = await buildXLSX(datasheetSheets(list, S.team?.name || '自チーム'));
   const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   const one = list.length === 1 ? list[0].m : null;
@@ -35,7 +35,7 @@ export function vDatasheet(m) {
       <h1>データシート（Excel）</h1>
       <p class="mu">この試合の記録を Excel のファイルで書き出します。試合中（ハーフタイムなど）は、その時点までの記録で作ります。複数の試合をまとめるときは、分析画面の「書き出し」から書き出せます。</p>
       <div class="card"><div class="scrow"><button class="btn pri" id="dsGo">データシート（Excel）をダウンロード</button></div>
-      <ul class="dsl"><li><b>試合情報</b>：試合の情報とチームの数字（イベント一覧から数式で計算）</li><li><b>イベント一覧</b>：1行1件。時刻・選手・結果・ピッチにいた5人・5x4の時間帯・未入力など</li>
+      <ul class="dsl"><li><b>試合情報</b>：試合の情報とチームの数字（イベント一覧から数式で計算）</li><li><b>イベント一覧</b>：1行1件。時刻・選手・結果・ピッチにいた5人・5×4の時間帯・未入力など</li>
       <li><b>出場時間・出場記録</b>：選手ごと・1回ごとの出場（アプリで集計した値）</li><li><b>選手スタッツ</b>：シュート・シュート関与・被シュート関与・得点・アシスト・進入関与・リカバリー・ロスト・得失点±など（数式で計算）</li>
       <li><b>セット・1分ごと・選手一覧</b></li></ul>
       <p class="mu sm">イベント一覧の行を直すと、試合情報・選手スタッツ・1分ごとの数字は Excel の中で計算し直されます。</p></div></div>`,

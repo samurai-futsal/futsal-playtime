@@ -102,8 +102,8 @@ export function promptBackup(reason = '') {
 }
 
 // ---------- ファイルから戻す（未1） ----------
-const LABEL = { teams: 'チーム', players: '選手', activities: '活動', matches: '試合', ops: 'MATCH PLAYの操作', events: 'イベント', fixlog: '記録の修正の履歴' };
-const countTable = (c) => `<table class="rstab">${Object.keys(LABEL).map((k) => `<tr><th>${LABEL[k]}</th><td>${c[k]}</td></tr>`).join('')}</table>`;
+const LABEL = { teams: 'チーム', players: '選手', activities: '活動', matches: '試合', ops: '交代・時計の記録', events: 'イベント', fixlog: '記録の修正の履歴' };
+const countTable = (c) => `<table class="rstab">${Object.keys(LABEL).map((k) => `<tr><th>${LABEL[k]}</th><td>${c[k]}${k === 'players' ? '人' : '件'}</td></tr>`).join('')}</table>`;
 
 export async function restoreFromFile(f) {
   let o;
@@ -116,7 +116,7 @@ export async function restoreFromFile(f) {
     <div class="rsgrid"><div><h3>ファイルの中身</h3>${countTable(all)}</div>
     <div><h3>戻すチーム</h3>${o.teams.map((t) => { const c = fileCounts(o, [t.id]); return `<label class="pick"><input type="checkbox" data-team="${esc(t.id)}" checked>${esc(t.name || '（名前なし）')}${t.deleted ? '（削除したチーム）' : ''}<small class="mu">　試合 ${c.matches}件・選手 ${c.players}人</small></label>`; }).join('') || '<p class="mu">チームがありません</p>'}</div></div>
     <h3>戻し方</h3>
-    <label class="rad rsmode"><input type="radio" name="rsMode" value="add" checked><span><b>足りない記録だけを足す</b>（おすすめ）<br><small class="mu">クラウドに無い記録だけを足します。クラウドにある記録は変えません。削除した記録は戻しません。</small></span></label>
+    <label class="rad rsmode"><input type="radio" name="rsMode" value="add" checked><span><b>足りない記録だけを足す</b>（おすすめ）<br><small class="mu">ネット上の保存に無い記録だけを足します。ネット上の保存にある記録は変えません。削除した記録は戻しません。</small></span></label>
     <label class="rad rsmode"><input type="radio" name="rsMode" value="replace"><span><b>丸ごと置き換える</b><br><small class="mu">選んだチームの記録を、ファイルの中身に置き換えます。ファイルのあとで入れた記録は消えます。</small></span></label>
   </div><div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-next>次へ（確かめる）</button></div>`, { wide: true });
   m.querySelector('[data-c]').onclick = closeModal;
@@ -124,11 +124,11 @@ export async function restoreFromFile(f) {
     const teamIds = $$('[data-team]', m).filter((x) => x.checked).map((x) => x.dataset.team);
     const mode = m.querySelector('[name=rsMode]:checked').value;
     if (!teamIds.length) return toast('戻すチームを選んでください');
-    if (!navigator.onLine) return toast('ネットにつながっているときに使えます（クラウドの記録と比べるため）');
-    const btn = m.querySelector('[data-next]'); btn.disabled = true; btn.textContent = 'クラウドの記録と比べています…';
+    if (!navigator.onLine) return toast('ネットにつながっているときに使えます（ネット上の保存と比べるため）');
+    const btn = m.querySelector('[data-next]'); btn.disabled = true; btn.textContent = 'ネット上の保存と比べています…';
     let cloud;
-    try { cloud = await readCloud(o, teamIds); } catch (e) { console.error(e); closeModal(); return toast('クラウドの記録を読めませんでした（' + (e.code || e.message) + '）'); }
-    if (cloud.fromCache) { closeModal(); return toast('クラウドにつながっていないため、戻せません。ネットにつながってから、もう一度お試しください'); }
+    try { cloud = await readCloud(o, teamIds); } catch (e) { console.error(e); closeModal(); return toast('ネット上の保存を読めませんでした（' + (e.code || e.message) + '）'); }
+    if (cloud.fromCache) { closeModal(); return toast('ネット上の保存につながっていないため、戻せません。ネットにつながってから、もう一度お試しください'); }
     const plan = planRestore(o, cloud, { mode, teamIds, cloudGlobal: S.globalRaw });
     confirmPlan(o, plan, mode, teamIds);
   };
@@ -157,13 +157,13 @@ function confirmPlan(o, plan, mode, teamIds) {
   const nothing = !plan.writes.length && !nOpt;
   const m = openModal(`<h2>${mode === 'add' ? '足りない記録だけを足す' : '丸ごと置き換える'}</h2><div class="mbody">
     <div class="rsgrid"><div><h3>戻すファイルの中身（選んだチーム）</h3>${countTable(fileCounts(o, teamIds))}</div>
-    <div><h3>クラウドに書くこと</h3><table class="rstab">
-      <tr><th>足す記録</th><td>${c.added}</td></tr>
-      ${mode === 'replace' ? `<tr><th>ファイルの内容で置き換える記録</th><td>${c.replaced}</td></tr><tr><th>ファイルに無いので消す記録</th><td>${c.removed}</td></tr>` : `<tr><th>クラウドにあるので変えない記録</th><td>${c.kept}</td></tr>`}
-      ${c.skippedDeleted ? `<tr><th>削除してあるので戻さない記録</th><td>${c.skippedDeleted}</td></tr>` : ''}
-      ${nOpt ? `<tr><th>足す選択肢</th><td>${nOpt}</td></tr>` : ''}
+    <div><h3>ネット上の保存に書くこと</h3><table class="rstab">
+      <tr><th>足す記録</th><td>${c.added}件</td></tr>
+      ${mode === 'replace' ? `<tr><th>ファイルの内容で置き換える記録</th><td>${c.replaced}件</td></tr><tr><th>ファイルに無いので消す記録</th><td>${c.removed}件</td></tr>` : `<tr><th>ネット上の保存にあるので変えない記録</th><td>${c.kept}件</td></tr>`}
+      ${c.skippedDeleted ? `<tr><th>削除してあるので戻さない記録</th><td>${c.skippedDeleted}件</td></tr>` : ''}
+      ${nOpt ? `<tr><th>足す選択肢</th><td>${nOpt}件</td></tr>` : ''}
     </table></div></div>
-    ${nothing ? '<div class="note">足りない記録はありません。クラウドにすべて入っています。</div>' : ''}
+    ${nothing ? '<div class="note">足りない記録はありません。ネット上の保存にすべて入っています。</div>' : ''}
     ${mode === 'replace' ? '<div class="note bad">置き換えると、ファイルのあとで入れた記録（交代・イベント・修正など）は消えます。元に戻せません。</div>' : ''}
   </div><div class="mfoot"><button class="btn" data-c>やめる</button>${nothing ? '' : `<button class="btn ${mode === 'replace' ? 'danger' : 'pri'}" data-go>${mode === 'add' ? '足す' : '置き換える'}</button>`}</div>`, { wide: true });
   m.querySelector('[data-c]').onclick = closeModal;

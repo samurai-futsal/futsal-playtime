@@ -101,7 +101,7 @@ export function vPhys(m) {
       <div class="phbw">${bar(r.curRun)}</div>
       <div class="phtot"><div class="lab">合計出場</div><div class="phmid">${mmss(r.totRun)}</div>${PT(r.totPlay, 'm')}</div></div>`).join('')
     + gks.map((r) => `<div class="phgk">${badge(r.pid)}<span class="phgkn">${name(r.pid)}</span><span class="phgkc"><span class="lab">今の出場</span><b class="phrbox sm">${mmss(r.curRun)}</b>${PT(r.curPlay, 's')}</span><span class="phgkc"><span class="lab">合計出場</span><b>${mmss(r.totRun)}</b>${PT(r.totPlay, 's')}</span></div>`).join('')
-    || '<p class="mu pad">ピッチに選手がいません（ピリオドの間）</p>';
+    || `<p class="mu pad">${!live && !lastEnd && !st.matchOver ? '試合開始前です' : 'ピッチに選手がいません（ピリオドの間）'}</p>`;
   const benchHTML = (bench.length ? `<div class="phbr phbh"><span></span><span class="${benchSort.startsWith('rest') ? 'on' : ''}">休み${benchSort === 'rest-desc' ? ' ▼' : benchSort === 'rest-asc' ? ' ▲' : ''}</span><span>前回の出場</span><span class="${benchSort.startsWith('tot') ? 'on' : ''}">合計出場${benchSort === 'tot-desc' ? ' ▼' : benchSort === 'tot-asc' ? ' ▲' : ''}</span></div>` : '')
     + bench.map((r) => `<div class="phbr"><div class="phnm">${badge(r.pid)}<span>${name(r.pid)}</span></div>
       <div><span class="phrbox rest">${mmss(r.rest)}</span></div>
@@ -118,6 +118,6 @@ export function vPhys(m) {
     },
     html: `<div class="phw">${head}<div class="phcols"><div class="phpane"><h3>ピッチ <small>今の出場が長い順</small></h3>${pitchHTML}</div>
       <div class="phpane"><h3>ベンチ <small>${benchSort.startsWith('rest') ? '休み' : '合計出場（プレーイングタイム）'}が${SORTS[benchSort][1]}</small></h3>
-        <div class="phsort"><span class="phsortl">並べ方</span><span class="seg sr">${Object.entries(SORTS).filter(([k]) => k.startsWith('rest')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${b}</button>`).join('')}</span><span class="seg st">${Object.entries(SORTS).filter(([k]) => k.startsWith('tot')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${b}</button>`).join('')}</span></div>${benchHTML || '<p class="mu pad">ベンチの選手はまだ出場していません</p>'}</div></div></div>`,
+        <div class="phsort ph2"><span class="phsg"><span class="phsortl">休みで並べる</span><span class="seg sr">${Object.entries(SORTS).filter(([k]) => k.startsWith('rest')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${b}</button>`).join('')}</span></span><span class="phsg"><span class="phsortl">合計出場で並べる</span><span class="seg st">${Object.entries(SORTS).filter(([k]) => k.startsWith('tot')).map(([k, [a, b]]) => `<button data-bs="${k}" class="${k === benchSort ? 'on' : ''}">${b}</button>`).join('')}</span></span></div>${benchHTML || '<p class="mu pad">ベンチの選手はまだ出場していません</p>'}</div></div></div>`,
   };
 }

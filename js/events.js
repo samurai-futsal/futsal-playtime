@@ -19,7 +19,8 @@ export const KIND = {
 };
 export const RESULTS = [['in', '枠内'], ['out', '枠外'], ['block', 'ブロック'], ['post', 'ポスト']];
 export const CLS = [['pos', '定位置'], ['set', 'セットプレー'], ['trans', 'トランジション'], ['gk', 'GK活用'], ['special', '特殊局面']];
-export const SETP = [['CK', 'CK'], ['CK-KI', 'CK-KICK IN'], ['KI', 'KICK IN'], ['FK', 'FK'], ['PK', 'PK（6m）'], ['2PK', '第2PK（10m）']];
+// 画面の名前は FINISH SET PLAY・得点の種類と同じ短い名前（長い名前はマッチスタッツのシートだけ）
+export const SETP = [['CK', 'CK'], ['CK-KI', 'CK-KI'], ['KI', 'KI'], ['FK', 'FK'], ['PK', 'PK'], ['2PK', '第2PK']];
 export const FSP = [['CK', 'CK'], ['CK-KI', 'CK-KI'], ['KI', 'KI'], ['FK', 'FK'], ['PK', 'PK'], ['2PK', '第2PK']];
 export const METHODS = [['dribble', 'ドリブル'], ['pass', 'パス'], ['rebound', 'リバウンド']];
 export const ZONES = [['Z4', '相手陣'], ['Z3', '相手陣'], ['Z2', '自陣'], ['Z1', '自陣']];
@@ -254,7 +255,7 @@ export function summary(ev, nm, goalName = (x) => x, fmtAt = null) {
 // ---------- セットごとのイベント（マッチレビュー 4-2） ----------
 // sets = setTable(M) の結果（並び・出場時間はそのまま使う）。Mp = プレーイングタイムの試合の形（ピッチの5人を決める）。
 // 得点はシュートに、失点は被シュートに数える（OGは数えない）。返す：{ cols, rows:[{key,pids,time,c[]}], special, other, total }
-export const SET_COLS = [['shot', 'シュート'], ['oshot', '被シュート'], ['z4', 'Z4進入'], ['oz4', '被Z4進入'], ['sz', 'SZ進入'], ['osz', '被SZ進入'], ['fspat', 'FSP AT'], ['fspdf', 'FSP DF']];
+export const SET_COLS = [['shot', 'シュート'], ['oshot', '被シュート'], ['z4', 'Z4進入'], ['oz4', '被Z4進入'], ['sz', 'SZ進入'], ['osz', '被SZ進入'], ['fspat', 'FINISH SET PLAY AT'], ['fspdf', 'FINISH SET PLAY DF']];
 export function setEventTable(Mp, sets, events, goalName = (x) => x) {
   const col = (e) => {
     const k = e.kind;
