@@ -15,6 +15,7 @@ import { vAnalysis } from './analysis.js';
 import { vSportscode } from './scview.js';
 import { vScImport } from './scimportview.js';
 import { vReport } from './report.js';
+import { vGuide } from './guide.js';
 import { vDatasheet } from './dsview.js';
 import { vPhys, stopPhysTick } from './viewer.js';
 import { $, $$, esc, fmtDate, fmtShort, no, openModal, closeModal, confirmBox, confirmTwice, toast, formVals, optionTagsId } from './ui.js';
@@ -22,7 +23,7 @@ export { promptBackup }; // 試合が終わったときのバックアップの�
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js', 'js/options.js', 'js/backup.js', 'js/restoreplan.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js', 'js/guide.js', 'js/options.js', 'js/backup.js', 'js/restoreplan.js'];
 const FB_FILES = ['firebase-app.js', 'firebase-auth.js', 'firebase-firestore.js'].map((f) => 'https://www.gstatic.com/firebasejs/10.12.2/' + f);
 export function startApp(c) {
   ctx = c;
@@ -94,7 +95,7 @@ function topbar(active) {
 
 const VIEWS = {
   home: vHome, teams: vTeams, players: vPlayers, acts: vActivities, a: vActivity, m: vMatch,
-  search: vSearch, settings: vSettings, analysis: (r) => vAnalysis(r),
+  search: vSearch, settings: vSettings, analysis: (r) => vAnalysis(r), guide: vGuide,
 };
 
 export function render() {
@@ -104,8 +105,8 @@ export function render() {
   const main = $('#main');
   if (!S.ready.global || !S.ready.teams) { main.innerHTML = '<p class="mu pad">読み込み中…</p>'; return; }
   let name = r.name;
-  if (!S.team && !['teams', 'settings'].includes(name)) name = 'teams';
-  if (S.team && !S.ready.team && !['teams', 'settings'].includes(name)) { main.innerHTML = topbar('') + '<p class="mu pad">読み込み中…</p>'; bindFrame(); return; }
+  if (!S.team && !['teams', 'settings', 'guide'].includes(name)) name = 'teams';
+  if (S.team && !S.ready.team && !['teams', 'settings', 'guide'].includes(name)) { main.innerHTML = topbar('') + '<p class="mu pad">読み込み中…</p>'; bindFrame(); return; }
   const v = VIEWS[name] || vHome;
   const keep = captureInputs(main);
   const out = v(r);
@@ -844,7 +845,8 @@ function vSettings() {
       <p>バージョン ${esc(ctx.appVersion)}　<button class="btn sm" id="btnUpd">更新を確認</button> <span id="updMsg" class="mu"></span></p>
       <p id="updForce" hidden><button class="btn pri" id="btnForce">最新にする</button> <span class="mu">アプリのファイルを入れ直して開き直します（試合の記録はそのまま残ります）</span></p>
       <p class="mu">更新は、画面上部に「新しいバージョンがあります」と出たときに「更新する」を押したときだけ行います（遠征中に勝手に切り替わりません）。</p>
-      <p class="mu">iPadでは、Safariの共有ボタン →「ホーム画面に追加」で追加し、いつもホーム画面のアイコンから開いてください。</p></div>
+      <p class="mu">iPadでは、Safariの共有ボタン →「ホーム画面に追加」で追加し、いつもホーム画面のアイコンから開いてください。</p>
+      <p><a class="btn" href="#/guide">使い方（使用説明書）を見る ›</a></p></div>
     <h2 class="h">全チーム共通：選択肢の編集</h2>
     <div class="card"><p class="mu">名前を変えると、過去の試合の表示にも反映されます。使わなくなった選択肢は削除せず「非表示」にします。</p>
       <div class="optgrid">${optEditor('activityTypes', '活動の種類')}${optEditor('matchCategories', '試合の区分')}${optEditor('goalTypes', '得点・失点の種類')}</div></div>

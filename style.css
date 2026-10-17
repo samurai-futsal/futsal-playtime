@@ -993,3 +993,9 @@ body.playmode #toast.show{transform:translateX(-50%) translateY(0)}
 .stbtns{display:inline-flex;gap:10px;flex-wrap:nowrap}
 .bc.hascont{padding-top:40px}
 .evw .sp2 .ch .btn{min-height:40px}
+/* 使い方（使用説明書） */
+.guide{max-width:900px;margin:0 auto}.guide h1{margin:6px 0}
+.gtoc{display:flex;flex-wrap:wrap;gap:6px 14px;background:#EEF3FB;border-radius:10px;padding:10px 14px;margin:10px 0 16px}.gtoc a{font-weight:700;color:#0B2D6B;text-decoration:none;padding:6px 0}
+.gsec{background:#fff;border:1px solid #E1E6EF;border-radius:12px;padding:12px 18px;margin-bottom:12px}.gsec h2{font-size:18px;color:#0B2D6B;margin:4px 0 8px}
+.gsec li{margin:6px 0;line-height:1.6}.gsec dt{font-weight:800;color:#0B2D6B;margin-top:10px}.gsec dd{margin:2px 0 6px 0;line-height:1.6}
+@media print{.guide .gsec{break-inside:avoid;border:none;padding:4px 0}.guide{max-width:none}}
