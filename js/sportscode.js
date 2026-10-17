@@ -18,7 +18,7 @@ export const ROW_COLORS = {
 };
 // リード（イベントの何秒前から）とラグ（何秒後まで）。実物で確かめた値（2026-10-13）。書き出し画面で変えられる
 export const DEFAULT_LEAD = { shot: [15, 2], ent: [15, 2], foul: [15, 2], rl: [13, 2], sp: [3, 2], ko: [0, 2] };
-export const LEAD_LABEL = { shot: 'シュート（被・SZ内も）', ent: 'ゾーン4・スコアゾーン進入（被も）', foul: 'ファウル・被ファウル', rl: 'ROBO・PERDIDA', sp: 'SETPLAY AT／DF', ko: 'Kick Off' };
+export const LEAD_LABEL = { shot: 'シュート（被・SZ内も）', ent: 'ゾーン4・スコアゾーン進入（被も）', foul: 'ファール・被ファール（ファウル）', rl: 'ROBO・PERDIDA', sp: 'SETPLAY AT／DF', ko: 'Kick Off' };
 const CLS_TXT = { pos: '定位置', set: 'セットプレー', trans: 'トランジション', gk: 'GK活用', special: '特殊局面' };
 const SP_TXT = { CK: 'CK', 'CK-KI': 'CK-KICK IN', KI: 'KICK IN', FK: 'FK', PK: '6m(PK)', '2PK': '10m(第2PK)' };
 const RES_TXT = { in: '枠内', out: '枠外(ポスト)', post: '枠外(ポスト)', block: 'ブロック' };

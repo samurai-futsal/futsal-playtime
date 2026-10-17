@@ -105,7 +105,7 @@ export function vFix(m) {
   const body = { sub: tabSub, lineup: tabLineup, eject: tabEject, pp: tabPP, info: tabInfo, log: tabLog }[ui.tab](m, d, k, fp, cfg);
   return {
     active: 'acts',
-    html: `${crumb}<h1>記録の修正</h1><p class="mu">直した内容は、「反映」を押した時点で試合の記録になり、マッチレビューと分析にすぐ反映されます。「1つ戻す」も押した時点で記録に反映されます。時刻は残り時間（スコアボードと同じ）で、経過時間を小さく添えています。</p>${head}<div class="fxbody">${body}</div>`,
+    html: `${crumb}<h1>記録の修正</h1><p class="mu">交代・退場などの直しは「反映」を押した時点で、スタメンと試合情報は変えた時点で試合の記録になり、マッチレビューと分析にすぐ反映されます。「1つ戻す」も押した時点で記録に反映されます。時刻は残り時間（スコアボードと同じ）で、経過時間を小さく添えています。</p>${head}<div class="fxbody">${body}</div>`,
     bind: (root) => bindFix(root, m, d, k, cfg, st, sig),
   };
 }

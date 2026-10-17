@@ -853,7 +853,7 @@ function vSettings() {
       <p class="mu">iPadでは、Safariの共有ボタン →「ホーム画面に追加」で追加し、いつもホーム画面のアイコンから開いてください。</p>
       <p><a class="btn" href="#/guide">使い方（使用説明書）を見る ›</a></p></div>
     <h2 class="h">全チーム共通：選択肢の編集</h2>
-    <div class="card"><p class="mu">名前を変えると、過去の試合の表示にも反映されます。使わなくなった選択肢は削除せず「非表示」にします。</p>
+    <div class="card"><p class="mu">名前を変えると、過去の試合の表示にも反映されます。一度も使っていない選択肢は「消す」で消せます。使った選択肢は「非表示」にします（得点・失点の種類のうち初めからあるものは、分類の判定に使うので消せません）。</p>
       <div class="optgrid">${optEditor('activityTypes', '活動の種類')}${optEditor('matchCategories', '試合の区分')}${optEditor('goalTypes', '得点・失点の種類')}</div></div>
     ${S.team ? `<h2 class="h">このチーム（${esc(S.team.name)}）</h2>
     <div class="card"><div class="grid2" id="teamSet">
