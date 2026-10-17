@@ -20,6 +20,14 @@ const lenKey = (c) => (/シュート/.test(c) ? 'shot' : /進入/.test(c) ? 'ent
 
 // Sportscode から取り込んだイベント（以前の版でアプリで直して印が消えたものも、直した履歴から見分ける）
 const isImp = (e) => e.src === 'sportscode' || (e.hist || []).some((h) => h.prev?.src === 'sportscode');
+const isEdited = (e) => e.impEdited || e.src !== 'sportscode' || (e.hist || []).some((h) => h.act === 'edit' || h.act === 'revert');
+const dt = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+// 取り込み済み（ピリオドごと）：件数・ファイル名・日時。ファイル名は 2026-10-17 から各イベントに残す（それより前は「記録なし」）
+function importedByPeriod(list, M) {
+  const by = new Map();
+  for (const e of list) if (!e.deleted && isImp(e)) { const g = by.get(e.period) || { n: 0, files: new Map(), t: 0, edited: 0 }; g.n++; if (e.impFile) g.files.set(e.impFile, (g.files.get(e.impFile) || 0) + 1); g.t = Math.max(g.t, +e.imp || 0); if (isEdited(e)) g.edited++; by.set(e.period, g); }
+  return M.periods.filter((p) => by.has(p.key)).map((p) => { const g = by.get(p.key); return { key: p.key, label: p.label, ...g, name: [...g.files.keys()].join('・') || '' }; });
+}
 export function vScImport(m) {
   if (st8.m !== m.id) st8 = fresh(m.id);
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
@@ -37,6 +45,9 @@ export function vScImport(m) {
     <div class="sipick"><label class="filebtn btn pri">ファイルを選ぶ（XML・CSV）<input type="file" id="siFile" accept=".xml,.csv,.XML,.CSV,text/xml,text/csv,application/xml" multiple hidden></label>
     <div class="sidrop" id="siDrop"><b>ここにファイルをドラッグ＆ドロップ</b><span>XML・CSV　2つ同時でも大丈夫です</span></div></div>${fileList}</div>`;
   if (!started.length) return { active: 'acts', html: `<div class="scw">${crumb}${intro}<div class="card empty">MATCH PLAY でキックオフを押したピリオドがありません。時計の記録を使うので、先に MATCH PLAY の記録が必要です。</div></div>` };
+  const done = importedByPeriod(evC.list, M);
+  const doneHtml = done.length ? `<div class="card sidone"><h3>取り込み済み</h3>${done.map((g) => `<div class="sidrow"><b>${g.label}</b><span class="sifn">${g.name ? `📄 ${esc(g.name)}` : '<span class="mu">Sportscodeから取り込み（ファイル名の記録なし）</span>'}</span><span>${g.n}件</span><span class="mu sm">${g.t ? `${dt(g.t)} に取り込み` : ''}</span><button class="btn sm danger" data-impdel="${g.key}">この取り込みを消す</button></div>`).join('')}
+    <p class="mu sm">違うファイルに変えるときは、下でそのピリオドのファイルを読み込んで取り込みます（取り込み済みの分と置き換わります）。消しても、アプリで入力したイベントと MATCH PLAY の記録は残ります。</p></div>` : '';
   let body = '';
   const files = st8.files.filter((f) => kickOffs(f.parsed.instances).length);
   if (st8.files.length && !files.length) body = '<div class="card empty">読み込んだファイルには Kick Off の印がありません。前半・後半のキックオフに「Kick Off」を付けて書き出したファイルを選んでください。</div>';
@@ -70,7 +81,7 @@ export function vScImport(m) {
       st8.res = res; st8.periods = periods;
       const keys = new Set(periods.map((p) => p.key));
       const old = evC.list.filter((e) => !e.deleted && isImp(e) && keys.has(e.period));
-      const edited = old.filter((e) => e.impEdited || e.src !== 'sportscode' || (e.hist || []).some((h) => h.act === 'edit' || h.act === 'revert'));
+      const edited = old.filter(isEdited);
       const appMade = evC.list.filter((e) => !e.deleted && !isImp(e) && keys.has(e.period)).length;
       // コードごとの長さが前回と違うものを知らせる（リードがずれている可能性）
       const lens = {}; for (const i of inst) { const k = lenKey(i.code); if (k) (lens[k] = lens[k] || []).push(+(i.end - i.start).toFixed(1)); }
@@ -106,7 +117,8 @@ export function vScImport(m) {
         <div class="card"><h3>3. 取り込むイベント ${res.events.length}件</h3>${cntT}${gT}
           ${res.near?.length ? `<div class="sinear">ℹ 名前が少し違いますが、名字で合わせました（違っていたら、選手の登録か Sportscode のラベルを直して取り込み直してください）：${res.near.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}</div>` : ''}
           ${warn.length ? `<div class="siwarn">${warn.map((w) => `<div>⚠ ${w}</div>`).join('')}</div>` : ''}
-          <p class="mu sm">${[...keys].map((k) => periodLabel(k)).join('・')}：前回 Sportscode から取り込んだイベント ${old.length}件を、この${res.events.length}件に置き換えます${edited.length ? `（そのうち <b>${edited.length}件はアプリで直してあります</b>）` : ''}。アプリで入力したイベント ${appMade}件と MATCH PLAY の記録はそのまま残ります。アシスト・進入の方法などファイルにない項目は未入力のまま残るので、あとでイベント入力で埋められます。</p>
+          <p class="mu sm">${(() => { const done = importedByPeriod(evC.list, M).filter((g) => keys.has(g.key)); const nw = [...keys].map((k) => `${periodLabel(k)}：${esc(rows.find((r) => r.key === k)?.f.name || '')}（${res.events.filter((e) => e.period === k).length}件）`).join('、');
+            return done.length ? `取り込み済みの ${done.map((g) => `${g.label}：${g.name ? esc(g.name) : 'ファイル名の記録なし'}（${g.n}件）`).join('、')} を、${nw} に置き換えます` : `${nw} を取り込みます`; })()}${edited.length ? `（そのうち <b>${edited.length}件はアプリで直してあります</b>）` : ''}。アプリで入力したイベント ${appMade}件と MATCH PLAY の記録はそのまま残ります。アシスト・進入の方法などファイルにない項目は未入力のまま残るので、あとでイベント入力で埋められます。</p>
           <div class="row end"><button class="btn pri" id="siGo" ${res.events.length ? '' : 'disabled'}>取り込む（${res.events.length}件）</button></div></div>
         <details class="card"><summary><b>コードごとの前後の秒数</b>　チームで覚えます</summary>${leadT}<p class="mu sm">秒数を直したあとは、もう一度「取り込む」（置き換え）を押すと時刻がすべて直ります</p></details>`;
       st8.old = old; st8.edited = edited;
@@ -114,7 +126,7 @@ export function vScImport(m) {
     }
   }
   return {
-    active: 'acts', html: `<div class="scw siw">${crumb}${intro}${pick}${body}</div>`,
+    active: 'acts', html: `<div class="scw siw">${crumb}${intro}${doneHtml}${pick}${body}</div>`,
     bind: (root) => {
       const f = root.querySelector('#siFile');
       // 読み込んだファイルは一覧に足す（同じ名前のファイルは新しいほうに置き換える）。XML・CSV 以外は読まずに知らせる
@@ -140,6 +152,12 @@ export function vScImport(m) {
         dz.addEventListener('drop', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.stopPropagation(); depth = 0; dz.classList.remove('over'); if (e.dataTransfer.files?.length) loadAll(e.dataTransfer.files); });
       }
       const ad = root.querySelector('#siAdj'); if (ad) ad.addEventListener('toggle', () => { st8.adjOpen = ad.open; });
+      root.querySelectorAll('[data-impdel]').forEach((b) => b.onclick = async () => {
+        const k = b.dataset.impdel; const list = evC.list.filter((e) => !e.deleted && isImp(e) && e.period === k); const ed = list.filter(isEdited).length;
+        if (!(await confirmBox({ title: `${periodLabel(k)}の取り込みを消しますか？`, body: `<p>${periodLabel(k)}で Sportscode から取り込んだイベント ${list.length}件を消します。${ed ? `<b>そのうち ${ed}件はアプリで直してあります。</b>` : ''}アプリで入力したイベントと MATCH PLAY の記録は消えません。</p>`, ok: '消す', danger: true }))) return;
+        for (const e of list) saveEvent(m.id, { ...e, deleted: true });
+        toast(`${periodLabel(k)}の取り込み ${list.length}件を消しました`); render();
+      });
       root.querySelectorAll('[data-fdel]').forEach((b) => b.onclick = () => { st8.files = st8.files.filter((x) => x.id !== b.dataset.fdel); render(); });
       root.querySelectorAll('[data-asg]').forEach((sel) => sel.onchange = () => { const [fid, i] = sel.dataset.asg.split(':'); const x = st8.files.find((y) => y.id === fid); if (x) { x.assign[+i] = sel.value; x.guess = null; } render(); });
       root.querySelectorAll('[data-sh]').forEach((i) => i.onchange = () => { const v = i.value.trim(); st8.shift[i.dataset.sh] = v === '' ? 0 : +v || 0; render(); });
@@ -152,7 +170,8 @@ export function vScImport(m) {
         const t = Date.now(); let n = 0, chk = 0;
         const oldIds = new Set((st8.old || []).map((e) => e.id));
         const kept = evC.list.filter((e) => !e.deleted && !oldIds.has(e.id));
-        const evs = st8.res.events.map((e, i) => { const ev = { ...e, imp: t, seq: t + i, id: `sc${t.toString(36)}_${i}` }; delete ev.check; return ev; });
+        const fileOf = Object.fromEntries(st8.files.flatMap((f) => (f.assign || []).filter(Boolean).map((k) => [k, f.name])));
+        const evs = st8.res.events.map((e, i) => { const ev = { ...e, imp: t, impFile: fileOf[e.period] || '', seq: t + i, id: `sc${t.toString(36)}_${i}` }; delete ev.check; return ev; });
         const cards = cardIssues([...kept, ...evs], M.periods.map((p) => p.key));
         for (const ev of evs) { const c = checkOf(M, ev, cards); ev.check = c.check; if (c.why) ev.checkWhy = c.why; if (ev.check) chk++; saveEvent(m.id, ev); n++; }
         put(teamPath(), { settings: { ...(S.team?.settings || {}), scLens: { ...(teamSettings().scLens || {}), ...st8.nowLen } } });
