@@ -68,6 +68,14 @@ export function formVals(root) {
   return o;
 }
 export function optionTags(list, selected, { blank = '' } = {}) {
+  // 今の値が一覧にない（非表示にした選択肢など）ときも、消えないように選べる形で残す
+  const extra = selected && !list.some((o) => o.name === selected) ? [{ name: selected }] : [];
   return (blank !== null ? `<option value="">${esc(blank)}</option>` : '') +
-    list.map((o) => `<option value="${esc(o.name)}" ${o.name === selected ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
+    [...list, ...extra].map((o) => `<option value="${esc(o.name)}" ${o.name === selected ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
+}
+// 選択肢の id を値にする版。all＝非表示も含めた一覧（今の値が非表示でも、選んだまま残すため）
+export function optionTagsId(list, selectedId, { blank = '', all = list } = {}) {
+  const cur = selectedId && !list.some((o) => o.id === selectedId) ? all.filter((o) => o.id === selectedId) : [];
+  return (blank !== null ? `<option value="">${esc(blank)}</option>` : '') +
+    [...list, ...cur].map((o) => `<option value="${esc(o.id)}" ${o.id === selectedId ? 'selected' : ''}>${esc(o.name)}${o.hidden ? '（非表示）' : ''}</option>`).join('');
 }
