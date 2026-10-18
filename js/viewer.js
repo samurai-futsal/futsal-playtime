@@ -22,7 +22,7 @@ const clockS = (t) => { const d = new Date(t); return `${clock(t)}:${String(d.ge
 // ・返事がない（8秒）→ つながっていない
 // ・印が違うまま5秒以上 → 知らせが止まっている（MATCH PLAY の新しい記録が届いていない）
 // どちらも自動でつなぎ直し、直るまでは「同期してください」を点滅させる。読み取りは15秒に1回（1時間で240回）
-const W = { id: null, timer: null, okAt: 0, failAt: 0, diffAt: 0, autoAt: 0, busy: false };
+const W = { id: null, timer: null, okAt: 0, fails: 0, diffAt: 0, autoAt: 0, busy: false };
 async function watchdog() {
   const id = physMatch();
   if (!id) { clearInterval(W.timer); W.timer = null; W.id = null; return; }
@@ -31,23 +31,26 @@ async function watchdog() {
   try {
     const r = await probeMatch(id);
     const t = Date.now();
-    if (!r.ok) { W.failAt = t; }
+    if (!r.ok) W.fails++;
     else {
-      W.failAt = 0; W.okAt = t;
+      W.fails = 0; W.okAt = t;
       if (r.rev && r.rev !== heardRev(id)) { if (!W.diffAt) W.diffAt = t; } else W.diffAt = 0;
     }
-    if (stale() && t - W.autoAt > 30000) { W.autoAt = t; resyncOps(id); setTimeout(watchdog, 3000); } // 自動でつなぎ直して、3秒後に確かめ直す
+    // おかしいかもしれない（返事がない・印が違う）ときは、まず黙ってつなぎ直す（点滅はしない）。30秒に1回まで
+    if ((W.fails || W.diffAt) && t - W.autoAt > 30000) { W.autoAt = t; resyncOps(id); setTimeout(watchdog, 3000); }
   } finally { W.busy = false; render(); }
 }
 function startWatch(id) {
   if (W.id === id && W.timer) return;
-  clearInterval(W.timer); Object.assign(W, { id, okAt: 0, failAt: 0, diffAt: 0, autoAt: 0 });
+  clearInterval(W.timer); Object.assign(W, { id, okAt: 0, fails: 0, diffAt: 0, autoAt: 0 });
   W.timer = setInterval(watchdog, 15000); setTimeout(watchdog, 1500);
 }
-// 最新でないかもしれない（同期してほしい）
+// 最新でないかもしれない（同期してほしい）：ちょっとした遅れでは点滅させない（2026-10-18）。
+// 自動のつなぎ直しでも直らず、次のような状態が続いたときだけ：返事がないのが2回続いた（約30秒）／
+// 印の違いが20秒以上続いた／最後に確かめられてから60秒以上たった／端末がオフライン
 function stale() {
   const t = Date.now();
-  return !navigator.onLine || !!W.failAt || (W.diffAt && t - W.diffAt > 5000) || (W.okAt && t - W.okAt > 45000);
+  return !navigator.onLine || W.fails >= 2 || (W.diffAt && t - W.diffAt > 20000) || (W.okAt && t - W.okAt > 60000);
 }
 // 最新かどうか：緑＝最新（サーバーで確かめた）／黄＝確認中／赤の点滅＝最新でないかもしれない（同期してください）
 function syncState(c) {
@@ -147,7 +150,7 @@ export function vPhys(m) {
   return {
     active: 'acts',
     bind: (root) => {
-      const b = root.querySelector('#phSync'); if (b) b.onclick = () => { Object.assign(W, { failAt: 0, diffAt: 0, okAt: Date.now() }); resyncOps(m.id); setTimeout(watchdog, 3000); render(); };
+      const b = root.querySelector('#phSync'); if (b) b.onclick = () => { Object.assign(W, { fails: 0, diffAt: 0, okAt: Date.now() }); resyncOps(m.id); setTimeout(watchdog, 3000); render(); };
       root.querySelectorAll('[data-bs]').forEach((x) => { x.onclick = () => { benchSort = x.dataset.bs; try { localStorage.setItem('fpt.physBenchSort', benchSort); } catch {} render(); }; });
     },
     html: `<div class="phw">${head}<div class="phcols"><div class="phpane"><h3>ピッチ <small>今の出場が長い順</small></h3>${pitchHTML}</div>
