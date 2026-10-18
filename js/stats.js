@@ -74,49 +74,54 @@ function calc(m, range0) {
   return { M, R, evs, todo, asOf, hm, shownP, sheet, foot, range };
 }
 
-// 表の大きさ（2026-10-18）：表のもとの組み幅（900px）を、画面の幅いっぱいまで広げる（文字も同じ割合で大きく）。
-// 通常表示：幅いっぱい（2.2倍まで）。上の表と下の表は上下に並べ、ページを下へ動かして見る。
-// 拡大表示：上の表・下の表をそれぞれ「1ページ」として、1ページずつ画面いっぱい（幅と高さの両方に入る一番大きい倍率）に。上下に並べ、下へ動かすと次のページ
+// 表の大きさ（2026-10-18）：上の表・下の表を「1ページ」ずつ、画面に入る一番大きい倍率に（2つは同じ倍率＝同じ文字の大きさ）。
+// ・通常表示：上下に並べる。1ページが、上の帯を除いた画面の高さと幅に入る大きさ
+// ・縮小表示：2ページを左右に並べて、1画面に両方が入る大きさ（マッチレビューの縮小表示と同じ考え方。広い画面のとき）
+// ・拡大表示：上下に並べて、1ページずつ画面いっぱい（ページごとの倍率。縦が余るときは行を少し高く）
+// 高さで決まって横が余るときは、真ん中の表を横に広げる（項目名の列と棒を長く・文字を少し大きく。--k）
 const BASE = 900;
+const compactKey = 'fpt.statsCompact';
+const isCompact = () => { try { return localStorage.getItem(compactKey) === '1'; } catch { return false; } };
 function fitSheet(root) {
   const pg = root.querySelector('.stpage'); const sh = pg?.querySelector('.stsheet'); if (!pg || !sh) return;
-  const big = bigOn();
-  const hd = root.querySelector('.sthead');
+  const big = bigOn(); const compact = !big && isCompact();
   const tiers = [...sh.querySelectorAll('.sttier')];
-  pg.style.zoom = ''; pg.style.width = '';
+  pg.style.zoom = ''; pg.style.width = ''; sh.classList.remove('cols2');
   tiers.forEach((t) => { t.style.minHeight = ''; t.style.zoom = ''; t.style.width = ''; t.querySelector('.stt')?.style.removeProperty('--k'); t.querySelectorAll('.stt tr').forEach((r) => { r.style.height = ''; }); });
   document.documentElement.style.scrollPaddingTop = '';
-  const availW = root.querySelector('.stw').clientWidth;
-  if (big) {
-    // 拡大表示：ページ（上の表・下の表）ごとに、そのページが画面の幅と高さに入る一番大きい倍率に。
-    // 高さで決まって横が余るときは、真ん中の表を横に広げる（項目名の列と棒を長く・文字を少し大きく）
-    const hH = hd?.offsetHeight || 0; const availH = window.innerHeight - hH - 8;
-    const inW = pg.clientWidth - 20; const base = Math.min(BASE, inW);
-    tiers.forEach((t) => {
-      t.querySelectorAll('.stt tr').forEach((r) => { r.style.height = ''; });
-      t.style.width = base + 'px';
-      const H = availH - 12; const stt = t.querySelector('.stt');
-      let z = Math.max(0.6, Math.min(2.2, inW / base, H / t.offsetHeight));
-      // 横に広げると行が少し高くなることがあるので、入るまで倍率を合わせ直す
-      for (let i = 0; i < 4; i++) {
-        t.style.width = inW / z + 'px';
-        if (stt) { stt.style.removeProperty('--k'); const k = Math.max(1, Math.min(1.9, (inW / z - 40) / stt.offsetWidth)); stt.style.setProperty('--k', k.toFixed(3)); }
-        const h = t.offsetHeight; if (h * z <= H + 1) break; z = Math.max(0.6, H / h);
-      }
-      t.style.zoom = z.toFixed(3);
-      // 縦が余るときは、表の行を少しずつ高くして画面の縦いっぱいに（1行につき最大14px）
-      const rows = stt ? [...stt.querySelectorAll('tr')] : [];
-      const spare = H / z - t.offsetHeight;
-      if (rows.length && spare > 8) { const add = Math.min(14, spare / rows.length); const hs = rows.map((r) => r.getBoundingClientRect().height / z); rows.forEach((r, i) => { r.style.height = (hs[i] + add).toFixed(1) + 'px'; }); }
-      t.style.minHeight = `${(availH - 4) / z}px`;
-    });
-    document.documentElement.style.scrollPaddingTop = hH + 'px';
-    return;
-  }
-  // 通常表示：表のもとの組み幅（900px）を、画面の幅いっぱいまで広げる（2.2倍まで）。狭い画面はこれまでどおり
-  if (availW < BASE) return;
-  const z = Math.min(2.2, availW / BASE);
-  pg.style.width = `${availW / z}px`; pg.style.zoom = z.toFixed(3);
+  const ps = getComputedStyle(pg); const inW = pg.clientWidth - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight);
+  const topH = big ? (root.querySelector('.sthead')?.offsetHeight || 0) : (document.querySelector('.bar')?.offsetHeight || 0);
+  const availH = window.innerHeight - topH - (big ? 8 : 40);
+  const gap = 24; const H = availH - 12;
+  // 縮小表示：2ページが両方とも1画面（この表の上端から画面の下まで）に入る大きさ。広い画面は左右に、狭い画面は上下に並べる
+  const Hc = window.innerHeight - (sh.getBoundingClientRect().top + window.scrollY) - 24;
+  const cols = compact && inW >= 1000 ? 2 : 1;
+  if (cols === 2) sh.classList.add('cols2');
+  const colW = (inW - gap * (cols - 1)) / cols;
+  const setK = (t, w) => { const stt = t.querySelector('.stt'); if (!stt) return; stt.style.removeProperty('--k'); const k = Math.max(1, Math.min(1.9, (w - 40) / stt.offsetWidth)); stt.style.setProperty('--k', k.toFixed(3)); };
+  const lay = (ts, w) => ts.reduce((a, t) => { t.style.width = w + 'px'; setK(t, w); return a + t.offsetHeight; }, 0);
+  // ts（1つ、または上下に重ねる全部）が、幅 colW・高さ Hm に入る倍率（横に広げると行が少し高くなることがあるので、入るまで合わせ直す）
+  const solve = (ts, Hm) => {
+    const base = Math.min(BASE, colW);
+    let z = Math.max(0.4, Math.min(2.2, colW / base, Hm / lay(ts, base)));
+    for (let i = 0; i < 5; i++) { const h = lay(ts, colW / z); if (h * z <= Hm + 1) break; z = Math.max(0.4, Hm / h); }
+    return z;
+  };
+  const zs = big ? tiers.map((t) => solve([t], H)) : null;
+  const zAll = big ? 0 : compact ? (cols === 2 ? Math.min(...tiers.map((t) => solve([t], Hc))) : solve(tiers, Hc - gap * (tiers.length - 1))) : Math.min(...tiers.map((t) => solve([t], H)));
+  tiers.forEach((t, i) => {
+    const z = big ? zs[i] : zAll;
+    t.style.width = colW / z + 'px'; setK(t, colW / z); t.style.zoom = z.toFixed(3);
+  });
+  // 縦の余り：拡大表示は1ページずつ画面の縦いっぱいに、通常・縮小表示は短い方のページを長い方の高さにそろえる（1行につき最大14px）
+  const target = big ? null : Math.max(...tiers.map((t) => t.offsetHeight * zAll));
+  tiers.forEach((t, i) => {
+    const z = big ? zs[i] : zAll; const stt = t.querySelector('.stt'); const rows = stt ? [...stt.querySelectorAll('tr')] : [];
+    const spare = (big ? H : target) / z - t.offsetHeight;
+    if (rows.length && spare > 8 && !(compact && cols === 1)) { const add = Math.min(14, spare / rows.length); const hs = rows.map((r) => r.getBoundingClientRect().height / z); rows.forEach((r, k) => { r.style.height = (hs[k] + add).toFixed(1) + 'px'; }); }
+    if (big) t.style.minHeight = `${(availH - 4) / z}px`;
+  });
+  if (big) document.documentElement.style.scrollPaddingTop = topH + 'px';
 }
 if (typeof window !== 'undefined' && !window.__stfit) {
   window.__stfit = true;
@@ -132,7 +137,7 @@ export function vStats(m) {
     : todo ? `<button class="ststat todo" id="stTodo">イベント ${evs.length}件・未入力あり ${todo}件 ›</button>` : `<span class="ststat ok">イベント ${evs.length}件・未入力なし</span>`;
   const head = `<div class="crumb noprint"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › マッチスタッツ</div>
     <div class="sthead noprint"><h1>マッチスタッツ</h1><span class="rvmode strange">${segs}</span><span class="stasof">${asOf}（${hm}に表示）</span>${status}<span class="sp"></span>
-      <span class="stbtns"><button class="btn" id="stPdf">PDFで保存</button>${bigBtn()}<a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></span></div>`;
+      <span class="stbtns"><button class="btn" id="stPdf">PDFで保存</button><span class="rvzoom">${bigOn() ? '' : `<button class="btn" id="stCompact">${isCompact() ? '通常の表示' : '縮小表示'}</button>`}${bigBtn()}</span><a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></span></div>`;
 
   return {
     active: 'acts',
@@ -147,6 +152,7 @@ export function vStats(m) {
       const t = root.querySelector('#stTodo'); if (t) t.onclick = () => { openTodo(m.id); location.hash = `#/m/${m.id}/events`; };
       bindBig(root, fitSheet);
       if (!bigOn()) fitSheet(root);
+      const cb = root.querySelector('#stCompact'); if (cb) cb.onclick = () => { try { localStorage.setItem(compactKey, isCompact() ? '0' : '1'); } catch {} render(); };
     },
   };
 }

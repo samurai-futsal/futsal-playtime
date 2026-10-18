@@ -1291,7 +1291,7 @@ body.bigv #bigBtn{min-height:44px;padding:0 20px;font-size:16px}
 /* マッチスタッツ：上は「試合全体・前半・後半」と「× 閉じる」だけ */
 body.bigv .sthead{margin-bottom:6px}
 body.bigv .sthead>:not(.strange):not(.stbtns):not(.sp){display:none}
-body.bigv .sthead .stbtns>:not(#bigBtn){display:none}
+body.bigv .sthead .stbtns>:not(#bigBtn):not(.rvzoom){display:none}
 body.bigv .stw .stpage{max-width:none;margin:0;border-radius:0;padding:10px}
 .stsheet.big2{grid-template-columns:1fr 1fr;align-items:start;gap:28px}
 /* 分析：書き出しのボタンは隠す */
@@ -1324,11 +1324,13 @@ body.bigv .stw .sttier{display:flex;flex-direction:column;justify-content:center
 html:has(body.bigv .stw){scroll-snap-type:y proximity}
 body.bigv .stw .stsheet{gap:0}
 /* 拡大表示で横が余るとき：真ん中の表を横に広げる（--k 倍。行の高さは変えない） */
-body.bigv .stt{--k:1}
-body.bigv .stt .lb{width:calc(220px * var(--k));font-size:calc(12px * min(var(--k), 1.3))}
-body.bigv .stt .v{width:calc(52px * min(var(--k), 1.4))}
-body.bigv .stt tr.sec td:nth-child(2){font-size:calc(12px * min(var(--k), 1.3))}
-body.bigv .stt .bl,body.bigv .stt .br{width:calc(130px * var(--k))}
-body.bigv .stt .bl i{transform:scaleX(var(--k));transform-origin:right center}
-body.bigv .stt .br i{transform:scaleX(var(--k));transform-origin:left center}
-body.bigv .stt .lb,body.bigv .stt tr.sec td{line-height:1.15}
+.stw .stt{--k:1}
+.stw .stt .lb{width:calc(220px * var(--k));font-size:calc(12px * min(var(--k), 1.3))}
+.stw .stt .v{width:calc(52px * min(var(--k), 1.4))}
+.stw .stt tr.sec td:nth-child(2){font-size:calc(12px * min(var(--k), 1.3))}
+.stw .stt .bl,.stw .stt .br{width:calc(130px * var(--k))}
+.stw .stt .bl i{transform:scaleX(var(--k));transform-origin:right center}
+.stw .stt .br i{transform:scaleX(var(--k));transform-origin:left center}
+.stw .stt .lb,.stw .stt tr.sec td{line-height:1.15}
+/* マッチスタッツの縮小表示：2ページを左右に並べて1画面に */
+.stsheet.cols2{grid-template-columns:auto auto;justify-content:center;align-items:start;gap:24px}
