@@ -1077,7 +1077,7 @@ svg.pace .pmk{pointer-events:none}
 .rvset.rveq col.cset{width:58%}
 .setn .spw{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;align-items:center}
 .rvset2.rveq th{font-size:12px;padding-left:4px;padding-right:4px}
-.rvtb.rveq tr:nth-child(even):not(.ex):not(.tot):not(.hl) td:not(.w):not(.o){background:#F6F8FC!important}
+.rvtb.rveq tr:nth-child(even):not(.ex):not(.tot):not(.hl) td:not(.w):not(.o):not(.sum){background:#F6F8FC!important}
 .rvtb.rveq tr.hl td{background:#FFE9A8!important}
 /* 4の表：順位とセットを出場時間のほうへ寄せる（列を4つに分け、順位とセットも真ん中に） */
 .rvset.rveq col.c0{width:16%}.rvset.rveq col.cset{width:44%}
@@ -1175,3 +1175,7 @@ body.rvall .rvw .rvsec .rvbox{flex-grow:0}
 body.rvall .rvw .rvsec{scroll-margin-top:0}
 .rvpgrid .rvtb.rveq col.c1{width:calc(44px + var(--nmw,3) * 15px)}
 @media (max-width:1300px){.rvpgrid .rvper td small{font-size:9px;letter-spacing:-.05em}.rvpgrid .rvper td{font-size:14px}}
+/* 1・2：合計の列を選手のすぐ右に（2026-10-17） */
+#rv1 .rvtb td.sum{background:#EEF3FB}
+.rvper td.sum{text-align:center}
+#rv1 .rvtb tr:not(.hl) td.sum,.rvper tr:not(.hl) td.sum,.rvset4 tr:not(.hl):not(.ex):not(.tot) td.sum{background:#EEF3FB!important}
