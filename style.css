@@ -1310,3 +1310,8 @@ body.bigv .anbody{margin-top:4px}
 .antb td.gs,.antb th.gs{border-left:2px solid #C9D3E3}
 .anset .setn{font-size:15px}.anset .setn small{font-size:14px}
 .antb.anset td.setn{white-space:nowrap!important}
+/* 分析のセット（2026-10-18）：4人は1行に、番号と名前の位置を行どうしでそろえる。見出しも中身も列の真ん中 */
+.antb.anset td.setn{display:table-cell;text-align:center!important}
+.antb.anset .setn .spw{display:inline-grid;grid-template-columns:repeat(4,calc(38px + var(--nmw,3) * 16px));gap:10px;align-items:center;justify-content:center;vertical-align:middle}
+.antb.anset .setn .sp{width:auto;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.antb.anset .setn .sp small{margin:0!important;font-size:15px;color:#3A4558}

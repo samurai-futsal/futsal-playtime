@@ -440,15 +440,15 @@ function setTab(ctx) {
   const sgn = (v) => (v > 0 ? '+' + v : String(v));
   const sorters = { time: (r) => r.time, sh: (r) => r.sh, osh: (r) => r.osh, gf: (r) => r.gf, ga: (r) => r.ga, en: (r) => r.en, oen: (r) => r.oen, dsh: (r) => (r.time ? (r.sh - r.osh) / r.time : -1e9), den: (r) => (r.time ? (r.en - r.oen) / r.time : -1e9), pm: (r) => r.gf - r.ga };
   if (A.sort.col && sorters[A.sort.col]) list.sort((a, b) => (sorters[A.sort.col](b) - sorters[A.sort.col](a)) * (A.sort.dir === 'asc' ? -1 : 1));
-  const nm = (pid) => { const no = ctx.no[pid]; return `<span class="no fp">${esc(no ?? '')}</span><small>${name(pid)}</small>`; };
+  const nm = (pid) => { const no = ctx.no[pid]; return `<span class="sp"><span class="no fp">${esc(no ?? '')}</span><small>${name(pid)}</small></span>`; };
   const fpSort = (pids) => pids.slice().sort((a, b) => (parseInt(ctx.no[a], 10) || 999) - (parseInt(ctx.no[b], 10) || 999));
   const ref = (teamSettings().refMin || 120) * 1000;
-  const row = (r, i, label, cls = 'ex') => `<tr class="${label ? cls : ''} ${!label && r.time < ref ? 'low' : ''}"><td>${label ? '' : (i + 1) + '位'}</td><td class="setn">${label || fpSort(r.pids).map(nm).join('')}</td>
+  const row = (r, i, label, cls = 'ex') => `<tr class="${label ? cls : ''} ${!label && r.time < ref ? 'low' : ''}"><td>${label ? '' : (i + 1) + '位'}</td><td class="setn">${label || `<span class="spw">${fpSort(r.pids).map(nm).join('')}</span>`}</td>
     <td>${mmss(r.time)}</td><td>${label && !r.count ? '—' : r.count}</td>${ctx.ok.length > 1 ? `<td>${label ? '—' : r.games.size}</td>` : ''}
     <td class="w">${r.sh}</td><td class="o">${r.osh}</td><td class="w">${r.gf}</td><td class="o">${r.ga}</td><td><b>${sgn(r.gf - r.ga)}</b></td><td class="w">${r.en}</td><td class="o">${r.oen}</td>
     <td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.sh - r.osh, r.time)}</td><td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.en - r.oen, r.time)}</td></tr>`;
   const th = (k, h, cls = '') => `<th class="srt ${A.sort.col === k ? 'on' : ''} ${cls}" data-sort="${k}">${h}</th>`;
-  const head = `<tr><th>順位</th><th style="text-align:left">FP4人のセット</th>${th('time', '出場時間')}<th>回数</th>${ctx.ok.length > 1 ? '<th>試合数</th>' : ''}${th('sh', 'シュート', 'w')}${th('osh', '被シュート', 'o')}${th('gf', '得点', 'w')}${th('ga', '失点', 'o')}${th('pm', '±')}${th('en', 'Z4・SZ<br>進入', 'w')}${th('oen', '被Z4・SZ<br>進入', 'o')}${th('dsh', 'シュート差<br>／分')}${th('den', '進入差<br>／分')}</tr>`;
+  const head = `<tr><th>順位</th><th>FP4人のセット</th>${th('time', '出場時間')}<th>回数</th>${ctx.ok.length > 1 ? '<th>試合数</th>' : ''}${th('sh', 'シュート', 'w')}${th('osh', '被シュート', 'o')}${th('gf', '得点', 'w')}${th('ga', '失点', 'o')}${th('pm', '±')}${th('en', 'Z4・SZ<br>進入', 'w')}${th('oen', '被Z4・SZ<br>進入', 'o')}${th('dsh', 'シュート差<br>／分')}${th('den', '進入差<br>／分')}</tr>`;
   const has = (r) => r.time > 0 || r.sh || r.osh || r.gf || r.ga || r.en || r.oen;
   // 組が多いとき（シーズン全体など）：画面は上から50組と「もっと見る」、複数試合のマッチレポートは上から30組と
   // 「そのほかのセット」の行（時間・数を足すので、合計は変わらない）。2026-10-17 決11・12
@@ -460,7 +460,7 @@ function setTab(ctx) {
   const more = !A.print && rest.length ? `<tr class="anmore"><td colspan="${ctx.ok.length > 1 ? 14 : 13}"><button class="btn sm" data-set="setMore" data-v="${esc(sig)}">もっと見る（残り ${rest.length}組）</button></td></tr>` : '';
   const body = shown.map((r, i) => row(r, i)).join('') + more + (restRow ? row(restRow, 0, `そのほかのセット（${rest.length}組）`) : '') + (short ? row(short, 0, `出場時間が${mmss(setMin)}未満のセット（${shortN}組）`) : '') + (has(ppRow) ? row(ppRow, 0, '5×4・4×5と退場の時間帯') : '') + (has(special) ? row(special, 0, 'GK1人・FP4人がそろっていない区間') : '') + (has(other) ? row(other, 0, '交代の瞬間の3秒未満の組み合わせ') : '')
     + (list.length || short ? row(total, 0, '合計', 'tot') : '');
-  return `<div class="antbl"><table class="antb anset anauto"><thead>${head}</thead><tbody>${body || '<tr><td colspan="14" class="mu">GKが1人・FPが4人そろった時間がありません</td></tr>'}</tbody></table></div>
+  return `<div class="antbl"><table class="antb anset anauto" style="--nmw:${Math.max(2, ...list.flatMap((r) => r.pids.map((p) => (playerById(p)?.last || '').length + (playerById(p)?.status === 'former' ? 3 : 0))))}"><thead>${head}</thead><tbody>${body || '<tr><td colspan="14" class="mu">GKが1人・FPが4人そろった時間がありません</td></tr>'}</tbody></table></div>
     <p class="anhint">${restRow ? `出場時間の長い30組を出し、ほかの${rest.length}組は「そのほかのセット」の行にまとめています。` : ''}FP4人の組み合わせごと（出場時間の長い順。見出しで並べ替え）。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。差／分＝（自チーム−相手）÷出場時間。セットは数的同数の時間帯だけで数えます。出場時間が${mmss(setMin)}未満のセット（設定画面で変えられます）、パワープレー（5×4・4×5）と両チームの退場の時間帯、GK1人・FP4人がそろっていない区間、交代の瞬間の3秒未満の組み合わせは表に出さず、下の行にまとめます（全部足すと合計の行になります）。薄い数字＝出場時間が${mmss(ref)}未満で参考値</p>`;
 }
 
