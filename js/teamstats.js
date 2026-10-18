@@ -58,7 +58,8 @@ export function teamStats(M, events, goalName, keys = null, win = null) {
       fsp: fsp.length, fspT: [c(fsp, (e) => e.fsp === 'CK'), c(fsp, (e) => e.fsp === 'CK-KI'), c(fsp, (e) => e.fsp === 'KI'), c(fsp, (e) => ['FK', 'PK', '2PK'].includes(e.fsp))], fspMiss: c(fsp, (e) => !e.fsp),
       shotBand: band(sh), z4Band: band(z4), fspBand: band(fsp),
       foul: ev.filter((e) => e.kind === (own ? 'foul' : 'fouled')).length,
-      cards: cardC, cardN: cardC.yellow + cardC.y2 + cardC.red,
+      // 2枚目のイエロー（退場）は、イエローにもレッドにも1つずつ数える（2026-10-18 決定）。cardN＝イエロー＋レッドの枚数
+      cards: { yellow: cardC.yellow + cardC.y2, red: cardC.red + cardC.y2, y2: cardC.y2 }, cardN: cardC.yellow + cardC.red + cardC.y2 * 2,
     };
   };
   const A = side(true), B = side(false);
@@ -79,7 +80,7 @@ export function teamStats(M, events, goalName, keys = null, win = null) {
   const timeouts = { own: 0, opp: 0 }; for (const t of M.timeouts || []) if ((!keys || keys.includes(t.period)) && (!win || win(t))) timeouts[t.team === 'opp' ? 'opp' : 'own']++;
   const ejOwn = (M.ejections || []).filter((x) => (!keys || keys.includes(x.period)) && (!win || win(x))).length;
   return {
-    A, B, score, rangeScore, goals, timeouts, ejOwn, ejOpp: ev.filter((e) => e.kind === 'oej').length || (B.cards.y2 + B.cards.red),
+    A, B, score, rangeScore, goals, timeouts, ejOwn, ejOpp: ev.filter((e) => e.kind === 'oej').length || B.cards.red,
     rec: ev.filter((e) => e.kind === 'rec').length, lost: ev.filter((e) => e.kind === 'lost').length,
     hasEvents: all.length > 0, hasExtra, n: ev.length, bands: BD.map((b) => b.label),
   };
@@ -170,7 +171,7 @@ export function playerDetail(Mp, events, goalName, pids, T, keys = null, win = n
       onAll(e, (o) => o[k]++);
     } else if (k === 'foul') {
       const c = cards.get(e.id);
-      add(e.pid, (d) => { d.foul++; if (c === 'yellow') d.cY++; else if (c === 'y2') d.cY2++; else if (c === 'red') d.cR++; });
+      add(e.pid, (d) => { d.foul++; if (c === 'yellow' || c === 'y2') d.cY++; if (c === 'y2') d.cY2++; if (c === 'red' || c === 'y2') d.cR++; }); // 2枚目のイエローはイエローとレッドの両方に数える
       onAll(e, (o) => o.foul++);
     } else if (k === 'fouled') { add(e.pid, (d) => d.fouled++); onAll(e, (o) => o.ofoul++); }
     else if (k === 'fspat' || k === 'fspdf') { const i = FSP_KEYS.indexOf(e.fsp); onAll(e, (o) => { if (i >= 0) o[k === 'fspat' ? 'at' : 'df'][i]++; }); }

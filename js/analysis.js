@@ -293,8 +293,8 @@ function statsTab(ctx) {
       note = '場所はゾーンが入力されたものだけ。'; break;
     case 'foul': cols = [...base, N('foul', 'ファール', (d) => d.foul, { grp: '本人', tot: tm((t) => t.A.foul) }), N('fouled', '受けた<br>ファール', (d) => d.fouled, { grp: '本人', tot: tm((t) => t.B.foul) }),
       N('of', '自チーム', (d) => d.on.foul, { grp: '出場中のファール', tot: tm((t) => t.A.foul) }), N('oof', '相手', (d) => d.on.ofoul, { grp: '出場中のファール', tot: tm((t) => t.B.foul) }), N('ofd', '差', (d) => d.on.foul - d.on.ofoul, { grp: '出場中のファール', tot: tm((t) => t.A.foul - t.B.foul) }),
-      N('cy', 'イエロー', (d) => d.cY, { grp: 'カード（本人）', tot: tm((t) => t.A.cards.yellow) }), N('cy2', '2枚目', (d) => d.cY2, { grp: 'カード（本人）', tot: tm((t) => t.A.cards.y2) }), N('cr', 'レッド', (d) => d.cR, { grp: 'カード（本人）', tot: tm((t) => t.A.cards.red) })];
-      note = `相手のファール＝自チームの被ファール。相手へのカード：イエロー ${g(tB.cards.yellow)}・2枚目 ${g(tB.cards.y2)}・レッド ${g(tB.cards.red)}。`; break;
+      N('cy', 'イエロー', (d) => d.cY, { grp: 'カード（本人）', tot: tm((t) => t.A.cards.yellow) }), N('cr', 'レッド', (d) => d.cR, { grp: 'カード（本人）', tot: tm((t) => t.A.cards.red) })];
+      note = `相手のファール＝自チームの被ファール。相手へのカード：イエロー ${g(tB.cards.yellow)}・レッド ${g(tB.cards.red)}（2枚目のイエローはイエローとレッドの両方に数える）。`; break;
     case 'fsp': { const L = ['CK', 'CK-KI', 'KI', 'FK', 'PK', '第2PK'];
       cols = [...base, N('at', '合計', (d) => d.on.at.reduce((a, b) => a + b, 0), { grp: '出場中の AT（自チーム）', tot: tm((t) => t.A.fsp) }), ...FSP_KEYS.map((k, i) => N('at' + k, L[i], (d) => d.on.at[i], { grp: '出場中の AT（自チーム）' })),
         N('df', '合計', (d) => d.on.df.reduce((a, b) => a + b, 0), { grp: '出場中の DF（相手）', tot: tm((t) => t.B.fsp) }), ...FSP_KEYS.map((k, i) => N('df' + k, L[i], (d) => d.on.df[i], { grp: '出場中の DF（相手）' }))];
@@ -604,10 +604,10 @@ function summaryPage(ctx, perMatch = true) {
   const list = `<table class="antb rpsum"><thead><tr><th class="apl">日付</th><th class="apl">相手</th><th class="apl">活動</th><th>結果</th><th>スコア<small>（ピリオドごと）</small></th><th class="w">シュート<small>（SZ内）</small></th><th class="o">被シュート<small>（SZ内）</small></th><th class="w">Z4・SZ<br>進入</th><th class="o">被Z4・SZ<br>進入</th><th class="w">FSP<br>AT</th><th class="o">FSP<br>DF</th><th>リカバ<br>リー</th><th>ロスト</th><th class="w">ファール</th><th class="o">被ファール</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot>${line('合計', false)}${line('1試合平均', true)}</tfoot></table>`;
   // チームの比較（合計と1試合平均）。SZ内シュート・FINISH SET PLAY・カードの内訳は数字の下に
   const fspSub = (s) => `CK ${s.fspT[0]}・CK-KI ${s.fspT[1]}・KI ${s.fspT[2]}・FK ${s.fspT[3]}`;
-  const cardSub = (s) => `イエロー${s.cards.yellow}・2枚目${s.cards.y2}・レッド${s.cards.red}`;
+  const cardSub = (s) => `イエロー${s.cards.yellow}・レッド${s.cards.red}`;
   const cmp = (label, x, y, sub) => `<tr><td class="cl">${label}</td><td class="cv w">${x}${sub ? `<small>${sub[0]}</small>` : ''}</td><td class="cv w">${av(x)}</td><td class="cv o">${y}${sub ? `<small>${sub[1]}</small>` : ''}</td><td class="cv o">${av(y)}</td></tr>`;
   const cm = `<table class="rpcmp"><thead><tr><th></th><th class="w">${own}<br><small>合計</small></th><th class="w"><small>1試合平均</small></th><th class="o">相手<br><small>合計</small></th><th class="o"><small>1試合平均</small></th></tr></thead><tbody>
-    ${cmp('得点', T.score.own, T.score.opp)}${cmp('シュート', a.shots, b.shots, [`SZ内 ${a.sz}`, `SZ内 ${b.sz}`])}${cmp('枠内', a.in, b.in)}${cmp('Z4進入', a.z4, b.z4)}${cmp('SZ進入', a.szE, b.szE)}${cmp('FINISH SET PLAY', a.fsp, b.fsp, [fspSub(a), fspSub(b)])}${cmp('ファール', a.foul, b.foul)}${cmp('カード', a.cards.yellow + a.cards.y2 + a.cards.red, b.cards.yellow + b.cards.y2 + b.cards.red, [cardSub(a), cardSub(b)])}${cmp('タイムアウト', T.timeouts.own, T.timeouts.opp)}
+    ${cmp('得点', T.score.own, T.score.opp)}${cmp('シュート', a.shots, b.shots, [`SZ内 ${a.sz}`, `SZ内 ${b.sz}`])}${cmp('枠内', a.in, b.in)}${cmp('Z4進入', a.z4, b.z4)}${cmp('SZ進入', a.szE, b.szE)}${cmp('FINISH SET PLAY', a.fsp, b.fsp, [fspSub(a), fspSub(b)])}${cmp('ファール', a.foul, b.foul)}${cmp('カード', a.cards.yellow + a.cards.red, b.cards.yellow + b.cards.red, [cardSub(a), cardSub(b)])}${cmp('タイムアウト', T.timeouts.own, T.timeouts.opp)}
     <tr><td class="cl">リカバリー／ロスト</td><td class="cv" colspan="2">${T.rec} / ${T.lost}<small>1試合平均 ${av(T.rec)} / ${av(T.lost)}</small></td><td colspan="2"></td></tr></tbody></table>`;
   // 得点者・アシスト（選手ごとの合計）
   const sc = ctx.pids.filter((p) => ctx.P[p].goals || ctx.P[p].assists).sort((x, y) => ctx.P[y].goals - ctx.P[x].goals || ctx.P[y].assists - ctx.P[x].assists);

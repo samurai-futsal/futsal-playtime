@@ -196,7 +196,7 @@ export function teamSection(c, o = {}) {
   const cmpMax = Math.max(1, A.shots, B.shots, A.z4, B.z4, A.fsp, B.fsp, A.foul, B.foul);
   const cmp = (label, a, b, sub = null) => `<tr><td class="xb l"><i style="width:${a == null ? 0 : Math.round(a / cmpMax * 170)}px"></i></td><td class="cv">${a == null ? '<span class="na">—</span>' : a}${sub && a != null ? `<small>${sub[0]}</small>` : ''}</td><td class="cl">${label}</td><td class="cv">${b == null ? '<span class="na">—</span>' : b}${sub && b != null ? `<small>${sub[1]}</small>` : ''}</td><td class="xb r"><i style="width:${b == null ? 0 : Math.round(b / cmpMax * 170)}px"></i></td></tr>`;
   const fspSub = (s) => `CK ${s.fspT[0]}・CK-KI ${s.fspT[1]}・KI ${s.fspT[2]}・FK ${s.fspT[3]}`;
-  const cardSub = (s) => `イエロー${s.cards.yellow}・2枚目${s.cards.y2}・レッド${s.cards.red}`;
+  const cardSub = (s) => `イエロー${s.cards.yellow}・レッド${s.cards.red}`;
   const scoreH = `<div class="rvscore7"><div class="sc1"><span class="tn">${esc(own)}</span><span class="sv">${tot('own')} − ${tot('opp')}</span><span class="tn">${esc(opp)}</span></div><div class="hv">${per}</div></div>${pkLine(c)}
 `;
   const flowH = `<table class="rvflow"><tr><th>スコア</th><th>時間</th><th>チーム</th><th>得点者</th><th>アシスト</th><th>得点の種類</th></tr>${flow}</table>
@@ -206,7 +206,7 @@ ${cmp('シュート', A.shots, B.shots, [`SZ内 ${A.sz}`, `SZ内 ${B.sz}`])}${cm
 `;
   const rlH = `<div class="rvrl"><b>${esc(own)}のリカバリーとロスト</b><span>リカバリー <b>${R.rec}</b></span><span>ロスト <b>${R.lost}</b></span><span>差 <b>${R.rec - R.lost}</b></span></div>
 `;
-  const hintH = `<p class="rvhint">シュートは得点を含む（OGは除く）。${esc(opp)}のファール・カード＝${esc(own)}の被ファールで記録したもの。同じ選手の2枚目のイエローは「2枚目」に数える。退場：${esc(own)}はMATCH PLAYの退場の記録、${esc(opp)}は被ファールのイエロー2枚目とレッド。タイムアウトはMATCH PLAYの記録</p>`;
+  const hintH = `<p class="rvhint">シュートは得点を含む（OGは除く）。${esc(opp)}のファール・カード＝${esc(own)}の被ファールで記録したもの。2枚目のイエロー（退場）は、イエローとレッドの両方に1枚ずつ数える。退場：${esc(own)}はMATCH PLAYの退場の記録、${esc(opp)}は被ファールのイエロー2枚目とレッド。タイムアウトはMATCH PLAYの記録</p>`;
   const inner = scoreH + flowH + cmpH + rlH + hintH;
   if (o.plain) return inner;
   // 画面：上から スコア → 得点経過 → 比較 → リカバリーとロスト（1画面に入るように詰めて表示。2026-10-18）
