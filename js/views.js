@@ -348,13 +348,14 @@ function vActivities() {
     bind() { $('#btnAddA').onclick = () => activityForm(null); },
   };
 }
-function timesFields(t, locked = false) {
+function timesFields(t, locked = false, pkGame = false) {
   // 延長戦の長さは「延長戦あり」のときだけ出す。locked＝試合が始まったあと（事前設定では変えられない。2026-10-17 決定）
   const dis = locked ? 'disabled' : '';
   return `<div><label for="fHalf">前後半の長さ（分）</label><input id="fHalf" name="half" type="number" min="1" max="40" inputmode="numeric" value="${esc(t.half)}" ${dis}></div>
-    <div><label class="chk" style="margin-top:34px"><input id="fExtra" type="checkbox" name="extra" ${t.extra ? 'checked' : ''} ${dis}> 延長戦あり</label></div>
+    <div class="chks2"><label class="chk"><input id="fExtra" type="checkbox" name="extra" ${t.extra ? 'checked' : ''} ${dis}> 延長戦あり</label>
+      <label class="chk" title="試合が始まったあとも変えられます"><input id="fPk" type="checkbox" name="pkGame" ${pkGame ? 'checked' : ''}> PK戦あり</label></div>
     <div id="extraBox" ${t.extra ? '' : 'hidden'}><label for="fExtraHalf">延長戦の長さ（分・前後半それぞれ）</label><input id="fExtraHalf" name="extraHalf" type="number" min="1" max="20" inputmode="numeric" value="${esc(t.extraHalf)}" ${dis}></div>
-    ${locked ? '<p class="span2 note info">試合が始まったあとは、記録の修正の『試合情報』で直せます</p>' : ''}`;
+    ${locked ? '<p class="span2 note info">試合時間は、試合が始まったあとは記録の修正の『試合情報』で直せます（PK戦あり／なしはここで変えられます）</p>' : ''}`;
 }
 document.addEventListener('change', (e) => {
   if (e.target.id === 'fExtra') { const b = document.getElementById('extraBox'); if (b) b.hidden = !e.target.checked; }
@@ -373,7 +374,7 @@ function activityForm(a) {
     <div><label for="aStart">開始日</label><input id="aStart" name="start" type="date" value="${esc(a.start || '')}"></div>
     <div><label for="aEnd">終了日</label><input id="aEnd" name="end" type="date" value="${esc(a.end || '')}"></div>
     <div class="span2 subh">試合時間の初期値（この活動で試合を作るときに入る値）</div>
-    ${timesFields(t)}
+    ${timesFields(t, false, !!a.pkGame)}
     ${isNew ? '' : '<div class="span2 sub"><button class="btn sm dangerline" data-delA>この活動を削除</button></div>'}
   </div><div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-s>保存</button></div>`);
   m.querySelector('[data-c]').onclick = closeModal;
@@ -383,7 +384,7 @@ function activityForm(a) {
     if (!v.start) return toast('開始日を入れてください');
     const end = v.end && v.end >= v.start ? v.end : v.start;
     const id = isNew ? newId() : a.id;
-    put(teamPath('activities', id), { ...(v.typeId === '=' ? {} : { typeId: v.typeId, type: optName('activityTypes', v.typeId) }), name: v.name, start: v.start, end, times: readTimes(v), ...(isNew ? { members: {}, deleted: false, createdAt: now() } : {}) });
+    put(teamPath('activities', id), { ...(v.typeId === '=' ? {} : { typeId: v.typeId, type: optName('activityTypes', v.typeId) }), name: v.name, start: v.start, end, times: readTimes(v), pkGame: !!v.pkGame, ...(isNew ? { members: {}, deleted: false, createdAt: now() } : {}) });
     closeModal(); toast('保存しました');
     if (isNew) go('#/a/' + id);
   };
@@ -431,7 +432,7 @@ function vActivity(r) {
     active: 'acts',
     html: `<div class="crumb"><a href="#/acts">活動と試合</a> › ${esc(a.name)}</div>
     <div class="row between"><div><span class="chip c-type">${esc(a.type || '活動')}</span> <h1 class="inl">${esc(a.name)}</h1>
-      <div class="mu">${fmtDate(a.start)}${a.end && a.end !== a.start ? ' 〜 ' + fmtDate(a.end) : ''}　試合時間の初期値：前後半 各${a.times?.half ?? 20}分・延長${a.times?.extra ? `あり（各${a.times.extraHalf}分）` : 'なし'}</div></div>
+      <div class="mu">${fmtDate(a.start)}${a.end && a.end !== a.start ? ' 〜 ' + fmtDate(a.end) : ''}　試合時間の初期値：前後半 各${a.times?.half ?? 20}分・延長${a.times?.extra ? `あり（各${a.times.extraHalf}分）` : 'なし'}・PK戦${a.pkGame ? 'あり' : 'なし'}</div></div>
       <button class="btn" id="btnEditA">活動を編集</button></div>
 
     <div class="row between mt"><h2 class="h">招集メンバー（${ids.length}人）</h2>
@@ -505,7 +506,7 @@ function matchForm(mt, a) {
     <div><label for="mKo">キックオフ時刻（任意）</label><input id="mKo" name="kickoff" type="time"></div>
     <div class="span2"><label for="mVenue">会場（任意）</label><input id="mVenue" name="venue"></div>
     <div class="span2 subh">試合時間（活動の初期値）</div>
-    ${timesFields(t)}
+    ${timesFields(t, false, !!a.pkGame)}
   </div><div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-s>作る</button></div>`);
   m.querySelector('[data-c]').onclick = closeModal;
   m.querySelector('[data-s]').onclick = () => {
@@ -515,7 +516,7 @@ function matchForm(mt, a) {
     const id = newId(); const ts = teamSettings();
     put(teamPath('matches', id), {
       activityId: a.id, date: v.date, opponent: v.opponent, categoryId: v.categoryId, category: optName('matchCategories', v.categoryId), kickoff: v.kickoff, venue: v.venue, memo: '',
-      times: readTimes(v), colorTimer: { orange: ts.colorOrange, red: ts.colorRed }, members: {}, status: 'prep',
+      times: readTimes(v), pkGame: !!v.pkGame, colorTimer: { orange: ts.colorOrange, red: ts.colorRed }, members: {}, status: 'prep',
       deleted: false, createdAt: now(), createdOrder: Date.now(),
     });
     closeModal(); toast('試合を作りました'); go('#/m/' + id);
@@ -568,7 +569,7 @@ function vMatch(r) {
     bind: bindPostInputs(m),
     html: `<div class="crumb"><a href="#/acts">活動と試合</a> › <a href="#/a/${a?.id}">${esc(a?.name || '')}</a> › vs ${esc(m.opponent)}</div>
     <div class="row between"><div><h1 class="inl">vs ${esc(m.opponent)}</h1> ${chip(st, m)}
-      <div class="mu">${fmtDate(m.date)}${m.kickoff ? ' ' + esc(m.kickoff) + ' キックオフ' : ''}${m.category ? '　' + esc(m.category) : ''}${m.venue ? '　' + esc(m.venue) : ''}　前後半 各${t.half}分・延長${t.extra ? `あり（各${t.extraHalf}分）` : 'なし'}</div></div></div>
+      <div class="mu">${fmtDate(m.date)}${m.kickoff ? ' ' + esc(m.kickoff) + ' キックオフ' : ''}${m.category ? '　' + esc(m.category) : ''}${m.venue ? '　' + esc(m.venue) : ''}　前後半 各${t.half}分・延長${t.extra ? `あり（各${t.extraHalf}分）` : 'なし'}・PK戦${m.pkGame ? 'あり' : 'なし'}</div></div></div>
     <h2 class="h">試合前</h2>
     <div class="acts acts2">
       ${btn('事前設定', '日付・相手・区分\n試合時間・カラータイマー', `#/m/${m.id}/setup`, { done: true })}
@@ -631,12 +632,12 @@ function postInputs(m) {
       <div class="pi"><label for="mPoss">ポゼッション率（自チーム）</label>
         <div class="row"><input id="mPoss" class="pinum" type="number" min="0" max="100" step="1" inputmode="numeric" value="${esc(ps)}" placeholder="—"><span>%</span>
         <span class="mu" id="possOpp">${ps !== '' ? `相手 ${Math.round((100 - ps) * 10) / 10}%` : '相手は100%から引いた値になります'}</span></div></div>
-      <div class="pi"><label>PK戦</label>
-        <div class="row"><div class="seg pkseg"><button class="${pk ? '' : 'on'}" data-pkhad="0">なし</button><button class="${pk ? 'on' : ''}" data-pkhad="1">あり</button></div>
+      ${!m.pkGame && !pk ? `<div class="pi"><label>PK戦</label><div class="mu">PK戦なしの試合です（事前設定で「PK戦あり」にすると、ここで結果を入れられます）</div></div>` : `<div class="pi"><label>PK戦</label>
+        <div class="row"><div class="seg pkseg"><button class="${pk ? '' : 'on'}" data-pkhad="0">行わなかった</button><button class="${pk ? 'on' : ''}" data-pkhad="1">行った</button></div>
         ${pk ? `<span class="pkin">自チーム ${kicks.length ? `<b class="pkauto" title="キッカーの成功の数">${pkOwnScore(pk)}</b>` : `<input id="pkOwn" class="pinum" type="number" min="0" max="99" inputmode="numeric" value="${esc(pk.own ?? 0)}" aria-label="PK戦 自チームの成功">`} − <input id="pkOpp" class="pinum" type="number" min="0" max="99" inputmode="numeric" value="${esc(pk.opp ?? 0)}" aria-label="PK戦 相手の成功"> 相手</span>` : ''}</div>
         ${pk ? `<div class="pkk"><div class="mu sm">自チームのキッカー（蹴った順）。コースはキッカーから見た向き${kicks.length ? '：自チームのスコアは成功の数から自動で入ります' : ''}</div>
           ${kicks.length ? `<table class="pktb"><tbody>${kickRows}</tbody></table>` : ''}
-          <button class="btn sm" id="pkAdd">＋ ${kicks.length + 1}人目のキッカーを足す</button></div>` : ''}</div>
+          <button class="btn sm" id="pkAdd">＋ ${kicks.length + 1}人目のキッカーを足す</button></div>` : ''}</div>`}
     </div>`;
 }
 function bindPostInputs(m) {
@@ -695,7 +696,7 @@ function vMatchSetup(m) {
       <div class="span2"><label for="sVenue">会場（任意）</label><input id="sVenue" name="venue" value="${esc(m.venue || '')}"></div>
       <div class="span2"><label for="sMemo">メモ（任意）</label><textarea id="sMemo" name="memo" rows="2">${esc(m.memo || '')}</textarea></div>
       <div class="span2 subh">試合時間</div>
-      ${timesFields(t, started)}
+      ${timesFields(t, started, !!m.pkGame)}
       <div class="span2 subh">カラータイマー（連続出場時間で色が変わる。GKは対象外）</div>
       <div><label for="sOr">オレンジになる時間（分:秒）</label><input id="sOr" name="orange" value="${mmss(ct.orange)}" inputmode="numeric"></div>
       <div><label for="sRed">赤になる時間（分:秒）</label><input id="sRed" name="red" value="${mmss(ct.red)}" inputmode="numeric"></div>
@@ -710,7 +711,7 @@ function vMatchSetup(m) {
         const orange = parseMmss(v.orange, ct.orange), red = parseMmss(v.red, ct.red);
         if (red <= orange) return toast('赤になる時間は、オレンジより後にしてください');
         put(teamPath('matches', m.id), { date: v.date, opponent: v.opponent, ...(v.categoryId === '=' ? {} : { categoryId: v.categoryId, category: optName('matchCategories', v.categoryId) || (v.categoryId ? m.category : '') }), kickoff: v.kickoff, venue: v.venue, memo: v.memo,
-          ...(started ? {} : { times: readTimes(v) }), colorTimer: { orange, red } });
+          ...(started ? {} : { times: readTimes(v) }), pkGame: !!v.pkGame, colorTimer: { orange, red } });
         toast('保存しました'); goBack();
       };
     },

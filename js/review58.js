@@ -184,7 +184,7 @@ export function teamSection(c, o = {}) {
   // スコアの下に、前半・後半…を1行ずつ（2026-10-18）
   const per = M0.periods.filter((p) => p.status !== 'none').map((p) => `<span>${p.label}　${R.score.own[p.key]} − ${R.score.opp[p.key]}</span>`).join('') + (c.pk ? `<span>PK　${c.pk.own ?? 0} − ${c.pk.opp ?? 0}</span>` : '');
   let so = 0, sp = 0;
-  const P = (pid) => (pid === OPP_OG ? '相手OG' : pid === UNKNOWN ? '不明' : pid ? `${badge(pid)}${esc(last(pid))}` : '<span class="na">—</span>');
+  const P = (pid) => (pid === OPP_OG ? '相手OG' : pid === UNKNOWN ? '不明' : pid ? `${badge(pid)}<span class="gnm">${esc(last(pid))}</span>` : '<span class="na">—</span>');
   const flow = R.goals.map(({ e, own: o }) => {
     o ? so++ : sp++;
     const pl = M0.periods.find((p) => p.key === e.period);
@@ -197,15 +197,21 @@ export function teamSection(c, o = {}) {
   const cmp = (label, a, b, sub = null) => `<tr><td class="xb l"><i style="width:${a == null ? 0 : Math.round(a / cmpMax * 170)}px"></i></td><td class="cv">${a == null ? '<span class="na">—</span>' : a}${sub && a != null ? `<small>${sub[0]}</small>` : ''}</td><td class="cl">${label}</td><td class="cv">${b == null ? '<span class="na">—</span>' : b}${sub && b != null ? `<small>${sub[1]}</small>` : ''}</td><td class="xb r"><i style="width:${b == null ? 0 : Math.round(b / cmpMax * 170)}px"></i></td></tr>`;
   const fspSub = (s) => `CK ${s.fspT[0]}・CK-KI ${s.fspT[1]}・KI ${s.fspT[2]}・FK ${s.fspT[3]}`;
   const cardSub = (s) => `イエロー${s.cards.yellow}・2枚目${s.cards.y2}・レッド${s.cards.red}`;
-  const inner = `<div class="rvscore7"><div class="sc1"><span class="tn">${esc(own)}</span><span class="sv">${tot('own')} − ${tot('opp')}</span><span class="tn">${esc(opp)}</span></div><div class="hv">${per}</div></div>${pkLine(c)}
-<table class="rvflow"><tr><th>スコア</th><th>時間</th><th>チーム</th><th>得点者</th><th>アシスト</th><th>得点の種類</th></tr>${flow}</table>
-<table class="rvcmp"><tr><th></th><th class="own">${esc(own)}</th><th></th><th class="opp">${esc(opp)}</th><th></th></tr>
+  const scoreH = `<div class="rvscore7"><div class="sc1"><span class="tn">${esc(own)}</span><span class="sv">${tot('own')} − ${tot('opp')}</span><span class="tn">${esc(opp)}</span></div><div class="hv">${per}</div></div>${pkLine(c)}
+`;
+  const flowH = `<table class="rvflow"><tr><th>スコア</th><th>時間</th><th>チーム</th><th>得点者</th><th>アシスト</th><th>得点の種類</th></tr>${flow}</table>
+`;
+  const cmpH = `<table class="rvcmp"><tr><th></th><th class="own">${esc(own)}</th><th></th><th class="opp">${esc(opp)}</th><th></th></tr>
 ${cmp('シュート', A.shots, B.shots, [`SZ内 ${A.sz}`, `SZ内 ${B.sz}`])}${cmp('枠内', A.in, B.in)}${cmp('Z4進入', A.z4, B.z4)}${cmp('SZ進入', A.szE, B.szE)}${cmp('FINISH SET PLAY', A.fsp, B.fsp, [fspSub(A), fspSub(B)])}${cmp('ファール', A.foul, B.foul)}${cmp('カード', A.cardN, B.cardN, [cardSub(A), cardSub(B)])}${cmp('退場', R.ejOwn, R.ejOpp)}${cmp('タイムアウト', R.timeouts.own, R.timeouts.opp)}</table>
-<div class="rvrl"><b>${esc(own)}のリカバリーとロスト</b><span>リカバリー <b>${R.rec}</b></span><span>ロスト <b>${R.lost}</b></span><span>差 <b>${R.rec - R.lost}</b></span></div>
-<p class="rvhint">シュートは得点を含む（OGは除く）。${esc(opp)}のファール・カード＝${esc(own)}の被ファールで記録したもの。同じ選手の2枚目のイエローは「2枚目」に数える。退場：${esc(own)}はMATCH PLAYの退場の記録、${esc(opp)}は被ファールのイエロー2枚目とレッド。タイムアウトはMATCH PLAYの記録</p>`;
+`;
+  const rlH = `<div class="rvrl"><b>${esc(own)}のリカバリーとロスト</b><span>リカバリー <b>${R.rec}</b></span><span>ロスト <b>${R.lost}</b></span><span>差 <b>${R.rec - R.lost}</b></span></div>
+`;
+  const hintH = `<p class="rvhint">シュートは得点を含む（OGは除く）。${esc(opp)}のファール・カード＝${esc(own)}の被ファールで記録したもの。同じ選手の2枚目のイエローは「2枚目」に数える。退場：${esc(own)}はMATCH PLAYの退場の記録、${esc(opp)}は被ファールのイエロー2枚目とレッド。タイムアウトはMATCH PLAYの記録</p>`;
+  const inner = scoreH + flowH + cmpH + rlH + hintH;
   if (o.plain) return inner;
+  // 画面：左にスコア・得点経過・リカバリー、右に両チームの比較（縦に長くなりすぎないように。2026-10-18）
   return `<section class="rvsec" id="rv7"><div class="rvtt"><b>7. スコアとチームスタッツ</b><span>得点経過と、${esc(own)}と${esc(opp)}の比較。時間は経過時間</span></div>
-<div class="rvbox">${inner}</div></section>`;
+<div class="rvbox"><div class="rv7g"><div class="rv7l">${scoreH}${flowH}${rlH}</div><div class="rv7r">${cmpH}</div></div>${hintH}</div></section>`;
 }
 
 // ---------- 8. スタッツまとめ ----------
@@ -283,4 +289,35 @@ export function bandTip(box, area, sel, textOf) {
   area.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hide(); });
   window.addEventListener('scroll', hide, { passive: true });
   return { touch: () => touch };
+}
+
+// 1・2・4・6・8 の表の列幅（2026-10-18）：等間隔をやめて、列の中身の長さに合わせて配る。
+// 列ごとに「中身（その試合の一番長い数字・名前）」と「見出しの文字（並べ替えの印は除く）」の長い方を測り、
+// 選手の列はその倍にして、表の幅をその比で分ける（中身の長い列ほど広い）。PDF にもそのまま写る（％で書くので）
+export function sizeCols(root) {
+  const rng = document.createRange();
+  const textW = (el) => { rng.selectNodeContents(el); return rng.getBoundingClientRect().width; };
+  for (const t of root.querySelectorAll('table.rvauto')) {
+    const rows = [...t.rows]; if (rows.length < 2) continue;
+    const head = rows[0]; const n = head.cells.length;
+    // 測るときは折り返さない・幅を決めない形にする
+    t.classList.add('rvmeasure');
+    const w = Array(n).fill(0);
+    for (const r of rows.slice(1)) {
+      if (r.cells.length !== n) continue; // 「まだありません」など横につないだ行
+      const label = r.classList.contains('ex') || r.classList.contains('tot');
+      [...r.cells].forEach((c, i) => { if (label && c.classList.contains('setn')) return; w[i] = Math.max(w[i], textW(c)); });
+    }
+    [...head.cells].forEach((c, i) => {
+      const k = c.cloneNode(true); k.querySelectorAll('i').forEach((x) => x.remove());
+      // 見出しは改行（<br>）ごとの一番長い行
+      const lines = k.innerHTML.split(/<br\s*\/?>/i).map((h) => { const sp = document.createElement('span'); sp.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:inherit'; sp.innerHTML = h; c.appendChild(sp); const v = sp.getBoundingClientRect().width; sp.remove(); return v; });
+      w[i] = Math.max(w[i], ...lines);
+    });
+    t.classList.remove('rvmeasure');
+    if (t.classList.contains('rvnm')) w[0] *= t.closest('.rvpgrid') && window.innerWidth > 1000 ? 1.4 : 2; // 選手の列は倍（2 は表が2つ並ぶので控えめ）
+    const pad = 18; const ws = w.map((x) => Math.max(18, x) + pad); const sum = ws.reduce((a, b) => a + b, 0);
+    let cg = t.querySelector('colgroup'); if (!cg) { cg = document.createElement('colgroup'); t.prepend(cg); }
+    cg.innerHTML = ws.map((x) => `<col style="width:${(x / sum * 100).toFixed(2)}%">`).join('');
+  }
 }

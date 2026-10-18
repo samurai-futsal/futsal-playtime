@@ -1194,18 +1194,22 @@ body.rvall .rvw .rvsec{scroll-margin-top:0}
 .rvrl{justify-content:center}
 /* 1・2・4・6・8 の表の列幅（2026-10-18）：列の中身（見出しと、その試合の数字の一番長い桁）に合わせ、
    残りの幅は中身の長い列ほど多く配る（等間隔をやめる）。選手の列は前の倍の幅。選手・順位・セットの見出しと中身は真ん中に */
-.rvtb.rveq.rvauto{table-layout:auto}
-.rvtb.rveq.rvauto th,.rvtb.rveq.rvauto td{white-space:nowrap}
-.rvtb.rveq.rvauto th{white-space:normal}
-.rvtb.rveq.rvnm col.c1{width:calc(2 * (56px + var(--nmw,3) * 17px))}
-.rvw.compact .rvtb.rveq.rvnm col.c1{width:calc(2 * (40px + var(--nmw,3) * 12px))}
+.rvtb.rveq.rvmeasure{table-layout:auto;width:auto}.rvtb.rveq.rvmeasure td{white-space:nowrap}
 .rvtb.rveq.rvnm th:first-child,.rvtb.rveq.rvnm td:first-child{text-align:center!important}
-.rvtb.rveq.rvauto.rvset col.c0,.rvtb.rveq.rvauto.rvset2 col.c0{width:auto}
-.rvtb.rveq.rvauto.rvset col.cset,.rvtb.rveq.rvauto.rvset2 col.cset{width:auto}
 .rvtb.rveq.rvauto.rvset th:nth-child(-n+2),.rvtb.rveq.rvauto.rvset2 th:nth-child(-n+2){text-align:center!important}
 .rvtb.rveq.rvauto.rvset td:first-child,.rvtb.rveq.rvauto.rvset2 td:first-child{text-align:center}
-.rvtb.rveq.rvauto .setn{white-space:nowrap}
+.rvtb.rveq.rvauto .setn .spw{justify-content:center}
 /* 2 は表が2つ横に並ぶので、選手の列は少し控えめに（数字の列がつぶれないように） */
-.rvpgrid .rvtb.rveq.rvnm col.c1{width:calc(1.4 * (44px + var(--nmw,3) * 15px))}
-.rvpgrid .rvtb.rveq.rvauto th{white-space:nowrap}
-@media (max-width:1000px){.rvpgrid .rvtb.rveq.rvnm col.c1{width:calc(2 * (44px + var(--nmw,3) * 15px))}}
+
+.chks2{display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin-top:30px}.chks2 .chk{margin-top:0}
+/* 7（2026-10-18 その2）：左＝スコア・得点経過・リカバリー、右＝比較。得点経過の見出しは濃い字、中身はすべて真ん中 */
+.rv7g{display:grid;grid-template-columns:minmax(0,auto) minmax(0,auto);justify-content:center;gap:12px 40px;align-items:start}
+@media (max-width:1100px){.rv7g{grid-template-columns:1fr}}
+.rv7g .rvcmp{margin:0 auto}
+.rvflow th{color:#0B2D6B;font-size:13px;font-weight:800;text-align:center;padding:0 12px 3px}
+.rvflow td{text-align:center;padding:6px 12px;color:#18233A;font-weight:600}
+.rvflow td.gtm{color:#18233A}
+.rvflow td small{color:#56607A}
+.rvflow .gnm{margin-left:6px}
+.rvscore7{margin:0 0 10px}
+.rvrl{margin-top:10px}

@@ -7,7 +7,7 @@ import { matchModel, toRunning, playerTable, playedTime, periodSig, entryOrder }
 import { ppWindows, setSplit, setCountTable, asOfLabel } from './teamstats.js';
 import { esc, fmtShort, fmtDate, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
-import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge, rvHl, hlc, bindPacePick, bandTip, tSort, tSortNext, tsh, tSorted } from './review58.js';
+import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge, rvHl, hlc, bindPacePick, bandTip, sizeCols, tSort, tSortNext, tsh, tSorted } from './review58.js';
 import { ensureChecks } from './evinput.js';
 import { savePdf, safeName, preloadPdf } from './pdfsave.js';
 
@@ -270,6 +270,7 @@ function bindReview(m) {
     // 表の行を押すと強調（1・2・4・6・8。何行でも。もう一度押すと戻す）
     root.querySelectorAll('tr[data-hlk]').forEach((tr) => tr.onclick = () => { const k = tr.dataset.hlk; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); tr.classList.toggle('hl', rvHl.has(k)); });
     bindPacePick(root);
+    sizeCols(root); // 表の列幅を中身に合わせる（大きく表示で枠を広げる前に）
     bindFull(root);
     if (!fullAll) paceMeasure(root);
     { const bx = root.querySelector('#rv1 .rvbox'), bsv = bx?.querySelector('svg.rvbar'); if (bsv) bandTip(bx, bsv, '.rbar', (g) => g.dataset.bt); }
