@@ -117,7 +117,7 @@ export function vReview(m) {
   const maxT = Math.max(gridStep * 60000, Math.ceil(fpMax / (gridStep * 60000)) * gridStep * 60000);
   const W = 1040, GW = 200, Hc = 170, L = 52, PW = W - GW - 16;
   const n = fpList.length, cw = (PW - L) / Math.max(n, 1), bw = Math.min(46, cw * 0.62);
-  const sv = [`<svg class="rvbar" viewBox="0 0 ${W + 10} ${Hc + 64}" preserveAspectRatio="xMinYMin meet">`];
+  const sv = [`<svg class="rvbar" viewBox="0 0 ${W + 10} ${Hc + 64}" preserveAspectRatio="xMidYMin meet">`];
   for (let mi = 0; mi * 60000 <= maxT; mi += gridStep) {
     const y = 20 + Hc - Hc * (mi * 60000) / maxT;
     sv.push(`<line x1="${L}" y1="${y}" x2="${PW}" y2="${y}" stroke="${mi === 0 ? '#18233A' : '#E1E6EF'}"/><text x="${L - 6}" y="${y + 4}" font-size="12" fill="#8A94A6" text-anchor="end">${mi}:00</text>`);
@@ -164,7 +164,7 @@ export function vReview(m) {
   }).join('');
   const nmw0 = Math.max(2, ...order.map((pid) => last(pid).length));
   const s1 = `<section class="rvsec" id="rv1"><div class="rvtt"><b>1. 出場時間</b><span>グラフはFP（GKは右の枠）。点線＝FPの平均。出場率は ${denomTxt} に対して${runMode ? '。ランニングタイム＝止まっている間も含む実際の時間' : ''}</span></div>
-    <div class="rvbox"><div class="rvlg">${legend}</div>${sv.join('')}
+    <div class="rvbox"><div class="rvbarw" style="max-width:${Math.round(290 * (W + 10) / (Hc + 64))}px"><div class="rvlg">${legend}</div>${sv.join('')}</div>
     <table class="rvtb rveq rvauto rvnm" data-nmx="1.33" style="--nmw:${nmw0}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}${th}</tr>${rows}</table>
     <p class="rvhint">初めは合計の長い順。見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）、「選手」を押すと背番号順。グラフも同じ順に並びます</p></div></section>`;
 

@@ -1252,3 +1252,5 @@ body.rvall .rvw .rvsec{scroll-margin-top:0}
 @media (max-width:1000px){.rvset2 .setn .spw{grid-template-columns:repeat(2,calc(34px + var(--nmw,3) * 13px))}}
 .rvflow td.nog{text-align:center;color:#3A4660;font-weight:700;padding:8px 24px;border-radius:8px}
 #rv7 .rvbox{flex-grow:0}
+/* 1：グラフは表の幅の真ん中に（凡例もグラフの左上にそろえる） */
+.rvbarw{margin:0 auto}
