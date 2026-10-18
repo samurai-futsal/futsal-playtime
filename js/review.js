@@ -77,11 +77,10 @@ export function vReview(m) {
   // 項目の番号は固定（1〜8）。出ていない項目は番号が飛ぶので、上部にその理由を書く
   const jumps = [[1, '出場時間', 'rv1'], [2, '1回ごと', 'rv1b'], [3, 'タイムライン', 'rv2'], [4, 'セット', 'rv3'], [5, 'ペース', 'rv5'], [6, 'セット別', 'rv4b'], [7, 'スコア', 'rv7'], [8, 'スタッツ', 'rv8']].map(([n, t, id]) => `<a class="rvjp ${n >= 5 && !evs.length ? 'wait' : ''}" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
-      <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn ${started ? 'pri' : ''}" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a><span class="rvstate">${state}</span><span class="rvctl">${sw}
+      <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn ${started ? 'pri' : ''}" href="#/m/${m.id}/play">MATCH PLAY ›</a><a class="btn" href="#/m/${m.id}/stats">マッチスタッツ ›</a><span class="rvstate">${state}</span><span class="rvctl">${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
-        <button class="btn" id="rvCompact">${isCompact() ? '通常の表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで保存</button><a class="btn" href="#/m/${m.id}/stats">マッチスタッツ ›</a><button class="btn ${fullAll ? 'pri' : ''}" id="rvFull">${fullAll ? '× 閉じる' : '⛶ 大きく表示'}</button></span></div>
+        <button class="btn" id="rvPdf">PDFで保存</button><span class="rvzoom"><button class="btn" id="rvCompact">${isCompact() ? '通常の表示' : '縮小表示'}</button><button class="btn ${fullAll ? 'pri' : ''}" id="rvFull">${fullAll ? '× 閉じる' : '⛶ 拡大表示'}</button></span></span></div>
       <div class="rvjumps">${jumps}${evs.length ? '' : '<span class="rvnote">5〜8 はイベントを入力すると表示されます</span>'}
-        ${M.fixed.length ? `<span class="rvfix">記録の修正を反映：${M.fixed.map((k) => periodLabel(k)).join('・')}</span>` : ''}
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
 
   // PDFで書き出すとき（印刷）だけ出す見出し：どの試合の、どこまでの記録か
@@ -123,6 +122,7 @@ export function vReview(m) {
     const y = 20 + Hc - Hc * (mi * 60000) / maxT;
     sv.push(`<line x1="${L}" y1="${y}" x2="${PW}" y2="${y}" stroke="${mi === 0 ? '#18233A' : '#E1E6EF'}"/><text x="${L - 6}" y="${y + 4}" font-size="12" fill="#8A94A6" text-anchor="end">${mi}:00</text>`);
   }
+  const labs = [];
   fpList.forEach((pid, k) => {
     const x = L + 6 + k * cw + (cw - bw) / 2; let y = 20 + Hc;
     // 棒にカーソルを合わせる（iPadは触れる）と、前半・後半の内訳を出す（2026-10-17）
@@ -134,7 +134,9 @@ export function vReview(m) {
       sv.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${COL[p.key]}"/>`);
     }
     const tot = T[pid]?.total || 0;
-    sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="15" font-weight="800" fill="#0B2D6B" text-anchor="middle">${mmss(tot)}</text></g>`);
+    // 棒の上の合計は、FP平均の点線より上に重ねる（線がかぶっても読めるよう白いふち。2026-10-18）
+    labs.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="15" font-weight="800" fill="#0B2D6B" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">${mmss(tot)}</text>`);
+    sv.push(`<rect x="${x.toFixed(1)}" y="${(y - 24).toFixed(1)}" width="${bw.toFixed(1)}" height="24" fill="transparent"/></g>`);
     sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 19}" font-size="15" font-weight="800" fill="#1F5FBF" text-anchor="middle">${esc(mem(pid).no ?? '')}</text>`
       + `<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 37}" font-size="12.5" fill="#5F6B80" text-anchor="middle">${esc(last(pid))}</text></g>`);
   });
@@ -142,6 +144,7 @@ export function vReview(m) {
     const ya = 20 + Hc - Hc * fpAvg / maxT;
     sv.push(`<line x1="${L}" y1="${ya.toFixed(1)}" x2="${PW}" y2="${ya.toFixed(1)}" stroke="#E0832B" stroke-width="2.5" stroke-dasharray="7 5"/><text x="${PW + 4}" y="${(ya - 4).toFixed(1)}" font-size="12" font-weight="800" fill="#E0832B">FP平均</text><text x="${PW + 4}" y="${(ya + 11).toFixed(1)}" font-size="12" font-weight="800" fill="#E0832B">${mmss(fpAvg)}</text>`);
   }
+  sv.push(...labs);
   const gx = W - GW + 40;
   sv.push(`<rect x="${gx - 10}" y="16" width="${GW - 40}" height="${Hc + 8}" rx="10" fill="#F6F8FB" stroke="#E1E6EF"/><text x="${gx + (GW - 60) / 2}" y="38" font-size="13" font-weight="800" fill="#0B2D6B" text-anchor="middle">GK（別枠）</text>`);
   gkList.forEach((pid, i) => {
@@ -157,12 +160,12 @@ export function vReview(m) {
       if (p.status === 'none') return '<td class="na">—</td><td class="na">—</td>';
       const c = r.per[p.key]; return `<td>${mmss(c?.time || 0)}</td><td>${c?.count || 0}</td>`;
     }).join('');
-    return `<tr class="${r.total ? '' : 'zero'} ${hlc('1:' + pid)}" data-hlk="1:${pid}"><td>${badge(pid)} ${esc(last(pid))}</td><td class="sum"><b>${mmss(r.total)}</b></td><td class="sum">${r.count}</td><td class="sum">${played ? Math.round(r.total / played * 100) : 0}%</td>${cells}</tr>`;
+    return `<tr class="${r.total ? '' : 'zero'} ${hlc('1:' + pid)}" data-hlk="1:${pid}"><td><span class="pnm">${badge(pid)}<span>${esc(last(pid))}</span></span></td><td class="sum"><b>${mmss(r.total)}</b></td><td class="sum">${r.count}</td><td class="sum">${played ? Math.round(r.total / played * 100) : 0}%</td>${cells}</tr>`;
   }).join('');
   const nmw0 = Math.max(2, ...order.map((pid) => last(pid).length));
   const s1 = `<section class="rvsec" id="rv1"><div class="rvtt"><b>1. 出場時間</b><span>グラフはFP（GKは右の枠）。点線＝FPの平均。出場率は ${denomTxt} に対して${runMode ? '。ランニングタイム＝止まっている間も含む実際の時間' : ''}</span></div>
     <div class="rvbox"><div class="rvlg">${legend}</div>${sv.join('')}
-    <table class="rvtb rveq rvauto rvnm" style="--nmw:${nmw0}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}${th}</tr>${rows}</table>
+    <table class="rvtb rveq rvauto rvnm" data-nmx="1.33" style="--nmw:${nmw0}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}${th}</tr>${rows}</table>
     <p class="rvhint">初めは合計の長い順。見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）、「選手」を押すと背番号順。グラフも同じ順に並びます</p></div></section>`;
 
   // ---------- 2. 1回ごとの出場時間 ----------
@@ -181,7 +184,7 @@ export function vReview(m) {
         const now = x.open && onNow.has(pid);
         return `<td class="${d < 60000 ? 'sh' : ''}"><b>${mmss(d)}</b><small>${clk(p, x.from)}〜${now ? '出場中' : clk(p, x.to)}</small></td>`;
       }).join('');
-      return `<tr class="${l.length ? '' : 'zero'} ${hlc(`2:${p.key}:${pid}`)}" data-hlk="2:${p.key}:${pid}"><td>${badge(pid)} ${esc(last(pid))}</td><td class="sum"><b>${mmss(tot)}</b></td><td class="sum">${l.length}</td>${cells}</tr>`;
+      return `<tr class="${l.length ? '' : 'zero'} ${hlc(`2:${p.key}:${pid}`)}" data-hlk="2:${p.key}:${pid}"><td><span class="pnm">${badge(pid)}<span>${esc(last(pid))}</span></span></td><td class="sum"><b>${mmss(tot)}</b></td><td class="sum">${l.length}</td>${cells}</tr>`;
     }).join('');
     return `<div class="rvpcol"><div class="rvst2"><b>${p.label}</b><span>（${mmss(p.elapsed)}）</span></div><table class="rvtb rvper rveq rvauto rvnm" style="--nmw:${Math.max(2, ...order.map((pid) => last(pid).length))}"><colgroup><col class="c1"></colgroup><tr><th>選手</th><th>合計</th><th>回数</th>${hd}</tr>${body}</table></div>`;
   }).join('');

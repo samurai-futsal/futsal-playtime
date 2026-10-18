@@ -1167,7 +1167,7 @@ body.rvall .page{max-width:none;padding-left:calc(12px + env(safe-area-inset-lef
 /* 大きく表示：上の行（1〜8のボタンなど）はなくし、「× 閉じる」だけを右上に浮かせる。1項目＝1画面で、上下に動かして見る */
 html:has(body.rvall){scroll-snap-type:y proximity}
 body.rvall .rvhead{position:fixed;top:calc(8px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));left:auto;width:auto;padding:0;background:none;border:none;z-index:60}
-body.rvall .rvhead .rvjumps,body.rvall .rvhead .rvrow>:not(.rvctl),body.rvall .rvhead .rvctl>:not(#rvFull){display:none}
+body.rvall .rvhead .rvjumps,body.rvall .rvhead .rvrow>:not(.rvctl),body.rvall .rvhead .rvctl>:not(.rvzoom),body.rvall .rvhead .rvzoom>:not(#rvFull){display:none}
 body.rvall #rvFull{min-height:46px;padding:0 20px;font-size:16px;box-shadow:0 4px 14px rgba(14,27,51,.25)}
 body.rvall .rvw .rvsec{min-height:100vh;min-height:100dvh;scroll-snap-align:start;padding-top:calc(10px + env(safe-area-inset-top));padding-bottom:10px;border-top:0;box-sizing:border-box}
 body.rvall .rvw .rvsec .rvtt{padding-right:150px}
@@ -1213,3 +1213,34 @@ body.rvall .rvw .rvsec{scroll-margin-top:0}
 .rvflow .gnm{margin-left:6px}
 .rvscore7{margin:0 0 10px}
 .rvrl{margin-top:10px}
+
+/* 見出しのボタン：縮小表示と拡大表示を並べる */
+.rvzoom{display:inline-flex;gap:6px}
+/* 1・2・8：番号は番号で、名前は名前でそろえる（番号の枠は同じ幅、名前は左ぞろえ。かたまりごと列の真ん中に） */
+.pnm{display:inline-grid;grid-template-columns:32px auto;column-gap:7px;align-items:center;text-align:left;min-width:calc(39px + var(--nmw,3) * 1.05em);vertical-align:middle}
+.pnm>.no{justify-self:center;min-width:28px}
+/* 7：上下に並べたまま、1画面に入るように詰める（2026-10-18） */
+.rv7g{display:block}
+#rv7 .rvscore7{margin:0 0 6px;gap:0}
+#rv7 .rvscore7 .tn{font-size:19px}#rv7 .rvscore7 .sv{font-size:28px}
+#rv7 .rvscore7 .hv{font-size:14px;flex-direction:row;gap:18px}
+#rv7 .rvflow{border-spacing:0 3px;margin-bottom:4px;font-size:14px}
+#rv7 .rvflow td{padding:3px 12px}#rv7 .rvflow td.gsc b{font-size:16px}
+#rv7 .rvrl{margin:6px auto 8px;padding:6px 14px;max-width:760px}
+#rv7 .rvcmp td,#rv7 .rvcmp th{padding-top:2px!important;padding-bottom:2px!important}
+#rv7 .rvcmp .cv{font-size:18px}
+#rv7 .rvhint{margin-top:4px}
+/* 1：凡例（前半・後半）はグラフの左上に */
+#rv1 .rvlg{text-align:left;padding-left:4.5%;margin-bottom:-4px}#rv1 .rvlg .lg{margin-left:0;margin-right:16px;font-size:14px;font-weight:700}
+#rv7 .rvcmp{margin-top:6px}
+#rv7 .rvcmp td{padding:1px 8px!important;line-height:1.15}
+#rv7 .rvcmp .cv{font-size:17px;white-space:nowrap}
+#rv7 .rvcmp .cv small{display:inline;margin-left:6px;font-size:10.5px}
+#rv7 .rvcmp .cl{font-size:14px}
+#rv7 .rvcmp th{padding:0 4px 2px;font-size:14px}
+#rv7 .rvflow{border-spacing:0 2px}#rv7 .rvflow td{padding:2px 12px}#rv7 .rvflow th{padding-bottom:0}
+#rv7 .rvscore7 .sc1{line-height:1.1}
+#rv7 .rvrl{padding:4px 14px;margin:6px auto 4px}
+#rv7 .rvhint{font-size:11px;line-height:1.4;margin:2px 0 0}
+#rv7 .rvbox{padding-top:10px;padding-bottom:10px}
+#rv7 .rvcmp .cv{width:auto;min-width:120px}

@@ -88,7 +88,7 @@ export function vSplit(m) {
   const rowsOf = (ks, cls) => ks.map((k) => `<tr><td class="ev ${cls}">${kindLabel(k)}</td>${Array.from({ length: sp.n }, (_, i) => cell(k, i)).join('')}</tr>`).join('');
   const cnt = (i) => kindsShown(kindsOf(sp, i)).length;
   const html = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › <a href="#/m/${m.id}/events">イベント入力</a> › 入力担当の設定</div>
-    <div class="row between"><h1 style="margin:0">入力担当の設定</h1><a class="btn pri" href="#/m/${m.id}/events">イベント入力へ ›</a></div>
+    <div class="row between"><h1 style="margin:0">入力担当の設定</h1><a class="btn pri" href="#/m/${m.id}/events">イベント入力 ›</a></div>
     <p class="mu">何人で入力するかと、それぞれが入れるイベントを決めます。どのイベントも必ず1人だけが担当します（押した担当に移ります）。この試合のすべての端末に同じ分担が出て、試合中でも変えられます。</p>
     <div class="card"><h3>① 入力の担当人数</h3><div class="seg spn">${[1, 2, 3, 4, 5].map((v) => `<button data-sn="${v}" class="${sp.n === v ? 'on' : ''}">${v === 1 ? '1人（全部）' : v + '人'}</button>`).join('')}</div>
 </div>

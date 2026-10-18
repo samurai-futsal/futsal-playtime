@@ -209,9 +209,9 @@ ${cmp('シュート', A.shots, B.shots, [`SZ内 ${A.sz}`, `SZ内 ${B.sz}`])}${cm
   const hintH = `<p class="rvhint">シュートは得点を含む（OGは除く）。${esc(opp)}のファール・カード＝${esc(own)}の被ファールで記録したもの。同じ選手の2枚目のイエローは「2枚目」に数える。退場：${esc(own)}はMATCH PLAYの退場の記録、${esc(opp)}は被ファールのイエロー2枚目とレッド。タイムアウトはMATCH PLAYの記録</p>`;
   const inner = scoreH + flowH + cmpH + rlH + hintH;
   if (o.plain) return inner;
-  // 画面：左にスコア・得点経過・リカバリー、右に両チームの比較（縦に長くなりすぎないように。2026-10-18）
+  // 画面：上から スコア → 得点経過 → 比較 → リカバリーとロスト（1画面に入るように詰めて表示。2026-10-18）
   return `<section class="rvsec" id="rv7"><div class="rvtt"><b>7. スコアとチームスタッツ</b><span>得点経過と、${esc(own)}と${esc(opp)}の比較。時間は経過時間</span></div>
-<div class="rvbox"><div class="rv7g"><div class="rv7l">${scoreH}${flowH}${rlH}</div><div class="rv7r">${cmpH}</div></div>${hintH}</div></section>`;
+<div class="rvbox">${scoreH}${flowH}${cmpH}${rlH}${hintH}</div></section>`;
 }
 
 // ---------- 8. スタッツまとめ ----------
@@ -222,7 +222,7 @@ export function playerSection(c) {
   const sum = (k) => P.rows.reduce((a, r) => a + r[k], 0);
   const rows = tSorted(8, P.rows, (r, k) => r[k], (r) => !r.time).map((r) => {
     const z = (v) => (r.time ? v : `<span class="na">${v}</span>`);
-    return `<tr class="${r.time ? '' : 'zero'} ${hlc('8:' + r.pid)}" data-hlk="8:${r.pid}"><td>${badge(r.pid)} ${esc(last(r.pid))}</td><td>${mmss(r.time)}</td><td>${z(r.shots)}<small>（${r.sz}）</small></td><td class="w">${z(r.shotOn)}</td><td class="o">${z(r.oshotOn)}</td><td>${z(r.in)}</td><td>${z(r.goals)}</td><td>${z(r.assists)}</td><td>${z(r.inv)}</td><td>${z(r.passFrom)}</td><td>${z(r.passTo)}</td><td>${z(r.rec)}</td><td>${z(r.lost)}</td><td>${z(r.foul)}</td><td><b>${r.time ? (r.pm > 0 ? '+' + r.pm : r.pm) : '<span class="na">0</span>'}</b></td></tr>`;
+    return `<tr class="${r.time ? '' : 'zero'} ${hlc('8:' + r.pid)}" data-hlk="8:${r.pid}"><td><span class="pnm">${badge(r.pid)}<span>${esc(last(r.pid))}</span></span></td><td>${mmss(r.time)}</td><td>${z(r.shots)}<small>（${r.sz}）</small></td><td class="w">${z(r.shotOn)}</td><td class="o">${z(r.oshotOn)}</td><td>${z(r.in)}</td><td>${z(r.goals)}</td><td>${z(r.assists)}</td><td>${z(r.inv)}</td><td>${z(r.passFrom)}</td><td>${z(r.passTo)}</td><td>${z(r.rec)}</td><td>${z(r.lost)}</td><td>${z(r.foul)}</td><td><b>${r.time ? (r.pm > 0 ? '+' + r.pm : r.pm) : '<span class="na">0</span>'}</b></td></tr>`;
   }).join('');
   const tot = (side) => Object.values(R.score[side]).reduce((a, b) => a + b, 0);
   const goalsN = tot('own');
@@ -315,7 +315,7 @@ export function sizeCols(root) {
       w[i] = Math.max(w[i], ...lines);
     });
     t.classList.remove('rvmeasure');
-    if (t.classList.contains('rvnm')) w[0] *= t.closest('.rvpgrid') && window.innerWidth > 1000 ? 1.4 : 2; // 選手の列は倍（2 は表が2つ並ぶので控えめ）
+    if (t.classList.contains('rvnm')) w[0] *= t.dataset.nmx ? +t.dataset.nmx : t.closest('.rvpgrid') && window.innerWidth > 1000 ? 1.4 : 2; // 選手の列は倍（2 は表が2つ並ぶので控えめ）
     const pad = 18; const ws = w.map((x) => Math.max(18, x) + pad); const sum = ws.reduce((a, b) => a + b, 0);
     let cg = t.querySelector('colgroup'); if (!cg) { cg = document.createElement('colgroup'); t.prepend(cg); }
     cg.innerHTML = ws.map((x) => `<col style="width:${(x / sum * 100).toFixed(2)}%">`).join('');
