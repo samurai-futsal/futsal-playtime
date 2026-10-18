@@ -162,7 +162,7 @@ export function vReview(m) {
   const nmw0 = Math.max(2, ...order.map((pid) => last(pid).length));
   const s1 = `<section class="rvsec" id="rv1"><div class="rvtt"><b>1. 出場時間</b><span>グラフはFP（GKは右の枠）。点線＝FPの平均。出場率は ${denomTxt} に対して${runMode ? '。ランニングタイム＝止まっている間も含む実際の時間' : ''}</span></div>
     <div class="rvbox"><div class="rvlg">${legend}</div>${sv.join('')}
-    <table class="rvtb rveq" style="--nmw:${nmw0}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}${th}</tr>${rows}</table>
+    <table class="rvtb rveq rvauto rvnm" style="--nmw:${nmw0}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${sortState.col ? '' : 'on'}" data-sort="">選手<i>${sortState.col ? '' : '背番号順'}</i></th>${sh('total', '合計')}${sh('count', '回数')}${sh('rate', '出場率')}${th}</tr>${rows}</table>
     <p class="rvhint">初めは合計の長い順。見出しを押すと並べ替え（多い順 → 少ない順 → 背番号順）、「選手」を押すと背番号順。グラフも同じ順に並びます</p></div></section>`;
 
   // ---------- 2. 1回ごとの出場時間 ----------
@@ -183,7 +183,7 @@ export function vReview(m) {
       }).join('');
       return `<tr class="${l.length ? '' : 'zero'} ${hlc(`2:${p.key}:${pid}`)}" data-hlk="2:${p.key}:${pid}"><td>${badge(pid)} ${esc(last(pid))}</td><td class="sum"><b>${mmss(tot)}</b></td><td class="sum">${l.length}</td>${cells}</tr>`;
     }).join('');
-    return `<div class="rvpcol"><div class="rvst2"><b>${p.label}</b><span>（${mmss(p.elapsed)}）</span></div><table class="rvtb rvper rveq" style="--nmw:${Math.max(2, ...order.map((pid) => last(pid).length))}"><colgroup><col class="c1"></colgroup><tr><th>選手</th><th>合計</th><th>回数</th>${hd}</tr>${body}</table></div>`;
+    return `<div class="rvpcol"><div class="rvst2"><b>${p.label}</b><span>（${mmss(p.elapsed)}）</span></div><table class="rvtb rvper rveq rvauto rvnm" style="--nmw:${Math.max(2, ...order.map((pid) => last(pid).length))}"><colgroup><col class="c1"></colgroup><tr><th>選手</th><th>合計</th><th>回数</th>${hd}</tr>${body}</table></div>`;
   }).join('');
   const s1b = `<section class="rvsec" id="rv1b"><div class="rvtt"><b>2. 1回ごとの出場時間</b><span>大きい数字＝その回の時間、小さい数字＝入った〜出た（${runMode ? 'キックオフからの実際の時間' : '経過時間'}）。オレンジ＝1分未満</span></div>
     <div class="rvbox"><div class="rvpgrid">${perTables}</div></div></section>`;
@@ -220,7 +220,7 @@ export function vReview(m) {
     + (SP4.time.ex ? exRow('5×4・4×5と退場の時間帯', (S) => S.time.ex) : '') + (SP4.time.special ? exRow('GK1人・FP4人がそろっていない区間', (S) => S.time.special) : '') + (SP4.time.other ? exRow('交代の瞬間の3秒未満の組み合わせ', (S) => S.time.other) : '')
     + `<tr class="tot"><td></td><td style="text-align:left">合計</td><td>${mmss(SP4.time.played)}</td><td></td>${shownP.map((p) => (p.status === 'none' ? '<td class="na">—</td><td></td>' : `<td>${mmss(SPp[p.key].time.played)}</td><td></td>`)).join('')}</tr>`;
   const s3 = `<section class="rvsec" id="rv3"><div class="rvtt"><b>4. セットの出場時間</b><span>FP4人の組み合わせ（合計の長い順）。数的同数の時間帯だけ。${mmss(setMin)}未満のセットや除いた時間は下の行に。見出しを押すと並べ替え</span></div>
-    <div class="rvbox"><table class="rvtb rvset rvset4 rveq" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th class="srt ${tSort[4].col ? '' : 'on'}" data-tsort="4:">順位</th><th style="text-align:left">FP4人のセット</th>${tsh(4, 'tot', '合計', 'sum')}<th class="sum">回数</th>${shownP.map((p) => tsh(4, p.key, p.label) + '<th>回数</th>').join('')}</tr>${setRows}</table></div></section>`;
+    <div class="rvbox"><table class="rvtb rvset rvset4 rveq rvauto" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th class="srt ${tSort[4].col ? '' : 'on'}" data-tsort="4:">順位</th><th style="text-align:left">FP4人のセット</th>${tsh(4, 'tot', '合計', 'sum')}<th class="sum">回数</th>${shownP.map((p) => tsh(4, p.key, p.label) + '<th>回数</th>').join('')}</tr>${setRows}</table></div></section>`;
 
   // ---------- 6. セットごとのシュート・ゾーン進入・FINISH SET PLAY（イベントがあるときだけ） ----------
   let s4b = '';
@@ -247,7 +247,7 @@ export function vReview(m) {
       + sum('5×4・4×5と退場の時間帯', et.ex, 'ex') + sum('GK1人・FP4人がそろっていない区間', et.special, 'special') + sum('交代の瞬間の3秒未満の組み合わせ', et.other, 'other')
       + (() => { const parts = pick('total'); return `<tr class="tot"><td></td><td style="text-align:left">合計</td>${tcell(et.total.time, parts, true)}${et.total.c.map((v, i) => `<td class="${i % 2 ? 'o' : 'w'}"><b>${v}</b>${brk(parts, (r) => r?.c[i] || 0)}</td>`).join('')}</tr>`; })();
     s4b = `<section class="rvsec" id="rv4b"><div class="rvtt"><b>6. セットごとのシュート・ゾーン進入・FINISH SET PLAY</b><span>セットがピッチにいる間の回数（数的同数の時間帯だけ）。青＝自チーム、赤＝相手。大きい数字＝合計、下の小さい数字＝前半・後半。見出しを押すと並べ替え</span></div>
-    <div class="rvbox"><table class="rvtb rvset2 rveq" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th class="srt ${tSort[6].col ? '' : 'on'}" data-tsort="6:">順位</th><th style="text-align:left">FP4人のセット</th>${tsh(6, 'time', '出場時間')}${et.cols.map(([, l], i) => tsh(6, String(i), l.replace('FINISH SET PLAY ', 'FINISH SET PLAY<br>'), i % 2 ? 'o' : 'w')).join('')}</tr>${body}</table></div></section>`;
+    <div class="rvbox"><table class="rvtb rvset2 rveq rvauto" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th class="srt ${tSort[6].col ? '' : 'on'}" data-tsort="6:">順位</th><th style="text-align:left">FP4人のセット</th>${tsh(6, 'time', '出場時間')}${et.cols.map(([, l], i) => tsh(6, String(i), l.replace('FINISH SET PLAY ', 'FINISH SET PLAY<br>'), i % 2 ? 'o' : 'w')).join('')}</tr>${body}</table></div></section>`;
   }
 
   return { active: 'acts', html: `<div class="rvw ${isCompact() && !fullAll ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${evs.length ? paceFit(C) + s4b + teamSection(C) + playerSection(C) : waitSections(m)}</div></div>`, bind: bindReview(m) };

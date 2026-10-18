@@ -1179,3 +1179,33 @@ body.rvall .rvw .rvsec{scroll-margin-top:0}
 #rv1 .rvtb td.sum{background:#EEF3FB}
 .rvper td.sum{text-align:center}
 #rv1 .rvtb tr:not(.hl) td.sum,.rvper tr:not(.hl) td.sum,.rvset4 tr:not(.hl):not(.ex):not(.tot) td.sum{background:#EEF3FB!important}
+/* 7. スコア：真ん中に、下に前半・後半を1行ずつ。得点経過は1点1行で、列は中身の幅だけ（2026-10-18） */
+.rvscore7{display:flex;flex-direction:column;align-items:center;gap:4px;margin:4px 0 14px;text-align:center}
+.rvscore7 .sc1{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap}
+.rvscore7 .hv{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:16px;font-weight:700;color:#3A4660;margin:0}
+.rvflow{border-collapse:separate;border-spacing:0 4px;margin:0 auto 6px;width:auto;max-width:100%;font-size:15px}
+.rvflow th{font-size:12px;color:#56607A;font-weight:700;padding:0 14px 2px;text-align:left;white-space:nowrap}
+.rvflow td{padding:7px 14px;text-align:left;white-space:nowrap;background:#F6F8FC}
+.rvflow td:first-child{border-radius:8px 0 0 8px}.rvflow td:last-child{border-radius:0 8px 8px 0}
+.rvflow tr.own td{background:#EEF3FB}.rvflow tr.opp td{background:#FDF1F0}
+.rvflow tr.own td.gtn{color:#1F5FBF;font-weight:800}.rvflow tr.opp td.gtn{color:#C8312B;font-weight:800}
+.rvflow td.gsc b{font-size:18px;font-weight:900;color:#0B2D6B}.rvflow td.gtm{font-variant-numeric:tabular-nums;color:#3A4660}
+.rvflow td small{font-size:11px;color:#8A93A6;margin-right:4px}
+.rvrl{justify-content:center}
+/* 1・2・4・6・8 の表の列幅（2026-10-18）：列の中身（見出しと、その試合の数字の一番長い桁）に合わせ、
+   残りの幅は中身の長い列ほど多く配る（等間隔をやめる）。選手の列は前の倍の幅。選手・順位・セットの見出しと中身は真ん中に */
+.rvtb.rveq.rvauto{table-layout:auto}
+.rvtb.rveq.rvauto th,.rvtb.rveq.rvauto td{white-space:nowrap}
+.rvtb.rveq.rvauto th{white-space:normal}
+.rvtb.rveq.rvnm col.c1{width:calc(2 * (56px + var(--nmw,3) * 17px))}
+.rvw.compact .rvtb.rveq.rvnm col.c1{width:calc(2 * (40px + var(--nmw,3) * 12px))}
+.rvtb.rveq.rvnm th:first-child,.rvtb.rveq.rvnm td:first-child{text-align:center!important}
+.rvtb.rveq.rvauto.rvset col.c0,.rvtb.rveq.rvauto.rvset2 col.c0{width:auto}
+.rvtb.rveq.rvauto.rvset col.cset,.rvtb.rveq.rvauto.rvset2 col.cset{width:auto}
+.rvtb.rveq.rvauto.rvset th:nth-child(-n+2),.rvtb.rveq.rvauto.rvset2 th:nth-child(-n+2){text-align:center!important}
+.rvtb.rveq.rvauto.rvset td:first-child,.rvtb.rveq.rvauto.rvset2 td:first-child{text-align:center}
+.rvtb.rveq.rvauto .setn{white-space:nowrap}
+/* 2 は表が2つ横に並ぶので、選手の列は少し控えめに（数字の列がつぶれないように） */
+.rvpgrid .rvtb.rveq.rvnm col.c1{width:calc(1.4 * (44px + var(--nmw,3) * 15px))}
+.rvpgrid .rvtb.rveq.rvauto th{white-space:nowrap}
+@media (max-width:1000px){.rvpgrid .rvtb.rveq.rvnm col.c1{width:calc(2 * (44px + var(--nmw,3) * 15px))}}

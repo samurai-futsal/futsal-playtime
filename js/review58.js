@@ -181,7 +181,8 @@ export function teamSection(c, o = {}) {
   const { R, badge, last, own, opp, goalName, M0 } = c;
   const { A, B } = R;
   const tot = (side) => Object.values(R.score[side]).reduce((a, b) => a + b, 0);
-  const per = M0.periods.filter((p) => p.status !== 'none').map((p) => `${p.label} ${R.score.own[p.key]}−${R.score.opp[p.key]}`).join('　') + (c.pk ? `　PK ${c.pk.own ?? 0}−${c.pk.opp ?? 0}` : '');
+  // スコアの下に、前半・後半…を1行ずつ（2026-10-18）
+  const per = M0.periods.filter((p) => p.status !== 'none').map((p) => `<span>${p.label}　${R.score.own[p.key]} − ${R.score.opp[p.key]}</span>`).join('') + (c.pk ? `<span>PK　${c.pk.own ?? 0} − ${c.pk.opp ?? 0}</span>` : '');
   let so = 0, sp = 0;
   const P = (pid) => (pid === OPP_OG ? '相手OG' : pid === UNKNOWN ? '不明' : pid ? `${badge(pid)}${esc(last(pid))}` : '<span class="na">—</span>');
   const flow = R.goals.map(({ e, own: o }) => {
@@ -189,14 +190,15 @@ export function teamSection(c, o = {}) {
     const pl = M0.periods.find((p) => p.key === e.period);
     const scorer = o ? P(e.pid) : (e.og ? `OG ${P(e.og)}` : '<span class="na">—</span>');
     const assist = !o || e.pid === OPP_OG ? '<span class="na">—</span>' : e.assist === NO_ASSIST ? 'なし' : e.assist ? P(e.assist) : '<span class="na">未入力</span>';
-    return `<tr><td>${pl?.label || ''}　${mmss(e.at)}</td><td class="${o ? 'own' : 'opp'}">${esc(o ? own : opp)}</td><td style="text-align:left">${scorer}</td><td style="text-align:left">${assist}</td><td>${e.gtype ? esc(goalName(e.gtype)) : '<span class="na">未入力</span>'}</td><td><b>${so} − ${sp}</b></td></tr>`;
+    // 1点ごとに1行。左から スコア・時間・チーム・得点者・アシスト・得点の種類（目を横に大きく動かさずに読めるよう、列は中身の幅だけ。2026-10-18）
+    return `<tr class="${o ? 'own' : 'opp'}"><td class="gsc"><b>${so} − ${sp}</b></td><td class="gtm">${pl?.label || ''} ${mmss(e.at)}</td><td class="gtn">${esc(o ? own : opp)}</td><td>${scorer}</td><td>${o ? `<small>アシスト</small> ${assist}` : ''}</td><td>${e.gtype ? esc(goalName(e.gtype)) : '<span class="na">種類 未入力</span>'}</td></tr>`;
   }).join('') || '<tr><td colspan="6" class="na" style="text-align:center">得点・失点はまだありません</td></tr>';
   const cmpMax = Math.max(1, A.shots, B.shots, A.z4, B.z4, A.fsp, B.fsp, A.foul, B.foul);
   const cmp = (label, a, b, sub = null) => `<tr><td class="xb l"><i style="width:${a == null ? 0 : Math.round(a / cmpMax * 170)}px"></i></td><td class="cv">${a == null ? '<span class="na">—</span>' : a}${sub && a != null ? `<small>${sub[0]}</small>` : ''}</td><td class="cl">${label}</td><td class="cv">${b == null ? '<span class="na">—</span>' : b}${sub && b != null ? `<small>${sub[1]}</small>` : ''}</td><td class="xb r"><i style="width:${b == null ? 0 : Math.round(b / cmpMax * 170)}px"></i></td></tr>`;
   const fspSub = (s) => `CK ${s.fspT[0]}・CK-KI ${s.fspT[1]}・KI ${s.fspT[2]}・FK ${s.fspT[3]}`;
   const cardSub = (s) => `イエロー${s.cards.yellow}・2枚目${s.cards.y2}・レッド${s.cards.red}`;
-  const inner = `<div class="rvscore7"><span class="tn">${esc(own)}</span><span class="sv">${tot('own')} − ${tot('opp')}</span><span class="tn">${esc(opp)}</span><span class="hv">${per}</span></div>${pkLine(c)}
-<table class="rvtb rvflow"><tr><th>時間</th><th>チーム</th><th style="text-align:left">得点者</th><th style="text-align:left">アシスト</th><th>得点の種類</th><th>スコア</th></tr>${flow}</table>
+  const inner = `<div class="rvscore7"><div class="sc1"><span class="tn">${esc(own)}</span><span class="sv">${tot('own')} − ${tot('opp')}</span><span class="tn">${esc(opp)}</span></div><div class="hv">${per}</div></div>${pkLine(c)}
+<table class="rvflow"><tr><th>スコア</th><th>時間</th><th>チーム</th><th>得点者</th><th>アシスト</th><th>得点の種類</th></tr>${flow}</table>
 <table class="rvcmp"><tr><th></th><th class="own">${esc(own)}</th><th></th><th class="opp">${esc(opp)}</th><th></th></tr>
 ${cmp('シュート', A.shots, B.shots, [`SZ内 ${A.sz}`, `SZ内 ${B.sz}`])}${cmp('枠内', A.in, B.in)}${cmp('Z4進入', A.z4, B.z4)}${cmp('SZ進入', A.szE, B.szE)}${cmp('FINISH SET PLAY', A.fsp, B.fsp, [fspSub(A), fspSub(B)])}${cmp('ファール', A.foul, B.foul)}${cmp('カード', A.cardN, B.cardN, [cardSub(A), cardSub(B)])}${cmp('退場', R.ejOwn, R.ejOpp)}${cmp('タイムアウト', R.timeouts.own, R.timeouts.opp)}</table>
 <div class="rvrl"><b>${esc(own)}のリカバリーとロスト</b><span>リカバリー <b>${R.rec}</b></span><span>ロスト <b>${R.lost}</b></span><span>差 <b>${R.rec - R.lost}</b></span></div>
@@ -219,7 +221,7 @@ export function playerSection(c) {
   const tot = (side) => Object.values(R.score[side]).reduce((a, b) => a + b, 0);
   const goalsN = tot('own');
   return `<section class="rvsec" id="rv8"><div class="rvtt"><b>8. スタッツまとめ</b><span>選手ごと（背番号順、GKは一番下）。見出しを押すと並べ替え。関与＝ピッチにいる間の数。±＝得点−失点</span></div>
-<div class="rvbox"><table class="rvtb rvs8 rveq" style="--nmw:${Math.max(2, ...P.rows.map((r) => last(r.pid).length))}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${tSort[8].col ? '' : 'on'}" data-tsort="8:">選手<i>${tSort[8].col ? '' : '背番号順'}</i></th>${tsh(8, 'time', '出場')}${tsh(8, 'shots', 'シュート<br><small>（SZ内）</small>')}${tsh(8, 'shotOn', 'シュート<br>関与', 'w')}${tsh(8, 'oshotOn', '被シュート<br>関与', 'o')}${tsh(8, 'in', '枠内')}${tsh(8, 'goals', '得点')}${tsh(8, 'assists', 'アシスト')}${tsh(8, 'inv', '進入関与')}${tsh(8, 'passFrom', 'パス<br>出し手')}${tsh(8, 'passTo', 'パス<br>受け手')}${tsh(8, 'rec', 'リカバリー')}${tsh(8, 'lost', 'ロスト')}${tsh(8, 'foul', 'ファール')}${tsh(8, 'pm', '得失点±')}</tr>${rows}
+<div class="rvbox"><table class="rvtb rvs8 rveq rvauto rvnm" style="--nmw:${Math.max(2, ...P.rows.map((r) => last(r.pid).length))}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${tSort[8].col ? '' : 'on'}" data-tsort="8:">選手<i>${tSort[8].col ? '' : '背番号順'}</i></th>${tsh(8, 'time', '出場')}${tsh(8, 'shots', 'シュート<br><small>（SZ内）</small>')}${tsh(8, 'shotOn', 'シュート<br>関与', 'w')}${tsh(8, 'oshotOn', '被シュート<br>関与', 'o')}${tsh(8, 'in', '枠内')}${tsh(8, 'goals', '得点')}${tsh(8, 'assists', 'アシスト')}${tsh(8, 'inv', '進入関与')}${tsh(8, 'passFrom', 'パス<br>出し手')}${tsh(8, 'passTo', 'パス<br>受け手')}${tsh(8, 'rec', 'リカバリー')}${tsh(8, 'lost', 'ロスト')}${tsh(8, 'foul', 'ファール')}${tsh(8, 'pm', '得失点±')}</tr>${rows}
 <tr class="tot"><td>チーム合計</td><td>${mmss(played)}</td><td>${R.A.shots}<small>（${R.A.sz}）</small></td><td class="w">${R.A.shots}</td><td class="o">${R.B.shots}</td><td>${R.A.in}</td><td>${goalsN}</td><td>${sum('assists')}${P.assistMiss ? `<div class="miss">未入力 ${P.assistMiss}</div>` : ''}</td><td>${sum('inv')}</td><td>${sum('passFrom')}</td><td>${sum('passTo')}</td><td>${R.rec}</td><td>${R.lost}</td><td>${R.A.foul}</td><td>${goalsN - tot('opp') > 0 ? '+' : ''}${goalsN - tot('opp')}</td></tr></table>
 <p class="rvhint">シュートは得点を含む。進入関与＝Z4進入・SZ進入に選手（パスの出し手・受け手を含む）として付いている回数。チーム合計のシュート・リカバリーなどは、選手が「不明」や未入力のものも含むので、選手の合計と合わないことがあります。得点には相手OGを含む</p></div></section>`;
 }
