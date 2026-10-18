@@ -88,15 +88,17 @@ export function paceSection(c, o = {}) {
   }
   // 得点・失点のラベル（目盛りの上の段）
   for (const l of lanes) s += `<text x="${l.x}" y="${26 + l.row * 14}" font-size="10.5" font-weight="800" text-anchor="${l.x > PW - 60 ? 'end' : l.x < X0 + 40 ? 'start' : 'middle'}" fill="${l.own ? GREEN : RED}">${esc(l.label)}</text>`;
-  const who = (pid, x0, y) => `<rect x="${x0}" y="${y + 3}" width="24" height="${rowH - 6}" rx="3" fill="${mem(pid).pos === 'GK' ? '#C8312B' : '#1F5FBF'}"/><text x="${x0 + 12}" y="${y + rowH - 8}" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">${esc(mem(pid).no ?? '')}</text>`;
+  // 番号の枠は行の高さいっぱい近くまで使い、番号と名前は行の真ん中にそろえる（窮屈・はみ出しに見えないように。2026-10-17）
+  const bh = Math.max(14, rowH - 3), fsN = Math.min(11, bh - 4), fsName = Math.min(13, rowH - 6);
+  const who = (pid, x0, y) => `<rect x="${x0}" y="${y + (rowH - bh) / 2}" width="26" height="${bh}" rx="3" fill="${mem(pid).pos === 'GK' ? '#C8312B' : '#1F5FBF'}"/><text x="${x0 + 13}" y="${y + rowH / 2}" dy=".36em" font-size="${fsN}" font-weight="700" fill="#fff" text-anchor="middle">${esc(mem(pid).no ?? '')}</text>`;
   order.forEach((pid, i) => {
     const y = top + i * rowH;
     if (o.tap) s += `<g class="prow" data-prow="${pid}"><rect class="phl" x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="${i % 2 === 0 ? '#EAF0F9' : 'transparent'}"/>`;
     else if (o.pick) s += `<g class="prl ${rvHl.has('5:' + pid) ? 'on' : ''}" data-prl="${pid}" style="cursor:pointer"><rect class="phl" x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="${i % 2 === 0 ? '#EAF0F9' : '#FFFFFF'}"/>`;
     else if (i % 2 === 0) s += `<rect x="0" y="${y}" width="${PW}" height="${rowH}" rx="4" fill="#EAF0F9"/>`;
     for (const p of axis) s += `<rect x="${X[p.key]}" y="${y + 2}" width="${HW[p.key]}" height="${rowH - 4}" fill="#F3F5F9" opacity=".9"/>`;
-    s += who(pid, X0 - 36 - nameW, y) + `<text x="${X0 - 6 - nameW}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`;
-    axis.slice(1).forEach((p) => { s += who(pid, X[p.key] - MID + 10, y) + `<text x="${X[p.key] - MID + 40}" y="${y + rowH - 7}" font-size="13" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`; });
+    s += who(pid, X0 - 37 - nameW, y) + `<text x="${X0 - 6 - nameW}" y="${y + rowH / 2}" dy=".36em" font-size="${fsName}" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`;
+    axis.slice(1).forEach((p) => { s += who(pid, X[p.key] - MID + 9, y) + `<text x="${X[p.key] - MID + 40}" y="${y + rowH / 2}" dy=".36em" font-size="${fsName}" font-weight="700" fill="#1B2433">${esc(last(pid))}</text>`; });
     for (const z of (M0.zero || []).filter((q) => q.pid === pid && X[q.period] != null)) s += `<rect x="${x(z.period, z.from) - 1.5}" y="${y + 1}" width="3" height="${rowH - 2}" fill="#E0832B"/>`;
     for (const st of M0.stints.filter((q) => q.pid === pid && X[q.period] != null)) {
       const x1 = x(st.period, st.from), x2 = x(st.period, st.to);
@@ -266,15 +268,17 @@ export function bandTip(box, area, sel, textOf) {
   let tip = null, touch = false, t = null;
   const show = (r) => {
     if (!box) return;
-    if (!tip) { tip = document.createElement('div'); tip.className = 'ptip'; box.appendChild(tip); }
+    // 画面に直接置く（大きく表示で枠が拡大されていても、位置がずれないように）
+    if (!tip || !tip.isConnected) { tip = document.querySelector('body > .ptip') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'ptip' })); }
     tip.textContent = textOf(r); tip.style.display = 'block';
-    const bb = box.getBoundingClientRect(), rr = r.getBoundingClientRect();
-    const tw = tip.offsetWidth; let lx = rr.left + rr.width / 2 - bb.left - tw / 2; lx = Math.max(4, Math.min(bb.width - tw - 4, lx));
-    tip.style.left = lx + 'px'; tip.style.top = (rr.top - bb.top - tip.offsetHeight - 4) + 'px';
+    const rr = (r.querySelector('[data-anchor]') || r).getBoundingClientRect();
+    const tw = tip.offsetWidth; let lx = rr.left + rr.width / 2 - tw / 2; lx = Math.max(4, Math.min(window.innerWidth - tw - 4, lx));
+    tip.style.left = lx + 'px'; tip.style.top = Math.max(2, rr.top - tip.offsetHeight - 4) + 'px';
   };
   const hide = () => { if (tip) tip.style.display = 'none'; };
   area.addEventListener('pointerdown', (e) => { touch = e.pointerType === 'touch' || e.pointerType === 'pen'; if (touch) { const r = e.target.closest(sel); if (r) { show(r); clearTimeout(t); t = setTimeout(hide, 4000); } else hide(); } });
   area.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse') return; const r = e.target.closest(sel); if (r) show(r); else hide(); });
   area.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hide(); });
+  window.addEventListener('scroll', hide, { passive: true });
   return { touch: () => touch };
 }

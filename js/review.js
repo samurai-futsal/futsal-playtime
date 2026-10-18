@@ -79,7 +79,7 @@ export function vReview(m) {
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn ${started ? 'pri' : ''}" href="#/m/${m.id}/play">‹ MATCH PLAY へ</a><span class="rvstate">${state}</span><span class="rvctl">${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
-        <button class="btn" id="rvCompact">${isCompact() ? '通常の表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで保存</button><button class="btn ${fullAll ? 'pri' : ''}" id="rvFull">${fullAll ? '× 閉じる' : '⛶ 大きく表示'}</button></span></div>
+        <button class="btn" id="rvCompact">${isCompact() ? '通常の表示' : '縮小表示'}</button><button class="btn" id="rvPdf">PDFで保存</button><a class="btn" href="#/m/${m.id}/stats">マッチスタッツ ›</a><button class="btn ${fullAll ? 'pri' : ''}" id="rvFull">${fullAll ? '× 閉じる' : '⛶ 大きく表示'}</button></span></div>
       <div class="rvjumps">${jumps}${evs.length ? '' : '<span class="rvnote">5〜8 はイベントを入力すると表示されます</span>'}
         ${M.fixed.length ? `<span class="rvfix">記録の修正を反映：${M.fixed.map((k) => periodLabel(k)).join('・')}</span>` : ''}
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
@@ -125,15 +125,18 @@ export function vReview(m) {
   }
   fpList.forEach((pid, k) => {
     const x = L + 6 + k * cw + (cw - bw) / 2; let y = 20 + Hc;
+    // 棒にカーソルを合わせる（iPadは触れる）と、前半・後半の内訳を出す（2026-10-17）
+    const bt = `${mem(pid).no ?? ''} ${last(pid)}　` + M.periods.filter((p) => p.status !== 'none').map((p) => `${p.label} ${mmss(T[pid]?.per[p.key]?.time || 0)}`).join('・');
+    sv.push(`<g class="rbar" data-bt="${esc(bt)}"><rect x="${(L + 6 + k * cw).toFixed(1)}" y="0" width="${cw.toFixed(1)}" height="${Hc + 64}" fill="transparent"/><g data-anchor="1">`);
     for (const p of M.periods) {
       const t = T[pid]?.per[p.key]?.time || 0; if (!t) continue;
       const h = Hc * t / maxT; y -= h;
       sv.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${COL[p.key]}"/>`);
     }
     const tot = T[pid]?.total || 0;
-    sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="15" font-weight="800" fill="#0B2D6B" text-anchor="middle">${mmss(tot)}</text>`);
+    sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="15" font-weight="800" fill="#0B2D6B" text-anchor="middle">${mmss(tot)}</text></g>`);
     sv.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 19}" font-size="15" font-weight="800" fill="#1F5FBF" text-anchor="middle">${esc(mem(pid).no ?? '')}</text>`
-      + `<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 37}" font-size="12.5" fill="#5F6B80" text-anchor="middle">${esc(last(pid))}</text>`);
+      + `<text x="${(x + bw / 2).toFixed(1)}" y="${20 + Hc + 37}" font-size="12.5" fill="#5F6B80" text-anchor="middle">${esc(last(pid))}</text></g>`);
   });
   if (fpAvg) {
     const ya = 20 + Hc - Hc * fpAvg / maxT;
@@ -180,10 +183,10 @@ export function vReview(m) {
       }).join('');
       return `<tr class="${l.length ? '' : 'zero'} ${hlc(`2:${p.key}:${pid}`)}" data-hlk="2:${p.key}:${pid}"><td>${badge(pid)} ${esc(last(pid))}</td>${cells}<td class="sum"><b>${mmss(tot)}</b></td><td class="sum">${l.length}</td></tr>`;
     }).join('');
-    return `<div class="rvst2"><b>${p.label}</b><span>（${mmss(p.elapsed)}）</span></div><table class="rvtb rvper rveq" style="--nmw:${Math.max(2, ...order.map((pid) => last(pid).length))}"><colgroup><col class="c1"></colgroup><tr><th>選手</th>${hd}<th>合計</th><th>回数</th></tr>${body}</table>`;
+    return `<div class="rvpcol"><div class="rvst2"><b>${p.label}</b><span>（${mmss(p.elapsed)}）</span></div><table class="rvtb rvper rveq" style="--nmw:${Math.max(2, ...order.map((pid) => last(pid).length))}"><colgroup><col class="c1"></colgroup><tr><th>選手</th>${hd}<th>合計</th><th>回数</th></tr>${body}</table></div>`;
   }).join('');
   const s1b = `<section class="rvsec" id="rv1b"><div class="rvtt"><b>2. 1回ごとの出場時間</b><span>大きい数字＝その回の時間、小さい数字＝入った〜出た（${runMode ? 'キックオフからの実際の時間' : '経過時間'}）。オレンジ＝1分未満</span></div>
-    <div class="rvbox">${perTables}</div></section>`;
+    <div class="rvbox"><div class="rvpgrid">${perTables}</div></div></section>`;
 
   // ---------- 3. 出場タイムライン ----------
   // ピリオドごとに帯を分けて並べ、2つ目以降のピリオドの前に背番号と名前の列をもう一度置く（右の方の帯も誰か分かるように）
@@ -247,7 +250,7 @@ export function vReview(m) {
     <div class="rvbox"><table class="rvtb rvset2 rveq" style="--nmw:${nmw}"><colgroup><col class="c0"><col class="cset"></colgroup><tr><th class="srt ${tSort[6].col ? '' : 'on'}" data-tsort="6:">順位</th><th style="text-align:left">FP4人のセット</th>${tsh(6, 'time', '出場時間')}${et.cols.map(([, l], i) => tsh(6, String(i), l.replace('FINISH SET PLAY ', 'FINISH SET PLAY<br>'), i % 2 ? 'o' : 'w')).join('')}</tr>${body}</table></div></section>`;
   }
 
-  return { active: 'acts', html: `<div class="rvw ${isCompact() ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${evs.length ? paceFit(C) + s4b + teamSection(C) + playerSection(C) : waitSections(m)}</div></div>`, bind: bindReview(m) };
+  return { active: 'acts', html: `<div class="rvw ${isCompact() && !fullAll ? 'compact' : ''}">${head}${printHead}<div class="rvbody">${s1}${s1b}${s2}${s3}${evs.length ? paceFit(C) + s4b + teamSection(C) + playerSection(C) : waitSections(m)}</div></div>`, bind: bindReview(m) };
 }
 
 // タイムラインの帯の上の小さな数字：となりと重なるものは隠す（帯を押さえると時間が出る）。画面の幅で重なり方が変わるので、描いたあとに確かめる
@@ -268,7 +271,8 @@ function bindReview(m) {
     root.querySelectorAll('tr[data-hlk]').forEach((tr) => tr.onclick = () => { const k = tr.dataset.hlk; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); tr.classList.toggle('hl', rvHl.has(k)); });
     bindPacePick(root);
     bindFull(root);
-    paceMeasure(root);
+    if (!fullAll) paceMeasure(root);
+    { const bx = root.querySelector('#rv1 .rvbox'), bsv = bx?.querySelector('svg.rvbar'); if (bsv) bandTip(bx, bsv, '.rbar', (g) => g.dataset.bt); }
     // タイムラインの帯：カーソルを合わせる（iPadは触れる）と、帯の上に選手名（2026-10-17）
     const tlb = root.querySelector('.rvtl'); const tlTip = tlb ? bandTip(tlb, tlb, '.tlb', (b) => b.closest('[data-tln]')?.dataset.tln || '') : null;
     root.querySelectorAll('[data-tl]').forEach((r) => r.onclick = (e) => { if (tlTip?.touch() && e.target.closest('.tlb')) return; const id = r.dataset.tl; if (tlHl.has(id)) tlHl.delete(id); else tlHl.add(id); r.classList.toggle('hl', tlHl.has(id)); });
@@ -432,5 +436,44 @@ function bindFull(root) {
     window.__rvallKeys = true;
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && fullAll && location.hash.includes('/review')) setFull(false); });
     window.addEventListener('hashchange', () => { if (!location.hash.includes('/review') && fullAll) { fullAll = false; document.body.classList.remove('rvall'); } });
+    let t = null; window.addEventListener('resize', () => { if (!fullAll) return; clearTimeout(t); t = setTimeout(() => { if (fullAll && location.hash.includes('/review')) render(); }, 250); });
+  }
+  if (fullAll) fitAll(root);
+}
+// 大きく表示：1項目を1画面いっぱいに（2026-10-17）。項目ごとに、画面の幅と高さに入る一番大きい倍率で広げる。
+// 1画面に入らない長い表は、等倍で上下に動かして見る。マッチ・ペースは画面の縦横に合わせて描き直す
+function fitAll(root) {
+  const secs = [...root.querySelectorAll('.rvbody > .rvsec:not(.rvwait)')].filter((x) => x.querySelector('.rvbox'));
+  const vh = window.innerHeight;
+  for (const sec of secs) {
+    const box = sec.querySelector('.rvbox'); const tt = sec.querySelector('.rvtt');
+    box.style.zoom = ''; box.style.width = '';
+    const cs = getComputedStyle(sec);
+    const availW = sec.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const availH = vh - (tt?.offsetHeight || 0) - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 16;
+    if (sec.id === 'rv5') {
+      const old = box.querySelector('svg.pace'); const pad = 36 + (box.querySelector('.pinfo')?.offsetHeight || 20) + 8;
+      const svg = paceSvgFor((availW - 36) / Math.max(200, availH - pad));
+      if (old && svg) { old.outerHTML = svg; bindPacePick(root); }
+      continue;
+    }
+    const cols = Math.max(0, ...[...box.querySelectorAll('table')].map((t) => t.rows[0]?.cells.length || 0));
+    const minW = box.querySelector('.rvpgrid') ? Math.min(availW, 1400) : cols > 6 ? Math.min(availW, 1000) : cols ? 600 : 320; // 2は表が2つ横に並ぶので広めに
+    let done = false;
+    for (let z = 2.2; z >= 0.8; z -= 0.05) {
+      if (availW / z < minW) continue;
+      box.style.width = `${availW / z}px`;
+      if (box.offsetHeight * z <= availH) { box.style.zoom = z.toFixed(2); done = true; break; }
+    }
+    if (!done) { box.style.width = ''; box.style.zoom = ''; continue; }
+    // まだ下が余る表は、行を少しずつ高くして画面の縦いっぱいに（1行につき最大30px）
+    const z = +box.style.zoom || 1;
+    const rows = [...box.querySelectorAll('table tr')].filter((r) => !r.closest('svg'));
+    const spare = availH / z - box.offsetHeight - 4;
+    if (rows.length && spare > 8) {
+      const add = Math.min(30, spare / rows.length); const hs = rows.map((r) => r.getBoundingClientRect().height / z);
+      rows.forEach((r, k) => { r.style.height = (hs[k] + add).toFixed(1) + 'px'; });
+      if (box.offsetHeight * z > availH) rows.forEach((r) => { r.style.height = ''; });
+    }
   }
 }
