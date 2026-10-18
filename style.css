@@ -1254,3 +1254,8 @@ body.rvall .rvw .rvsec{scroll-margin-top:0}
 #rv7 .rvbox{flex-grow:0}
 /* 1：グラフは表の幅の真ん中に（凡例もグラフの左上にそろえる） */
 .rvbarw{margin:0 auto}
+/* フィジカルコーチ用：最新でないかもしれないときは、表示と同期ボタンを点滅（押して直るまで。2026-10-18） */
+@keyframes phblink{0%,100%{opacity:1}50%{opacity:.35}}
+.phsy.blink{background:#E03A2E;color:#fff;animation:phblink 1s ease-in-out infinite}
+.phsyb.need{background:#F08C00;border-color:#F08C00;color:#fff;font-weight:900;animation:phblink 1s ease-in-out infinite}
+.phlast{font-size:12px;color:#C9D6EE;white-space:nowrap}.phro{white-space:nowrap}

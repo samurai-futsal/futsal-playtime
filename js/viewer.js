@@ -1,7 +1,7 @@
 // フィジカルコーチ用（閲覧専用）：交代のタイミングを考えるための画面。記録は一切しない（opsを書かない）。
 // ピッチ＝「今の出場」が長い順、ベンチ＝「休み」が長い順。数字は実際の時間（ランニングタイム）が大きく、
 // プレーイングタイム（試合の時計）を小さく添える。「合計出場」＝この試合の合計。色はランニングタイム用の目安（設定で変えられる）。
-import { watchOps, resyncOps, playerById, teamSettings } from './store.js';
+import { watchOps, resyncOps, playerById, teamSettings, probeMatch, heardRev } from './store.js';
 import { replay, periodLabel, periodLen, perLen, nowElapsed, PERIODS } from './engine.js';
 import { matchModel, toRunning, playerTable, periodSig } from './model.js';
 import { esc } from './ui.js';
@@ -17,15 +17,47 @@ document.addEventListener('visibilitychange', () => { const id = physMatch(); if
 addEventListener('pageshow', (e) => { const id = physMatch(); if (e.persisted && id) resyncOps(id); });
 addEventListener('online', () => { const id = physMatch(); if (id) resyncOps(id); });
 const clock = (t) => { const d = new Date(t); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
-// 最新かどうか：緑＝サーバーとつながっていて最新／黄＝確認中／赤＝つながっていない（いつの数字か）
+const clockS = (t) => { const d = new Date(t); return `${clock(t)}:${String(d.getSeconds()).padStart(2, '0')}`; };
+// 見張り（2026-10-18）：15秒ごとにサーバーに直接「いまの試合の印」を聞いて、この画面に届いている印と比べる。
+// ・返事がない（8秒）→ つながっていない
+// ・印が違うまま5秒以上 → 知らせが止まっている（MATCH PLAY の新しい記録が届いていない）
+// どちらも自動でつなぎ直し、直るまでは「同期してください」を点滅させる。読み取りは15秒に1回（1時間で240回）
+const W = { id: null, timer: null, okAt: 0, failAt: 0, diffAt: 0, autoAt: 0, busy: false };
+async function watchdog() {
+  const id = physMatch();
+  if (!id) { clearInterval(W.timer); W.timer = null; W.id = null; return; }
+  if (document.hidden || W.busy) return;
+  W.busy = true;
+  try {
+    const r = await probeMatch(id);
+    const t = Date.now();
+    if (!r.ok) { W.failAt = t; }
+    else {
+      W.failAt = 0; W.okAt = t;
+      if (r.rev && r.rev !== heardRev(id)) { if (!W.diffAt) W.diffAt = t; } else W.diffAt = 0;
+    }
+    if (stale() && t - W.autoAt > 30000) { W.autoAt = t; resyncOps(id); setTimeout(watchdog, 3000); } // 自動でつなぎ直して、3秒後に確かめ直す
+  } finally { W.busy = false; render(); }
+}
+function startWatch(id) {
+  if (W.id === id && W.timer) return;
+  clearInterval(W.timer); Object.assign(W, { id, okAt: 0, failAt: 0, diffAt: 0, autoAt: 0 });
+  W.timer = setInterval(watchdog, 15000); setTimeout(watchdog, 1500);
+}
+// 最新でないかもしれない（同期してほしい）
+function stale() {
+  const t = Date.now();
+  return !navigator.onLine || !!W.failAt || (W.diffAt && t - W.diffAt > 5000) || (W.okAt && t - W.okAt > 45000);
+}
+// 最新かどうか：緑＝最新（サーバーで確かめた）／黄＝確認中／赤の点滅＝最新でないかもしれない（同期してください）
 function syncState(c) {
   const t = Date.now();
   const lastTxt = c.srvAt ? `${clock(c.srvAt)}時点` : '保存済みの数字';
-  if (!navigator.onLine) return { cls: 'ng', txt: `つながっていません（${lastTxt}）` };
-  if (!c.fromCache) return { cls: 'ok', txt: '最新' };
+  if (!navigator.onLine) return { cls: 'ng blink', txt: `つながっていません（${lastTxt}）`, need: true };
   const since = c.checkAt || c.cacheAt || t;
-  if (t - since < 10000) return { cls: 'wait', txt: '確認中…' };
-  return { cls: 'ng', txt: `つながっていません（${lastTxt}）` };
+  if (c.fromCache && t - since < 10000) return { cls: 'wait', txt: '確認中…' };
+  if (c.fromCache || stale()) return { cls: 'ng blink', txt: `最新ではないかもしれません（${lastTxt}）`, need: true };
+  return { cls: 'ok', txt: `最新${W.okAt ? `（${clockS(W.okAt)} 確認）` : ''}` };
 }
 export function stopPhysTick() { clearInterval(tick); tick = null; }
 const mmss = (ms) => { if (ms == null) return '—'; const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -87,9 +119,11 @@ export function vPhys(m) {
   else if (live) state = `<span class="phper">${periodLabel(st.current)}</span><span class="phclk">残り <b>${mmssUp(len - el)}</b></span><span class="phrun ${running ? 'on' : ''}">● ${running ? '時計が動いています' : '時計が止まっています'}</span><span class="phrt">実際の経過 <b>${mmss(runEl)}</b></span>`;
   else if (lastEnd) state = `<span class="phst">${st.periods['1H']?.status === 'done' && st.periods['2H']?.status !== 'done' ? 'ハーフタイム' : 'ピリオドの間'}</span><span class="phrt">${[...PERIODS].reverse().find((p) => st.periods[p.key].status === 'done')?.label || ''}終了時点の数字（止まっています）</span>`;
   else state = '<span class="phst">試合前</span>';
+  startWatch(m.id);
   const ss = syncState(opsC);
+  const lastOp = opsC.list.reduce((a, o) => Math.max(a, o.t || 0), 0);
   if (!live && ss.cls === 'wait') setTimeout(() => { if (physMatch() === m.id) render(); }, 10500 - (Date.now() - (opsC.checkAt || opsC.cacheAt || 0)));
-  const head = `<div class="phtop">${state}<span class="sp"></span><span class="phright"><span class="phvs">vs ${esc(m.opponent || '')}</span><span class="phsy ${ss.cls}">● ${ss.txt}</span><button class="btn sm phsyb" id="phSync">⟳ 同期</button><span class="phro">閲覧専用</span><a class="btn sm phrv" href="#/m/${m.id}/review">マッチレビュー ›</a><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></span></div>
+  const head = `<div class="phtop">${state}<span class="sp"></span><span class="phright"><span class="phvs">vs ${esc(m.opponent || '')}</span><span class="phsy ${ss.cls}">● ${ss.txt}</span><button class="btn sm phsyb ${ss.need ? 'need' : ''}" id="phSync">${ss.need ? '⟳ 同期してください' : '⟳ 同期'}</button>${lastOp ? `<span class="phlast">最後の記録 ${clockS(lastOp)}</span>` : ''}<span class="phro">閲覧専用</span><a class="btn sm phrv" href="#/m/${m.id}/review">マッチレビュー ›</a><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></span></div>
     <div class="phlg"><span class="lgrun">0:00</span> 枠の中の黒い数字＝<b>実際の時間（ランニングタイム）</b>　<span class="ptv s">0:00</span> 緑の数字＝<b>プレーイングタイム（試合の時計）</b>　枠の色：<i class="org"></i>${mmss(OR)}〜 <i class="red"></i>${mmss(RD)}〜（設定で変えられる）</div>`;
 
   const bar = (ms) => `<div class="phbar"><i class="${col(ms)}" style="width:${Math.min(100, ms / MAX * 100).toFixed(1)}%"></i><b style="left:${(OR / MAX * 100).toFixed(1)}%"></b><b style="left:${(RD / MAX * 100).toFixed(1)}%"></b></div>
@@ -113,7 +147,7 @@ export function vPhys(m) {
   return {
     active: 'acts',
     bind: (root) => {
-      const b = root.querySelector('#phSync'); if (b) b.onclick = () => { resyncOps(m.id); };
+      const b = root.querySelector('#phSync'); if (b) b.onclick = () => { Object.assign(W, { failAt: 0, diffAt: 0, okAt: Date.now() }); resyncOps(m.id); setTimeout(watchdog, 3000); render(); };
       root.querySelectorAll('[data-bs]').forEach((x) => { x.onclick = () => { benchSort = x.dataset.bs; try { localStorage.setItem('fpt.physBenchSort', benchSort); } catch {} render(); }; });
     },
     html: `<div class="phw">${head}<div class="phcols"><div class="phpane"><h3>ピッチ <small>今の出場が長い順</small></h3>${pitchHTML}</div>

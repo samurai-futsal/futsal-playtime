@@ -410,6 +410,37 @@ export function resyncOps(matchId) {
   setTimeout(emit, 10500); // 10秒たっても届かなければ「つながっていません」に切りかえるため描き直す
   return c;
 }
+// ---------- 通信の見張り（2026-10-18：ブラジル戦でフィジカルコーチの画面が古いまま止まった件） ----------
+// オンラインの表示でも、端末とサーバーのつながりが途中で切れたまま（知らせが届かないまま）になることがある。
+// ① 閲覧専用の画面：試合の文書をサーバーから直接1回読んで（probeMatch）、つながっているかと、
+//    MATCH PLAY が最後に書いた印（revOps）が届いているかを確かめる。8秒で返事がなければつながっていない。
+export async function probeMatch(matchId) {
+  const { getDocFromServer, doc } = F.fsM;
+  if (!getDocFromServer || !S.teamId) return { ok: false };
+  const t = new Promise((ok) => setTimeout(() => ok(null), 8000));
+  try {
+    const snap = await Promise.race([getDocFromServer(doc(F.db, 'teams', S.teamId, 'matches', matchId)), t]);
+    if (!snap) return { ok: false };
+    const d = snap.exists() ? snap.data() : {};
+    return { ok: true, rev: revOf(d, 'revOps') };
+  } catch { return { ok: false }; }
+}
+// 聞いている試合の文書の印（この端末に届いている印）
+export const heardRev = (matchId) => revOf(matchById(matchId), 'revOps');
+// ② 記録する端末（MATCH PLAY など）：送れていない書き込みが、オンラインなのに20秒以上残っていたら、
+//    通信をつなぎ直して送り直させる（記録は消えない。1分に1回まで）
+let pendSince = 0, kickAt = 0;
+export function kickNetwork() {
+  const { disableNetwork, enableNetwork } = F.fsM;
+  if (!disableNetwork || !enableNetwork) return;
+  kickAt = Date.now();
+  disableNetwork(F.db).then(() => enableNetwork(F.db)).catch(() => {});
+}
+if (typeof window !== 'undefined' && typeof setInterval === 'function') setInterval(() => {
+  if (!F || !S.pending || (typeof navigator !== 'undefined' && !navigator.onLine)) { pendSince = 0; return; }
+  if (!pendSince) pendSince = Date.now();
+  if (Date.now() - pendSince > 20000 && Date.now() - kickAt > 60000) { pendSince = Date.now(); kickNetwork(); }
+}, 5000);
 let opSeq = (() => { try { return +localStorage.getItem('fpt.opSeq') || 0; } catch { return 0; } })();
 export function addOp(matchId, op) {
   const id = newId();
