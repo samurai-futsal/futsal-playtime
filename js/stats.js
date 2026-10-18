@@ -10,6 +10,7 @@ import { esc, fmtDate, toast } from './ui.js';
 import { render } from './views.js';
 import { openTodo } from './evinput.js';
 import { savePdf, safeName, preloadPdf } from './pdfsave.js';
+import { bigBtn, bindBig, bigOn } from './bigview.js';
 
 let range = 'all';
 
@@ -73,6 +74,19 @@ function calc(m, range0) {
   return { M, R, evs, todo, asOf, hm, shownP, sheet, foot, range };
 }
 
+// 拡大表示：横長の画面では上の表と下の表を左右に並べて1画面に、縦長の画面では1つの表が1画面に入る大きさに（2026-10-18）
+function fitSheet(root) {
+  const pg = root.querySelector('.stpage'); const sh = pg?.querySelector('.stsheet'); if (!pg || !sh) return;
+  const hd = root.querySelector('.sthead');
+  const availW = root.querySelector('.stw').clientWidth, availH = window.innerHeight - (hd?.offsetHeight || 0) - 24;
+  pg.style.zoom = ''; pg.style.width = ''; sh.classList.remove('big2');
+  const tiers = [...sh.querySelectorAll('.sttier')];
+  if (availW / availH > 1.15) sh.classList.add('big2');
+  const w = Math.max(...tiers.map((t) => t.scrollWidth)) * (sh.classList.contains('big2') ? 2 : 1) + 60;
+  const h = sh.classList.contains('big2') ? pg.offsetHeight : Math.max(...tiers.map((t) => t.offsetHeight)) + 40;
+  const z = Math.max(0.6, Math.min(2, availW / w, availH / h));
+  pg.style.width = `${availW / z}px`; pg.style.zoom = z.toFixed(2);
+}
 export function vStats(m) {
   const x = calc(m, range);
   if (!x) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
@@ -82,7 +96,7 @@ export function vStats(m) {
     : todo ? `<button class="ststat todo" id="stTodo">イベント ${evs.length}件・未入力あり ${todo}件 ›</button>` : `<span class="ststat ok">イベント ${evs.length}件・未入力なし</span>`;
   const head = `<div class="crumb noprint"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › マッチスタッツ</div>
     <div class="sthead noprint"><h1>マッチスタッツ</h1><span class="rvmode strange">${segs}</span><span class="stasof">${asOf}（${hm}に表示）</span>${status}<span class="sp"></span>
-      <span class="stbtns"><button class="btn" id="stPdf">PDFで保存</button><a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></span></div>`;
+      <span class="stbtns"><button class="btn" id="stPdf">PDFで保存</button>${bigBtn()}<a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></span></div>`;
 
   return {
     active: 'acts',
@@ -95,6 +109,7 @@ export function vStats(m) {
       // 試合ページの「マッチスタッツ（PDF）」から来たときは、すぐ保存する
       if (location.hash.endsWith('/print')) { history.replaceState(null, '', `#/m/${m.id}/stats`); setTimeout(save, 300); }
       const t = root.querySelector('#stTodo'); if (t) t.onclick = () => { openTodo(m.id); location.hash = `#/m/${m.id}/events`; };
+      bindBig(root, fitSheet);
     },
   };
 }

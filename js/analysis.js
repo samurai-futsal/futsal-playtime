@@ -14,6 +14,7 @@ import { render } from './views.js';
 import { printStats } from './stats.js';
 import { downloadDatasheet } from './dsview.js';
 import { printReport } from './report.js';
+import { bigBtn, bindBig, fitBox } from './bigview.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const PCOL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
@@ -145,7 +146,7 @@ export function vAnalysis(r, mFrom = null) {
       ${A.scope === 'match' ? '' : seg('agg', [['sum', '合計'], ['avg', '1試合平均']])}${seg('per', [['all', '全体'], ['1H', '前半'], ['2H', '後半']])}
       <span class="anpp" title="数的同数だけ＝5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く">時間帯${seg('pp', PPM)}</span>
       ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4（こちらの4×5）の記録なし ${noOpp}試合</span>` : ''}
-      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${skippedLive ? `<span class="anlive" title="試合が終わると含めます。試合中の試合は「この試合」で見られます">試合中の ${skippedLive}試合は含めていません</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span>${pre ? '' : '<span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span>'}</div>
+      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${skippedLive ? `<span class="anlive" title="試合が終わると含めます。試合中の試合は「この試合」で見られます">試合中の ${skippedLive}試合は含めていません</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span>${pre ? '' : '<span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span>'}${pre ? '' : bigBtn()}</div>
     <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} " data-tab="${v}">${l}</button>`).join('')}</div></div>`;
 
   let body;
@@ -307,6 +308,8 @@ function statsTab(ctx) {
 // ---------- 操作 ----------
 function bindAnalysis(root) {
   const bar = document.querySelector('.bar'); if (bar) document.documentElement.style.setProperty('--barh', bar.offsetHeight + 'px');
+  // 拡大表示：表やグラフを、上の切り替えの下に残った画面いっぱいの大きさに（2026-10-18）
+  bindBig(root, (r) => { const b = r.querySelector('.anbody'); const hd = r.querySelector('.anhead'); if (!b) return; fitBox(b, r.querySelector('.anw').clientWidth, window.innerHeight - (hd?.offsetHeight || 0) - 20, { maxZ: 1.6 }); });
   // 表が横に入りきらないとき、右端をぼかして「まだ右にある」と分かるようにする（右端まで動かしたら消す）
   declutterTimeline(root);
   root.querySelectorAll('.antbl').forEach((el) => {

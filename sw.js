@@ -1,12 +1,12 @@
 // Service worker: keeps the app usable offline.
 // Updates are applied only when the coach presses 「更新する」 (spec 5章).
 // When releasing, bump VERSION here AND APP_VERSION in app.js.
-const VERSION = '0.6.71';
+const VERSION = '0.6.72';
 const CACHE = 'fpt-' + VERSION;
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const SHELL = [
   './', './index.html', './style.css', './app.js', './manifest.webmanifest',
-  './js/store.js', './js/ui.js', './js/views.js', './js/engine.js', './js/matchplay.js', './js/model.js', './js/review.js', './js/keypad.js', './js/fix.js', './js/events.js', './js/evinput.js', './js/viewer.js', './js/teamstats.js', './js/stats.js', './js/review58.js', './js/analysis.js', './js/sportscode.js', './js/scview.js', './js/scimport.js', './js/scimportview.js', './js/xlsx.js', './js/datasheet.js', './js/dsview.js', './js/report.js', './js/guide.js', './js/options.js', './js/backup.js', './js/restoreplan.js', './js/pdfsave.js', './vendor/html2canvas.min.js',
+  './js/store.js', './js/ui.js', './js/views.js', './js/engine.js', './js/matchplay.js', './js/model.js', './js/review.js', './js/keypad.js', './js/fix.js', './js/events.js', './js/evinput.js', './js/viewer.js', './js/teamstats.js', './js/stats.js', './js/review58.js', './js/analysis.js', './js/sportscode.js', './js/scview.js', './js/scimport.js', './js/scimportview.js', './js/xlsx.js', './js/datasheet.js', './js/dsview.js', './js/report.js', './js/guide.js', './js/options.js', './js/backup.js', './js/restoreplan.js', './js/pdfsave.js', './js/bigview.js', './vendor/html2canvas.min.js',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
   FB + 'firebase-app.js', FB + 'firebase-auth.js', FB + 'firebase-firestore.js',
 ];

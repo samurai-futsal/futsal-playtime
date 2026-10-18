@@ -1284,3 +1284,16 @@ body.rvall .rvw .rvsec{scroll-margin-top:0}
 .phsy .s{display:none}
 @media (max-width:900px){.phsy .l{display:none}.phsy .s{display:inline}.phr2 .phvs{max-width:24%}}
 .phr1 .phrt,.phr1 .phrun{overflow:hidden;text-overflow:ellipsis}
+/* 拡大表示（マッチスタッツ・分析。2026-10-18） */
+body.bigv .bar,body.bigv #update,body.bigv .crumb{display:none!important}
+body.bigv .page{max-width:none;padding:calc(6px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 10px calc(10px + env(safe-area-inset-left))}
+body.bigv #bigBtn{min-height:44px;padding:0 20px;font-size:16px}
+/* マッチスタッツ：上は「試合全体・前半・後半」と「× 閉じる」だけ */
+body.bigv .sthead{margin-bottom:6px}
+body.bigv .sthead>:not(.strange):not(.stbtns):not(.sp){display:none}
+body.bigv .sthead .stbtns>:not(#bigBtn){display:none}
+body.bigv .stw .stpage{max-width:none;margin:0;border-radius:0;padding:10px}
+.stsheet.big2{grid-template-columns:1fr 1fr;align-items:start;gap:28px}
+/* 分析：書き出しのボタンは隠す */
+body.bigv .anexp{display:none}
+body.bigv .anbody{margin-top:4px}
