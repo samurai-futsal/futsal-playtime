@@ -159,7 +159,7 @@ function vHome() {
   const nextCard = (next) => `<a class="card nextm" href="#/m/${next.id}">
         <div class="nm-l"><div class="mu">${esc(actName(next))}</div><div class="vs">vs ${esc(next.opponent)}</div>
         <div class="mu">${fmtDate(next.date)}${next.kickoff ? ' ' + esc(next.kickoff) + ' キックオフ' : ''}${next.venue ? '　' + esc(next.venue) : ''}</div></div>
-        <div class="nm-r">${chip(matchStatus(next), next)}<span class="go">試合ページへ ›</span></div></a>`;
+        <div class="nm-r">${chip(matchStatus(next), next)}<span class="go">試合ページ ›</span></div></a>`;
   const actName = (m) => activityById(m.activityId)?.name || '';
   const tile = (href, t, sub) => `<a class="tile" href="${href}"><b>${t}</b><span>${sub}</span></a>`;
   const activePlayers = S.players.filter((p) => p.status !== 'former').length;

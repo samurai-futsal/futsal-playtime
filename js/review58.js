@@ -192,7 +192,7 @@ export function teamSection(c, o = {}) {
     const assist = !o || e.pid === OPP_OG ? '<span class="na">—</span>' : e.assist === NO_ASSIST ? 'なし' : e.assist ? P(e.assist) : '<span class="na">未入力</span>';
     // 1点ごとに1行。左から スコア・時間・チーム・得点者・アシスト・得点の種類（目を横に大きく動かさずに読めるよう、列は中身の幅だけ。2026-10-18）
     return `<tr class="${o ? 'own' : 'opp'}"><td class="gsc"><b>${so} − ${sp}</b></td><td class="gtm">${pl?.label || ''} ${mmss(e.at)}</td><td class="gtn">${esc(o ? own : opp)}</td><td>${scorer}</td><td>${o ? `<small>アシスト</small> ${assist}` : ''}</td><td>${e.gtype ? esc(goalName(e.gtype)) : '<span class="na">種類 未入力</span>'}</td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="na" style="text-align:center">得点・失点はまだありません</td></tr>';
+  }).join('') || `<tr><td colspan="6" class="nog">${M0.live ? 'ここまで得点・失点なし' : '得点・失点なし'}（0 − 0）</td></tr>`;
   const cmpMax = Math.max(1, A.shots, B.shots, A.z4, B.z4, A.fsp, B.fsp, A.foul, B.foul);
   const cmp = (label, a, b, sub = null) => `<tr><td class="xb l"><i style="width:${a == null ? 0 : Math.round(a / cmpMax * 170)}px"></i></td><td class="cv">${a == null ? '<span class="na">—</span>' : a}${sub && a != null ? `<small>${sub[0]}</small>` : ''}</td><td class="cl">${label}</td><td class="cv">${b == null ? '<span class="na">—</span>' : b}${sub && b != null ? `<small>${sub[1]}</small>` : ''}</td><td class="xb r"><i style="width:${b == null ? 0 : Math.round(b / cmpMax * 170)}px"></i></td></tr>`;
   const fspSub = (s) => `CK ${s.fspT[0]}・CK-KI ${s.fspT[1]}・KI ${s.fspT[2]}・FK ${s.fspT[3]}`;

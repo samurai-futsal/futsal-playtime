@@ -440,9 +440,23 @@ function bindFull(root) {
     window.__rvallKeys = true;
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && fullAll && location.hash.includes('/review')) setFull(false); });
     window.addEventListener('hashchange', () => { if (!location.hash.includes('/review') && fullAll) { fullAll = false; document.body.classList.remove('rvall'); } });
-    let t = null; window.addEventListener('resize', () => { if (!fullAll) return; clearTimeout(t); t = setTimeout(() => { if (fullAll && location.hash.includes('/review')) render(); }, 250); });
+    let t = null; window.addEventListener('resize', () => { if (!fullAll) { const r = document.querySelector('.rvw'); if (r && location.hash.includes('/review')) fit7(r.parentElement); return; } clearTimeout(t); t = setTimeout(() => { if (fullAll && location.hash.includes('/review')) render(); }, 250); });
   }
-  if (fullAll) fitAll(root);
+  if (fullAll) fitAll(root); else fit7(root);
+}
+// 7（ふだんの表示）：見出しの下の画面の高さいっぱいに入る大きさにする（得点が多い試合は小さく、少ない試合は大きく。2026-10-18）
+function fit7(root) {
+  const sec = root.querySelector('#rv7'); const box = sec?.querySelector('.rvbox'); if (!box || root.querySelector('.rvw.compact')) return;
+  box.style.zoom = ''; box.style.width = '';
+  const hb = document.querySelector('.rvhead')?.getBoundingClientRect().height || 0;
+  const bar = document.querySelector('.bar')?.offsetHeight || 0;
+  const availH = window.innerHeight - bar - hb - (sec.querySelector('.rvtt')?.offsetHeight || 0) - 40;
+  const availW = box.clientWidth;
+  for (let z = 1.5; z >= 0.7; z -= 0.02) {
+    box.style.width = `${availW / z}px`;
+    if (box.offsetHeight * z <= availH) { box.style.zoom = z.toFixed(2); return; }
+  }
+  box.style.width = ''; box.style.zoom = '';
 }
 // 大きく表示：1項目を1画面いっぱいに（2026-10-17）。項目ごとに、画面の幅と高さに入る一番大きい倍率で広げる。
 // 1画面に入らない長い表は、等倍で上下に動かして見る。マッチ・ペースは画面の縦横に合わせて描き直す

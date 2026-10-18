@@ -1244,3 +1244,11 @@ body.rvall .rvw .rvsec{scroll-margin-top:0}
 #rv7 .rvhint{font-size:11px;line-height:1.4;margin:2px 0 0}
 #rv7 .rvbox{padding-top:10px;padding-bottom:10px}
 #rv7 .rvcmp .cv{width:auto;min-width:120px}
+/* カードの中の行：左右の端にくっつけず、少し内側に寄せる（真ん中の空きを減らす。2026-10-18） */
+.lrow{padding-left:clamp(8px,8%,96px);padding-right:clamp(6px,5%,60px)}
+.nextm{padding-left:clamp(6px,7.5%,90px);padding-right:clamp(4px,4.5%,54px)}
+/* 6：セットの4人を列の真ん中に */
+.rvset2 .setn .spw{grid-template-columns:repeat(4,calc(34px + var(--nmw,3) * 13px));justify-content:center}
+@media (max-width:1000px){.rvset2 .setn .spw{grid-template-columns:repeat(2,calc(34px + var(--nmw,3) * 13px))}}
+.rvflow td.nog{text-align:center;color:#3A4660;font-weight:700;padding:8px 24px;border-radius:8px}
+#rv7 .rvbox{flex-grow:0}
