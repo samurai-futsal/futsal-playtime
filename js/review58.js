@@ -278,7 +278,7 @@ export function bandTip(box, area, sel, textOf) {
     if (!box) return;
     // 画面に直接置く（大きく表示で枠が拡大されていても、位置がずれないように）
     if (!tip || !tip.isConnected) { tip = document.querySelector('body > .ptip') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'ptip' })); }
-    tip.textContent = textOf(r); tip.style.display = 'block';
+    { const v = textOf(r); if (v && v.html) { tip.innerHTML = v.html; tip.classList.add('rich'); } else { tip.textContent = v; tip.classList.remove('rich'); } } tip.style.display = 'block';
     const rr = (r.querySelector('[data-anchor]') || r).getBoundingClientRect();
     const tw = tip.offsetWidth; let lx = rr.left + rr.width / 2 - tw / 2; lx = Math.max(4, Math.min(window.innerWidth - tw - 4, lx));
     tip.style.left = lx + 'px'; tip.style.top = Math.max(2, rr.top - tip.offsetHeight - 4) + 'px';

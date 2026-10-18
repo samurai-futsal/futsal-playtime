@@ -7,7 +7,7 @@ import { modelOf, playerTable, entryOrder } from './model.js';
 import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppWindows, windowsOf, clipModel, winTest, ppTime, setSplit, asOfLabel } from './teamstats.js';
 import { missing, pitchAt, isFsp, OPP_OG, isOG } from './events.js';
 import { shotsOf, CLS_KEYS } from './teamstats.js';
-import { paceSection, goalMarks, PACE_ROWS, teamSection } from './review58.js';
+import { paceSection, goalMarks, PACE_ROWS, teamSection, bandTip } from './review58.js';
 import { timelineHTML, declutterTimeline } from './review.js';
 import { esc, fmtShort, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
@@ -115,6 +115,7 @@ export function buildCtx(ms) {
       no[pid] = x.m.members[pid]?.no ?? no[pid]; pos[pid] = x.m.members[pid]?.pos || pos[pid];
       // 試合ごとの出場時間（棒の積み上げ用）
       (P[pid].byMatch = P[pid].byMatch || {})[x.m.id] = d.time;
+      (P[pid].byMatchN = P[pid].byMatchN || {})[x.m.id] = d.count;
       for (const p of x.M.periods) { const c = x.T[pid]?.per?.[p.key]; if (!c || (x.keys && !x.keys.includes(p.key))) continue; const q = (P[pid].per = P[pid].per || {}); q[p.key] = q[p.key] || { time: 0, count: 0 }; q[p.key].time += c.time; q[p.key].count += c.count; }
     }
   }
@@ -187,10 +188,11 @@ function table(ctx, cols, { note = '' } = {}) {
   const th = cols.map((c) => `<th class="srt ${A.sort.col === c.k ? 'on' : ''} ${c.cls || ''}" data-sort="${c.k}">${c.h}<i>${A.sort.col === c.k ? (A.sort.dir === 'asc' ? '▲' : '▼') : ''}</i></th>`).join('');
   const rows = list.map((pid) => {
     const d = P[pid]; const low = d.time < ref();
-    return `<tr class="${d.time ? '' : 'zero'} ${low && d.time ? 'low' : ''}"><td class="apl">${badge(ctx, pid)} ${name(pid)}</td>${cols.map((c) => `<td class="${c.cls || ''} ${c.pm && low ? 'ref' : ''}">${c.f(c.v(d, pid), d)}</td>`).join('')}</tr>`;
+    return `<tr class="${d.time ? '' : 'zero'} ${low && d.time ? 'low' : ''}"><td class="apl"><span class="pnm">${badge(ctx, pid)}<span>${name(pid)}</span></span></td>${cols.map((c) => `<td class="${c.cls || ''} ${c.pm && low ? 'ref' : ''}">${c.f(c.v(d, pid), d)}</td>`).join('')}</tr>`;
   }).join('');
   const tot = `<tr class="tot"><td class="apl">チーム合計</td>${cols.map((c) => `<td class="${c.cls || ''}">${c.tot ? c.tot(ctx.team) : ''}</td>`).join('')}</tr>`;
-  return `<div class="antbl"><table class="antb"><thead>${hasGrp ? `<tr class="grp"><th></th>${groups.map((g) => `<th colspan="${g.n}" class="${g.g ? 'g' : ''}">${g.g}</th>`).join('')}</tr>` : ''}<tr><th class="srt apl ${A.sort.col ? '' : 'on'}" data-sort="">選手</th>${th}</tr></thead><tbody>${rows}</tbody><tfoot>${tot}</tfoot></table></div>
+  const nmw = Math.max(2, ...list.map((pid) => (playerById(pid)?.last || '').length + (playerById(pid)?.status === 'former' ? 3 : 0)));
+  return `<div class="antbl"><table class="antb anauto" data-nmx="1.33" style="--nmw:${nmw}"><thead>${hasGrp ? `<tr class="grp"><th></th>${groups.map((g) => `<th colspan="${g.n}" class="${g.g ? 'g' : ''}">${g.g}</th>`).join('')}</tr>` : ''}<tr><th class="srt apl ${A.sort.col ? '' : 'on'}" data-sort="">選手</th>${th}</tr></thead><tbody>${rows}</tbody><tfoot>${tot}</tfoot></table></div>
     <p class="anhint">${note}${note ? '　' : ''}薄い数字＝出場時間が${mmss(ref())}未満で、1分あたりは参考値。${A.print ? 'GKは一番下。' : '見出しを押すと並べ替え（多い順 → 少ない順）、GKはいつも一番下。'}</p>`;
 }
 
@@ -212,28 +214,38 @@ function timeTab(ctx) {
     const x = L + 6 + i * cw + (cw - bw) / 2; let y = 18 + H;
     const parts = multi ? ok.map((o, j) => [MCOL[j % MCOL.length], (P[pid].byMatch?.[o.m.id] || 0) / (avg && P[pid].games ? P[pid].games : 1)])
       : periods.map((p) => [PCOL[p.key], P[pid].per?.[p.key]?.time || 0]);
+    // 棒にカーソルを合わせる（iPadは触れる）と内訳：複数の試合は試合ごと（色つき）、1試合は前半・後半（2026-10-18）
+    const tip = multi ? ok.map((o, j) => { const v = P[pid].byMatch?.[o.m.id] || 0; return v ? `<div><i style="background:${MCOL[j % MCOL.length]}"></i>${fmtShort(o.m.date)} vs ${esc(o.m.opponent)}　<b>${mmss(v)}</b></div>` : ''; }).join('') || '出場なし'
+      : periods.map((p) => `${p.label} ${mmss(P[pid].per?.[p.key]?.time || 0)}`).join('・');
+    sv += `<g class="rbar" data-bt="${esc(tip)}" data-html="${multi ? 1 : ''}"><rect x="${L + 6 + i * cw}" y="0" width="${cw}" height="${H + 58}" fill="transparent"/><g data-anchor="1">`;
     for (const [c, t] of parts) { if (!t) continue; const h = H * t / max; y -= h; sv += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${c}"/>`; }
-    sv += `<text x="${x + bw / 2}" y="${y - 5}" font-size="13" font-weight="800" fill="#0B2D6B" text-anchor="middle">${mmss(val(pid))}</text>`;
+    sv += `<rect x="${x}" y="${y - 22}" width="${bw}" height="22" fill="transparent"/></g></g>`;
+    sv += `<text x="${x + bw / 2}" y="${y - 5}" font-size="13" font-weight="800" fill="#0B2D6B" text-anchor="middle" stroke="#fff" stroke-width="4" paint-order="stroke">${mmss(val(pid))}</text>`;
     sv += `<text x="${x + bw / 2}" y="${18 + H + 17}" font-size="13" font-weight="800" fill="#1F5FBF" text-anchor="middle">${esc(ctx.no[pid] ?? '')}</text><text x="${x + bw / 2}" y="${18 + H + 33}" font-size="11.5" fill="#5F6B80" text-anchor="middle">${lastN(pid)}${playerById(pid)?.status === 'former' ? '（過去所属）' : ''}</text>`;
   });
   sv += '</svg>';
   const lg = multi ? ok.map((o, j) => `<span class="lg"><i style="background:${MCOL[j % MCOL.length]}"></i>${fmtShort(o.m.date)} vs ${esc(o.m.opponent)}</span>`).join('') : periods.map((p) => `<span class="lg"><i style="background:${PCOL[p.key]}"></i>${p.label}</span>`).join('');
   const t = (ms, d) => (avg && d.games ? mmss(ms / d.games) : mmss(ms));
+  // 列：選手のすぐ右に 合計（時間・回数・出場率）と出場試合数。そのあとに、1試合なら前半・後半…、複数の試合なら試合ごと（2026-10-18）
+  const cnt = (v, d) => (avg && d.games ? (v / d.games).toFixed(1) : v);
+  const mlab = (o, j) => `<i class="mdot" style="background:${MCOL[j % MCOL.length]}"></i>${fmtShort(o.m.date)} vs ${esc(o.m.opponent)}`;
   const cols = [
-    ...(multi || A.scope !== 'match' ? [{ k: 'games', h: '出場<br>試合数', v: (d) => d.games, f: (v) => v, tot: (tm) => tm.games }] : []),
-    ...periods.flatMap((p) => [{ k: 't' + p.key, grp: p.label, h: '時間', v: (d) => d.per?.[p.key]?.time || 0, f: (v, d) => t(v, d) },
-      { k: 'n' + p.key, grp: p.label, h: '回数', v: (d) => d.per?.[p.key]?.count || 0, f: (v, d) => (avg && d.games ? (v / d.games).toFixed(1) : v) }]),
-    { k: 'total', grp: '合計', h: '時間', v: (d) => d.time, f: (v, d) => `<b>${t(v, d)}</b>`, tot: (tm) => `<b>${mmss(tm.len)}</b>` },
-    { k: 'count', grp: '合計', h: '回数', v: (d) => d.count, f: (v, d) => (avg && d.games ? (v / d.games).toFixed(1) : v) },
-    { k: 'rate', grp: '合計', h: '出場率', v: (d) => d.time, f: (v) => (team.len ? Math.round(v / team.len * 100) + '%' : '—') },
-    ...(A.pp === 'all' ? [{ k: 'pown', grp: 'うちパワープレー', h: '5×4<br><small>攻撃</small>', v: (d) => d.pOwn, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }, { k: 'popp', grp: 'うちパワープレー', h: '4×5<br><small>守備</small>', v: (d) => d.pOpp, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }] : []),
+    { k: 'total', grp: '合計', h: '時間', v: (d) => d.time, f: (v, d) => `<b>${t(v, d)}</b>`, tot: (tm) => `<b>${mmss(tm.len)}</b>`, cls: 'sum' },
+    { k: 'count', grp: '合計', h: '回数', v: (d) => d.count, f: cnt, cls: 'sum' },
+    { k: 'rate', grp: '合計', h: '出場率', v: (d) => d.time, f: (v) => (team.len ? Math.round(v / team.len * 100) + '%' : '—'), cls: 'sum' },
+    ...(multi || A.scope !== 'match' ? [{ k: 'games', cls: 'gs', h: '出場<br>試合数', v: (d) => d.games, f: (v) => v, tot: (tm) => tm.games }] : []),
+    ...(multi ? ok.flatMap((o, j) => [{ k: 'mt' + o.m.id, grp: mlab(o, j), h: '時間', cls: 'gs', v: (d) => d.byMatch?.[o.m.id] || 0, f: (v) => (v ? mmss(v) : '<span class="z">—</span>') },
+      { k: 'mn' + o.m.id, grp: mlab(o, j), h: '回数', v: (d) => d.byMatchN?.[o.m.id] || 0, f: (v, d) => (d.byMatch?.[o.m.id] ? v : '<span class="z">—</span>') }])
+      : periods.flatMap((p) => [{ k: 't' + p.key, grp: p.label, h: '時間', cls: 'gs', v: (d) => d.per?.[p.key]?.time || 0, f: (v, d) => t(v, d) },
+        { k: 'n' + p.key, grp: p.label, h: '回数', v: (d) => d.per?.[p.key]?.count || 0, f: cnt }])),
+    ...(A.pp === 'all' ? [{ k: 'pown', grp: 'うちパワープレー', cls: 'gs', h: '5×4<br><small>攻撃</small>', v: (d) => d.pOwn, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }, { k: 'popp', grp: 'うちパワープレー', h: '4×5<br><small>守備</small>', v: (d) => d.pOpp, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }] : []),
   ];
   const sum = pids.reduce((a, p) => a + P[p].time, 0);
   const expect = team.len * 5 - team.empty;
   const chk = `<span class="${Math.abs(sum - expect) < 1000 * ok.length * 5 ? 'anok' : 'anng'}">全員の合計 ${mmss(sum)} ＝ 試合時間 ${mmss(team.len)} × 5人${team.empty ? ` − 退場による空席 ${mmss(team.empty)}` : ''}${Math.abs(sum - expect) < 1000 * ok.length * 5 ? ' ✓' : `（${mmss(expect)} と合いません）`}</span>`;
   const tv = `<div class="ansubs"><button class="${A.tview !== 'tl' ? 'on' : ''}" data-tview="list">一覧</button><button class="${A.tview === 'tl' ? 'on' : ''}" data-tview="tl">タイムライン</button></div>`;
   if (A.tview === 'tl' && !A.print) return tv + tlView(ctx);
-  return `${A.print ? '' : tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ' : 'ピリオドを積み上げ'}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間（${mmss(team.len)}）に対して${A.print ? '' : '。「タイムライン」は1試合を選んだときに見られます'}` })}</div>`;
+  return `${A.print ? '' : tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ。棒に触れると試合ごとの時間' : 'ピリオドを積み上げ。棒に触れると前半・後半の時間'}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間（${mmss(team.len)}）に対して${A.print ? '' : '。「タイムライン」は1試合を選んだときに見られます'}` })}</div>`;
 }
 
 // ---------- スタッツ ----------
@@ -250,7 +262,7 @@ function statsTab(ctx) {
   const PM = (k, h, v) => ({ k, h, v: (d) => (d.time ? v(d) / (d.time / 60000) : -1), f: (x, d) => pm(v(d), d.time), pm: true, cls: 'pmc' });
   const tm = (f) => (t) => g(f(t));
   const tmPm = (f) => (t) => (t.len ? (f(t) / (t.len / 60000)).toFixed(2) : '—');
-  const games = { k: 'games', h: '出場<br>試合数', v: (d) => d.games, f: (v) => v, tot: (t) => t.games };
+  const games = { k: 'games', cls: 'gs', h: '出場<br>試合数', v: (d) => d.games, f: (v) => v, tot: (t) => t.games };
   const time = { k: 'time', h: '出場時間', v: (d) => d.time, f: (v, d) => mmss(avg && d.games ? v / d.games : v), tot: (t) => mmss(avg ? t.len / Math.max(1, t.games) : t.len) };
   const base = A.scope === 'match' ? [time] : [games, time];
   let cols, note = '';
@@ -308,6 +320,9 @@ function statsTab(ctx) {
 // ---------- 操作 ----------
 function bindAnalysis(root) {
   const bar = document.querySelector('.bar'); if (bar) document.documentElement.style.setProperty('--barh', bar.offsetHeight + 'px');
+  { const pt = document.querySelector('body > .ptip'); if (pt) pt.style.display = 'none'; }
+  sizeAn(root);
+  { const ch = root.querySelector('.anchart'); const sv = ch?.querySelector('svg.anbar'); if (sv) bandTip(ch, sv, '.rbar', (g) => (g.dataset.html ? { html: g.dataset.bt } : g.dataset.bt)); }
   // 拡大表示：表やグラフを、上の切り替えの下に残った画面いっぱいの大きさに（2026-10-18）
   bindBig(root, (r) => { const b = r.querySelector('.anbody'); const hd = r.querySelector('.anhead'); if (!b) return; fitBox(b, r.querySelector('.anw').clientWidth, window.innerHeight - (hd?.offsetHeight || 0) - 20, { maxZ: 1.6 }); });
   // 表が横に入りきらないとき、右端をぼかして「まだ右にある」と分かるようにする（右端まで動かしたら消す）
@@ -445,7 +460,7 @@ function setTab(ctx) {
   const more = !A.print && rest.length ? `<tr class="anmore"><td colspan="${ctx.ok.length > 1 ? 14 : 13}"><button class="btn sm" data-set="setMore" data-v="${esc(sig)}">もっと見る（残り ${rest.length}組）</button></td></tr>` : '';
   const body = shown.map((r, i) => row(r, i)).join('') + more + (restRow ? row(restRow, 0, `そのほかのセット（${rest.length}組）`) : '') + (short ? row(short, 0, `出場時間が${mmss(setMin)}未満のセット（${shortN}組）`) : '') + (has(ppRow) ? row(ppRow, 0, '5×4・4×5と退場の時間帯') : '') + (has(special) ? row(special, 0, 'GK1人・FP4人がそろっていない区間') : '') + (has(other) ? row(other, 0, '交代の瞬間の3秒未満の組み合わせ') : '')
     + (list.length || short ? row(total, 0, '合計', 'tot') : '');
-  return `<div class="antbl"><table class="antb anset"><thead>${head}</thead><tbody>${body || '<tr><td colspan="14" class="mu">GKが1人・FPが4人そろった時間がありません</td></tr>'}</tbody></table></div>
+  return `<div class="antbl"><table class="antb anset anauto"><thead>${head}</thead><tbody>${body || '<tr><td colspan="14" class="mu">GKが1人・FPが4人そろった時間がありません</td></tr>'}</tbody></table></div>
     <p class="anhint">${restRow ? `出場時間の長い30組を出し、ほかの${rest.length}組は「そのほかのセット」の行にまとめています。` : ''}FP4人の組み合わせごと（出場時間の長い順。見出しで並べ替え）。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。差／分＝（自チーム−相手）÷出場時間。セットは数的同数の時間帯だけで数えます。出場時間が${mmss(setMin)}未満のセット（設定画面で変えられます）、パワープレー（5×4・4×5）と両チームの退場の時間帯、GK1人・FP4人がそろっていない区間、交代の瞬間の3秒未満の組み合わせは表に出さず、下の行にまとめます（全部足すと合計の行になります）。薄い数字＝出場時間が${mmss(ref)}未満で参考値</p>`;
 }
 
@@ -624,4 +639,28 @@ function bandTable(c) {
   const row = (lab, x, y) => `<tr><td class="apl">${lab}</td>${x.map((v, i) => `<td class="w">${v}</td><td class="o">${y[i]}</td>`).join('')}<td class="w"><b>${x.reduce((s, v) => s + v, 0)}</b></td><td class="o"><b>${y.reduce((s, v) => s + v, 0)}</b></td></tr>`;
   return `<div class="rpband"><h3 class="anh3">時間帯ごとの数<small>試合の時計（プレーイングタイム）。左＝${esc(own)}、右＝${esc(opp)}</small></h3><table class="antb"><thead><tr><th class="apl"></th>${L.map((l) => `<th colspan="2">${l}</th>`).join('')}<th colspan="2">合計</th></tr></thead><tbody>
     ${row('シュート', a.shotBand, b.shotBand)}${row('Z4進入', a.z4Band, b.z4Band)}${row('FINISH SET PLAY', a.fspBand, b.fspBand)}</tbody></table></div>`;
+}
+
+// 表の列幅（2026-10-18。マッチレビューと同じ考え方）：列ごとに中身（その時の一番長い数字・名前）と見出しの文字を測り、
+// その比で表の幅を分ける。選手の列は測った幅の1.33倍。列が多くて画面に入らないときは、表を横に動かして見る（最小の幅を守る）
+function sizeAn(root) {
+  const rng = document.createRange();
+  const tw = (el) => { rng.selectNodeContents(el); return rng.getBoundingClientRect().width; };
+  for (const t of root.querySelectorAll('table.antb.anauto')) {
+    const hr = t.tHead?.rows; if (!hr?.length) continue; const head = hr[hr.length - 1]; const n = head.cells.length;
+    t.classList.add('anmeasure'); t.querySelector('colgroup')?.remove();
+    const w = Array(n).fill(0);
+    const rows = [...(t.tBodies[0]?.rows || []), ...(t.tFoot?.rows || [])];
+    for (const r of rows) { if (r.cells.length !== n) continue; [...r.cells].forEach((c, i) => { w[i] = Math.max(w[i], tw(c)); }); }
+    [...head.cells].forEach((c, i) => {
+      const k = c.cloneNode(true); k.querySelectorAll('i').forEach((x) => x.remove());
+      const lines = k.innerHTML.split(/<br\s*\/?>/i).map((h) => { const sp = document.createElement('span'); sp.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap'; sp.innerHTML = h; c.appendChild(sp); const v = sp.getBoundingClientRect().width; sp.remove(); return v; });
+      w[i] = Math.max(w[i], ...lines);
+    });
+    t.classList.remove('anmeasure');
+    if (t.dataset.nmx) w[0] *= +t.dataset.nmx;
+    const ws = w.map((x) => Math.max(20, x) + 18); const sum = ws.reduce((a, b) => a + b, 0);
+    const cg = document.createElement('colgroup'); cg.innerHTML = ws.map((x) => `<col style="width:${(x / sum * 100).toFixed(2)}%">`).join(''); t.prepend(cg);
+    t.style.minWidth = Math.round(sum) + 'px';
+  }
 }

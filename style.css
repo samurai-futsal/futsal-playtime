@@ -1297,3 +1297,16 @@ body.bigv .stw .stpage{max-width:none;margin:0;border-radius:0;padding:10px}
 /* 分析：書き出しのボタンは隠す */
 body.bigv .anexp{display:none}
 body.bigv .anbody{margin-top:4px}
+/* 分析の表（2026-10-18。マッチレビューと同じ考え方）：列幅は中身に合わせ、選手は番号・名前をそろえて真ん中に。文字は少し大きく */
+.antb.anauto{table-layout:fixed}
+.antb.anmeasure{table-layout:auto!important;width:max-content!important;min-width:0!important}
+.antb{font-size:15px}.antb thead th{font-size:13px}.antb .no{font-size:13px;height:22px}
+.antb.anauto td.apl,.antb.anauto th.apl{text-align:center}
+.antb td.sum{background:#EEF3FB!important}.antb tbody tr:nth-child(even) td.sum{background:#E6EDF8!important}
+.antb .mdot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;border:1px solid #fff}
+.antb thead tr.grp th{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ptip.rich{white-space:normal;line-height:1.55;padding:6px 12px}.ptip.rich i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}.ptip.rich b{margin-left:4px}
+.anchart{position:relative}svg.anbar .rbar{cursor:pointer}
+.antb td.gs,.antb th.gs{border-left:2px solid #C9D3E3}
+.anset .setn{font-size:15px}.anset .setn small{font-size:14px}
+.antb.anset td.setn{white-space:nowrap!important}
