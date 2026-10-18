@@ -436,11 +436,11 @@ export function kickNetwork() {
   kickAt = Date.now();
   disableNetwork(F.db).then(() => enableNetwork(F.db)).catch(() => {});
 }
-if (typeof window !== 'undefined' && typeof setInterval === 'function') setInterval(() => {
+if (typeof window !== 'undefined' && typeof setInterval === 'function') setInterval(() => { // （node のテストでは止まらないよう、下で unref）
   if (!F || !S.pending || (typeof navigator !== 'undefined' && !navigator.onLine)) { pendSince = 0; return; }
   if (!pendSince) pendSince = Date.now();
   if (Date.now() - pendSince > 20000 && Date.now() - kickAt > 60000) { pendSince = Date.now(); kickNetwork(); }
-}, 5000);
+}, 5000)?.unref?.();
 let opSeq = (() => { try { return +localStorage.getItem('fpt.opSeq') || 0; } catch { return 0; } })();
 export function addOp(matchId, op) {
   const id = newId();
