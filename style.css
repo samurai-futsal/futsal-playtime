@@ -1264,3 +1264,23 @@ body.rvall .rvw .rvsec{scroll-margin-top:0}
 .phtop .btn.phsyb{min-height:50px;padding:0 24px;font-size:19px;font-weight:900;background:#14A05A;border:2px solid #fff;color:#fff;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,.25);letter-spacing:.02em}
 .phtop .btn.phsyb:active{transform:scale(.97)}
 .phtop .btn.phsyb.need{background:#F08C00;border-color:#FFE2B0;font-size:20px;padding:0 28px;box-shadow:0 0 0 4px rgba(240,140,0,.45),0 3px 12px rgba(0,0,0,.3)}
+/* フィジカルコーチ用の上の帯：いつも2段（2026-10-18） */
+.phtop{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+.phr1,.phr2{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;min-width:0}
+.phr1 .sp,.phr2 .sp{flex:1}
+.phr1 .btn,.phr2 .btn{flex:none;white-space:nowrap}
+.phr2 .phvs{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:30%}
+.phr2 .phsy{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.phr1 .phrt{white-space:nowrap}
+/* 帯の下の説明：1行に収める */
+.phlg{flex-wrap:nowrap;white-space:nowrap;gap:6px;font-size:13px;overflow:hidden}
+.phlg>span{white-space:nowrap}
+@media (max-width:900px){.phlg{font-size:11.5px;gap:4px}.phr1{gap:8px}.phr1 .phrun,.phr1 .phrt{font-size:13px}}
+.phtop{overflow:hidden;max-width:100%;box-sizing:border-box}
+.phr2 .phsy{flex:0 1 auto}
+@media (max-width:900px){.phtop .btn.phsyb.need{font-size:17px;padding:0 16px}.phlast{font-size:11px}.phr2{gap:8px}}
+.phw>.phtop{min-width:0;width:100%}.phr1>*,.phr2>*{min-width:0}
+.phw>.phtop{flex-wrap:nowrap}
+.phsy .s{display:none}
+@media (max-width:900px){.phsy .l{display:none}.phsy .s{display:inline}.phr2 .phvs{max-width:24%}}
+.phr1 .phrt,.phr1 .phrun{overflow:hidden;text-overflow:ellipsis}
