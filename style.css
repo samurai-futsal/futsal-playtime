@@ -1315,3 +1315,20 @@ body.bigv .anbody{margin-top:4px}
 .antb.anset .setn .spw{display:inline-grid;grid-template-columns:repeat(4,calc(38px + var(--nmw,3) * 16px));gap:10px;align-items:center;justify-content:center;vertical-align:middle}
 .antb.anset .setn .sp{width:auto;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .antb.anset .setn .sp small{margin:0!important;font-size:15px;color:#3A4558}
+/* マッチスタッツ（2026-10-18）：ページの幅いっぱいに使う。拡大表示は上の表・下の表を上下に、1ページずつ画面いっぱい */
+.page:has(.stw){max-width:none;padding:10px 14px 40px}
+.stw .stpage{max-width:none}
+@media (min-width:900px){.stw .stpage{margin:0 auto}}
+body.bigv .stw .sthead{position:sticky;top:0;z-index:5;background:var(--bg,#F3F5F9);padding:6px 0;margin:0}
+body.bigv .stw .sttier{display:flex;flex-direction:column;justify-content:center;scroll-snap-align:start}
+html:has(body.bigv .stw){scroll-snap-type:y proximity}
+body.bigv .stw .stsheet{gap:0}
+/* 拡大表示で横が余るとき：真ん中の表を横に広げる（--k 倍。行の高さは変えない） */
+body.bigv .stt{--k:1}
+body.bigv .stt .lb{width:calc(220px * var(--k));font-size:calc(12px * min(var(--k), 1.3))}
+body.bigv .stt .v{width:calc(52px * min(var(--k), 1.4))}
+body.bigv .stt tr.sec td:nth-child(2){font-size:calc(12px * min(var(--k), 1.3))}
+body.bigv .stt .bl,body.bigv .stt .br{width:calc(130px * var(--k))}
+body.bigv .stt .bl i{transform:scaleX(var(--k));transform-origin:right center}
+body.bigv .stt .br i{transform:scaleX(var(--k));transform-origin:left center}
+body.bigv .stt .lb,body.bigv .stt tr.sec td{line-height:1.15}

@@ -74,18 +74,54 @@ function calc(m, range0) {
   return { M, R, evs, todo, asOf, hm, shownP, sheet, foot, range };
 }
 
-// 拡大表示：横長の画面では上の表と下の表を左右に並べて1画面に、縦長の画面では1つの表が1画面に入る大きさに（2026-10-18）
+// 表の大きさ（2026-10-18）：表のもとの組み幅（900px）を、画面の幅いっぱいまで広げる（文字も同じ割合で大きく）。
+// 通常表示：幅いっぱい（2.2倍まで）。上の表と下の表は上下に並べ、ページを下へ動かして見る。
+// 拡大表示：上の表・下の表をそれぞれ「1ページ」として、1ページずつ画面いっぱい（幅と高さの両方に入る一番大きい倍率）に。上下に並べ、下へ動かすと次のページ
+const BASE = 900;
 function fitSheet(root) {
   const pg = root.querySelector('.stpage'); const sh = pg?.querySelector('.stsheet'); if (!pg || !sh) return;
+  const big = bigOn();
   const hd = root.querySelector('.sthead');
-  const availW = root.querySelector('.stw').clientWidth, availH = window.innerHeight - (hd?.offsetHeight || 0) - 24;
-  pg.style.zoom = ''; pg.style.width = ''; sh.classList.remove('big2');
   const tiers = [...sh.querySelectorAll('.sttier')];
-  if (availW / availH > 1.15) sh.classList.add('big2');
-  const w = Math.max(...tiers.map((t) => t.scrollWidth)) * (sh.classList.contains('big2') ? 2 : 1) + 60;
-  const h = sh.classList.contains('big2') ? pg.offsetHeight : Math.max(...tiers.map((t) => t.offsetHeight)) + 40;
-  const z = Math.max(0.6, Math.min(2, availW / w, availH / h));
-  pg.style.width = `${availW / z}px`; pg.style.zoom = z.toFixed(2);
+  pg.style.zoom = ''; pg.style.width = '';
+  tiers.forEach((t) => { t.style.minHeight = ''; t.style.zoom = ''; t.style.width = ''; t.querySelector('.stt')?.style.removeProperty('--k'); t.querySelectorAll('.stt tr').forEach((r) => { r.style.height = ''; }); });
+  document.documentElement.style.scrollPaddingTop = '';
+  const availW = root.querySelector('.stw').clientWidth;
+  if (big) {
+    // 拡大表示：ページ（上の表・下の表）ごとに、そのページが画面の幅と高さに入る一番大きい倍率に。
+    // 高さで決まって横が余るときは、真ん中の表を横に広げる（項目名の列と棒を長く・文字を少し大きく）
+    const hH = hd?.offsetHeight || 0; const availH = window.innerHeight - hH - 8;
+    const inW = pg.clientWidth - 20; const base = Math.min(BASE, inW);
+    tiers.forEach((t) => {
+      t.querySelectorAll('.stt tr').forEach((r) => { r.style.height = ''; });
+      t.style.width = base + 'px';
+      const H = availH - 12; const stt = t.querySelector('.stt');
+      let z = Math.max(0.6, Math.min(2.2, inW / base, H / t.offsetHeight));
+      // 横に広げると行が少し高くなることがあるので、入るまで倍率を合わせ直す
+      for (let i = 0; i < 4; i++) {
+        t.style.width = inW / z + 'px';
+        if (stt) { stt.style.removeProperty('--k'); const k = Math.max(1, Math.min(1.9, (inW / z - 40) / stt.offsetWidth)); stt.style.setProperty('--k', k.toFixed(3)); }
+        const h = t.offsetHeight; if (h * z <= H + 1) break; z = Math.max(0.6, H / h);
+      }
+      t.style.zoom = z.toFixed(3);
+      // 縦が余るときは、表の行を少しずつ高くして画面の縦いっぱいに（1行につき最大14px）
+      const rows = stt ? [...stt.querySelectorAll('tr')] : [];
+      const spare = H / z - t.offsetHeight;
+      if (rows.length && spare > 8) { const add = Math.min(14, spare / rows.length); const hs = rows.map((r) => r.getBoundingClientRect().height / z); rows.forEach((r, i) => { r.style.height = (hs[i] + add).toFixed(1) + 'px'; }); }
+      t.style.minHeight = `${(availH - 4) / z}px`;
+    });
+    document.documentElement.style.scrollPaddingTop = hH + 'px';
+    return;
+  }
+  // 通常表示：表のもとの組み幅（900px）を、画面の幅いっぱいまで広げる（2.2倍まで）。狭い画面はこれまでどおり
+  if (availW < BASE) return;
+  const z = Math.min(2.2, availW / BASE);
+  pg.style.width = `${availW / z}px`; pg.style.zoom = z.toFixed(3);
+}
+if (typeof window !== 'undefined' && !window.__stfit) {
+  window.__stfit = true;
+  let t = null; window.addEventListener('resize', () => { const r = document.querySelector('.stw'); if (!r || bigOn()) return; clearTimeout(t); t = setTimeout(() => fitSheet(r.parentElement), 150); });
+  window.addEventListener('hashchange', () => { document.documentElement.style.scrollPaddingTop = ''; });
 }
 export function vStats(m) {
   const x = calc(m, range);
@@ -110,6 +146,7 @@ export function vStats(m) {
       if (location.hash.endsWith('/print')) { history.replaceState(null, '', `#/m/${m.id}/stats`); setTimeout(save, 300); }
       const t = root.querySelector('#stTodo'); if (t) t.onclick = () => { openTodo(m.id); location.hash = `#/m/${m.id}/events`; };
       bindBig(root, fitSheet);
+      if (!bigOn()) fitSheet(root);
     },
   };
 }
