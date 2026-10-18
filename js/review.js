@@ -126,7 +126,7 @@ export function vReview(m) {
   fpList.forEach((pid, k) => {
     const x = L + 6 + k * cw + (cw - bw) / 2; let y = 20 + Hc;
     // 棒にカーソルを合わせる（iPadは触れる）と、前半・後半の内訳を出す（2026-10-17）
-    const bt = `${mem(pid).no ?? ''} ${last(pid)}　` + M.periods.filter((p) => p.status !== 'none').map((p) => `${p.label} ${mmss(T[pid]?.per[p.key]?.time || 0)}`).join('・');
+    const bt = M.periods.filter((p) => p.status !== 'none').map((p) => `${p.label} ${mmss(T[pid]?.per[p.key]?.time || 0)}`).join('・');
     sv.push(`<g class="rbar" data-bt="${esc(bt)}"><rect x="${(L + 6 + k * cw).toFixed(1)}" y="0" width="${cw.toFixed(1)}" height="${Hc + 64}" fill="transparent"/><g data-anchor="1">`);
     for (const p of M.periods) {
       const t = T[pid]?.per[p.key]?.time || 0; if (!t) continue;
