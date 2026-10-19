@@ -1349,12 +1349,9 @@ body.bigv .stw .stsheet{gap:0}
 /* 4・6：順位の見出しの下に「何の順位か」 */
 .rvtb th.rk .rkof{display:block;font-size:10px;font-weight:600;opacity:.85;white-space:nowrap}
 .modal .pdfname{font-weight:700;word-break:break-all;margin:4px 0 8px;color:var(--navy)}
-/* 表の行の強調（分析画面。マッチレビューと同じ黄色＋オレンジの枠）と、数字の上の選手（2026-10-19） */
+/* 表の行の強調（分析画面。マッチレビューと同じ黄色＋オレンジの枠）（2026-10-19） */
 .antb tr.hlable{cursor:pointer}
 .antb tr.hl td,.antb tr.hl td.apl,.antb tr.hl td.sum{background:#FFE9A8!important;box-shadow:inset 0 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
 .antb tr.hl td:first-child{box-shadow:inset 2px 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
 .antb tr.hl td:last-child{box-shadow:inset -2px 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
-.ctip{position:fixed;z-index:96;display:none;pointer-events:none;background:#0E1B33;color:#fff;font-size:13px;font-weight:700;padding:4px 8px;border-radius:7px;white-space:nowrap;box-shadow:0 4px 12px rgba(14,27,51,.28)}
-.ctip .ctp{display:inline-flex;align-items:center;gap:4px;margin-right:8px}.ctip .ctp:last-child{margin-right:0}
-.ctip .no{display:inline-grid;place-items:center;min-width:20px;height:18px;padding:0 4px;border-radius:5px;background:#1F5FBF;color:#fff;font-size:12px;line-height:1}.ctip .no.gk{background:#C8312B}
-@media print{.antb tr.hl td{background:none!important;box-shadow:none!important}.ctip{display:none!important}}
+@media print{.antb tr.hl td{background:none!important;box-shadow:none!important}}

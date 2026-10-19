@@ -14,7 +14,7 @@ import { render } from './views.js';
 import { printStats } from './stats.js';
 import { downloadDatasheet } from './dsview.js';
 import { printReport, printTime } from './report.js';
-import { bindCellTip, bindRowHl, hideCellTip } from './rowtip.js';
+import { bindRowHl } from './rowtip.js';
 import { bigBtn, bindBig, fitBox } from './bigview.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -329,9 +329,8 @@ function statsTab(ctx) {
 function bindAnalysis(root) {
   const bar = document.querySelector('.bar'); if (bar) document.documentElement.style.setProperty('--barh', bar.offsetHeight + 'px');
   { const pt = document.querySelector('body > .ptip'); if (pt) pt.style.display = 'none'; }
-  hideCellTip();
-  // 表の行を押すと強調、数字の上に選手（2026-10-19）
-  bindRowHl(root, '.anbody table.antb', anHl, `${A.tab}:${A.tab === 'stats' ? A.sub : ''}`); bindCellTip(root, '.anbody table.antb');
+  // 表の行を押すと強調（2026-10-19）
+  bindRowHl(root, '.anbody table.antb', anHl, `${A.tab}:${A.tab === 'stats' ? A.sub : ''}`);
   sizeAn(root);
   { const ch = root.querySelector('.anchart'); const sv = ch?.querySelector('svg.anbar'); if (sv) bandTip(ch, sv, '.rbar', (g) => (g.dataset.html ? { html: g.dataset.bt } : g.dataset.bt)); }
   // 拡大表示：表やグラフを、上の切り替えの下に残った画面いっぱいの大きさに（2026-10-18）
