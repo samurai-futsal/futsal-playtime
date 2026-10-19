@@ -347,7 +347,7 @@ function statsTab(ctx) {
       N('shots', 'シュート<br><small>（SZ内）</small>', (d) => d.shots, { f: (x, d) => `${n(x, d.games)}<small>（${n(d.sz, d.games)}）</small>`, tot: (t) => `${g(t.A.shots)}<small>（${g(t.A.sz)}）</small>` }),
       N('son', 'シュート<br>関与', (d) => d.on.shot, { cls: 'w', tot: tm((t) => t.A.shots) }), N('oson', '被シュート<br>関与', (d) => d.on.oshot, { cls: 'o', tot: tm((t) => t.B.shots) }),
       N('goals', '得点', (d) => d.goals, { tot: (t) => g(t.score.own) }), N('assists', 'アシスト', (d) => d.assists), N('ez4', 'Z4進入', (d) => d.ent.z4.inv, { tot: tm((t) => t.A.z4) }), N('esz', 'SZ進入', (d) => d.ent.sz.inv, { tot: tm((t) => t.A.szE) }),
-      N('pf', 'パス<br>出し手', (d) => d.passFrom), N('pt', 'パス<br>受け手', (d) => d.passTo), N('rec', 'リカバリー', (d) => d.rec, { tot: tm((t) => t.rec) }), N('lost', 'ロスト', (d) => d.lost, { tot: tm((t) => t.lost) }),
+      N('rec', 'リカバリー', (d) => d.rec, { tot: tm((t) => t.rec) }), N('lost', 'ロスト', (d) => d.lost, { tot: tm((t) => t.lost) }),
       { ...PM('spm', 'シュート<br>関与／分', (d) => d.on.shot), tot: tmPm((t) => t.A.shots) }, { ...PM('ospm', '被シュート<br>関与／分', (d) => d.on.oshot), tot: tmPm((t) => t.B.shots) },
       { ...PM('epm', 'Z4・SZ進入<br>関与／分', ent), tot: tmPm((t) => t.A.z4 + t.A.szE) }, { ...PM('oepm', '被Z4・SZ<br>進入関与／分', oent), tot: tmPm((t) => t.B.z4 + t.B.szE) },
       N('pmv', '得失点±', (d) => d.on.gf - d.on.ga, { f: (x, d) => { const v = avg && d.games ? (x / d.games).toFixed(1) : x; return `<b>${x > 0 ? '+' : ''}${v}</b>`; }, tot: (t) => `${t.score.own - t.score.opp > 0 ? '+' : ''}${g(t.score.own - t.score.opp)}` })];
