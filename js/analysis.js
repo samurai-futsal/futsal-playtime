@@ -229,23 +229,29 @@ function timeTab(ctx) {
   // 列：選手のすぐ右に 合計（時間・回数・出場率）と出場試合数。そのあとに、1試合なら前半・後半…、複数の試合なら試合ごと（2026-10-18）
   const cnt = (v, d) => (avg && d.games ? (v / d.games).toFixed(1) : v);
   const mlab = (o, j) => `<i class="mdot" style="background:${MCOL[j % MCOL.length]}"></i>${fmtShort(o.m.date)} vs ${esc(o.m.opponent)}`;
+  const pct = (v, len) => Math.round(v / len * 100) + '%';
+  const perLen = {}; for (const o of ok) for (const p of o.Mw.periods) if (p.status !== 'none' && (!o.keys || o.keys.includes(p.key))) perLen[p.key] = (perLen[p.key] || 0) + p.elapsed;
   const cols = [
     { k: 'total', grp: '合計', h: '時間', v: (d) => d.time, f: (v, d) => `<b>${t(v, d)}</b>`, tot: (tm) => `<b>${mmss(tm.len)}</b>`, cls: 'sum' },
     { k: 'count', grp: '合計', h: '回数', v: (d) => d.count, f: cnt, cls: 'sum' },
-    { k: 'rate', grp: '合計', h: '出場率', v: (d) => d.time, f: (v) => (team.len ? Math.round(v / team.len * 100) + '%' : '—'), cls: 'sum' },
+    { k: 'rate', grp: '合計', h: '出場率', v: (d) => d.time, f: (v) => (team.len ? pct(v, team.len) : '—'), cls: 'sum' },
     ...(multi || A.scope !== 'match' ? [{ k: 'games', cls: 'gs', h: '出場<br>試合数', v: (d) => d.games, f: (v) => v, tot: (tm) => tm.games }] : []),
-    ...(multi ? ok.flatMap((o, j) => [{ k: 'mt' + o.m.id, grp: mlab(o, j), h: '時間', cls: 'gs', v: (d) => d.byMatch?.[o.m.id] || 0, f: (v) => (v ? mmss(v) : '<span class="z">—</span>') },
-      { k: 'mn' + o.m.id, grp: mlab(o, j), h: '回数', v: (d) => d.byMatchN?.[o.m.id] || 0, f: (v, d) => (d.byMatch?.[o.m.id] ? v : '<span class="z">—</span>') }])
+    // 2026-10-19：試合ごと・ピリオドごとにも出場率（その試合・そのピリオドの試合時間に対して。パワープレーを除くときは除いた時間に対して）
+    ...(multi ? ok.flatMap((o, j) => [{ k: 'mt' + o.m.id, grp: mlab(o, j), h: '時間', cls: 'gs', v: (d) => d.byMatch?.[o.m.id] || 0, f: (v) => (v ? mmss(v) : '<span class="z">—</span>'), tot: () => mmss(o.len) },
+      { k: 'mn' + o.m.id, grp: mlab(o, j), h: '回数', v: (d) => d.byMatchN?.[o.m.id] || 0, f: (v, d) => (d.byMatch?.[o.m.id] ? v : '<span class="z">—</span>') },
+      { k: 'mr' + o.m.id, grp: mlab(o, j), h: '出場率', v: (d) => d.byMatch?.[o.m.id] || 0, f: (v) => (v && o.len ? pct(v, o.len) : '<span class="z">—</span>') }])
       : periods.flatMap((p) => [{ k: 't' + p.key, grp: p.label, h: '時間', cls: 'gs', v: (d) => d.per?.[p.key]?.time || 0, f: (v, d) => t(v, d) },
-        { k: 'n' + p.key, grp: p.label, h: '回数', v: (d) => d.per?.[p.key]?.count || 0, f: cnt }])),
-    ...(A.pp === 'all' ? [{ k: 'pown', grp: 'うちパワープレー', cls: 'gs', h: '5×4<br><small>攻撃</small>', v: (d) => d.pOwn, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }, { k: 'popp', grp: 'うちパワープレー', h: '4×5<br><small>守備</small>', v: (d) => d.pOpp, f: (v, d) => (v ? t(v, d) : '<span class="z">—</span>') }] : []),
+        { k: 'n' + p.key, grp: p.label, h: '回数', v: (d) => d.per?.[p.key]?.count || 0, f: cnt },
+        { k: 'r' + p.key, grp: p.label, h: '出場率', v: (d) => d.per?.[p.key]?.time || 0, f: (v) => (perLen[p.key] ? pct(v, perLen[p.key]) : '—') }])),
   ];
   const sum = pids.reduce((a, p) => a + P[p].time, 0);
   const expect = team.len * 5 - team.empty;
   const chk = `<span class="${Math.abs(sum - expect) < 1000 * ok.length * 5 ? 'anok' : 'anng'}">全員の合計 ${mmss(sum)} ＝ 試合時間 ${mmss(team.len)} × 5人${team.empty ? ` − 退場による空席 ${mmss(team.empty)}` : ''}${Math.abs(sum - expect) < 1000 * ok.length * 5 ? ' ✓' : `（${mmss(expect)} と合いません）`}</span>`;
-  const tv = `<div class="ansubs"><button class="${A.tview !== 'tl' ? 'on' : ''}" data-tview="list">一覧</button><button class="${A.tview === 'tl' ? 'on' : ''}" data-tview="tl">タイムライン</button></div>`;
+  // 2026-10-19：チェックでパワープレー（5×4・4×5と退場の時間帯）を除く。上の「時間帯：数的同数だけ」と同じ切り替え
+  const nopp = `<label class="annopp" title="5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除いて、グラフ・各試合・合計・出場率を出します"><input type="checkbox" id="anNoPP"${A.pp === 'ex' ? ' checked' : ''}>パワープレーの時間を除く</label>`;
+  const tv = `<div class="ansubs"><button class="${A.tview !== 'tl' ? 'on' : ''}" data-tview="list">一覧</button><button class="${A.tview === 'tl' ? 'on' : ''}" data-tview="tl">タイムライン</button>${A.tview === 'tl' ? '' : nopp}</div>`;
   if (A.tview === 'tl' && !A.print) return tv + tlView(ctx);
-  return `${A.print ? '' : tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ。棒に触れると試合ごとの時間' : 'ピリオドを積み上げ。棒に触れると前半・後半の時間'}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間（${mmss(team.len)}）に対して${A.print ? '' : '。「タイムライン」は1試合を選んだときに見られます'}` })}</div>`;
+  return `${A.print ? '' : tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ。棒に触れると試合ごとの時間' : 'ピリオドを積み上げ。棒に触れると前半・後半の時間'}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間${A.pp === 'ex' ? '（パワープレーの時間を除いた' + mmss(team.len) + '）' : '（' + mmss(team.len) + '）'}に対して。試合ごと・ピリオドごとの出場率は、その試合・そのピリオドの時間に対して${A.print ? '' : '。「タイムライン」は1試合を選んだときに見られます'}` })}</div>`;
 }
 
 // ---------- スタッツ ----------
@@ -344,6 +350,7 @@ function bindAnalysis(root) {
   const ds = root.querySelector('#anExpDs'); if (ds) ds.onclick = () => { const ms = selected(); if (ms.length) downloadDatasheet(ms); };
   const rp = root.querySelector('#anExpRep'); if (rp) rp.onclick = () => { const ms = selected(); if (ms.length) printReport(ms, A.scope === 'match' ? 'sum' : A.agg); };
   const ex = root.querySelector('#anExpStats'); if (ex) ex.onclick = () => { const ms = selected(); if (ms.length) printStats(ms); };
+  const np = root.querySelector('#anNoPP'); if (np) np.onchange = () => { A.pp = np.checked ? 'ex' : 'all'; keep(); render(); };
   root.querySelectorAll('[data-tview]').forEach((b) => b.onclick = () => { A.tview = b.dataset.tview; keep(); render(); });
   root.querySelectorAll('[data-bin-set]').forEach((b) => b.onclick = () => { A.bin = +b.dataset.binSet; keep(); render(); });
   root.querySelectorAll('[data-prow-set]').forEach((b) => b.onclick = () => { const k = b.dataset.prowSet; const r = new Set(A.rows); r.has(k) ? r.delete(k) : r.add(k); A.rows = Object.keys(PACE_ROWS).filter((x) => r.has(x)); keep(); render(); });

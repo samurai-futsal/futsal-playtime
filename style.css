@@ -778,6 +778,7 @@ svg.pace{width:100%;height:auto;display:block}
 .antabs button.on{color:#0B2D6B;border-bottom-color:#1F5FBF}.antabs button.later{color:#AAB2C0}
 .anbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding-top:8px}
 .ansubs{display:flex;gap:6px;flex-wrap:wrap;flex:0 0 auto}
+.annopp{display:inline-flex;align-items:center;gap:6px;margin-left:8px;font-size:13px;font-weight:700;color:#3A4558;cursor:pointer;min-height:40px}.annopp input{width:20px;height:20px;margin:0;accent-color:#0B2D6B}.prrep .annopp{display:none}
 .ansubs button{font:inherit;font-size:13px;font-weight:700;border:1.5px solid #C9D3E3;background:#fff;border-radius:16px;padding:4px 12px;cursor:pointer;color:#3A4558}.ansubs button.on{background:#0B2D6B;border-color:#0B2D6B;color:#fff}
 .anteam{display:flex;gap:6px 18px;flex-wrap:wrap;align-items:baseline;background:#EEF3FB;border-radius:10px;padding:7px 12px;margin:8px 0;flex:0 0 auto}
 .anteam span{display:inline-flex;gap:6px;align-items:baseline}.anteam em{font-style:normal;font-size:12px;color:#5F6B80;font-weight:700}.anteam b{font-size:17px;color:#0B2D6B}.anteam small{font-size:11px;font-weight:500}
