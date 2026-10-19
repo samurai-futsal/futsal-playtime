@@ -1345,3 +1345,4 @@ body.bigv .stw .stsheet{gap:0}
 .rvwholeg{margin-top:14px;grid-template-columns:minmax(0,1fr)!important;max-width:620px}
 /* 4・6：順位の見出しの下に「何の順位か」 */
 .rvtb th.rk .rkof{display:block;font-size:10px;font-weight:600;opacity:.85;white-space:nowrap}
+.modal .pdfname{font-weight:700;word-break:break-all;margin:4px 0 8px;color:var(--navy)}

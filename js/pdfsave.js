@@ -158,9 +158,14 @@ async function deliver(blob, fileName, md) {
   if (isTouch() && navigator.canShare?.({ files: [file] })) {
     // iPad：共有の画面から「ファイルに保存」。作るのに時間がかかると、すぐには開けないことがあるので、そのときはボタンを出す
     const share = () => navigator.share({ files: [file], title: fileName }).then(() => { closeModal(); toast('保存しました'); }, (e) => { if (e?.name === 'AbortError') closeModal(); else throw e; });
+    // 共有の画面が開いている間、後ろの表示も「保存先を選ぶ」にしておく（「まとめています」のまま残らないように）
+    const box = md.querySelector('.modal') || md;
+    box.innerHTML = `<h2>PDFができました</h2><p class="mu">保存の画面で「"ファイル"に保存」を選んでください。</p>`;
     try { await share(); return; } catch {}
-    md.innerHTML = `<h2>PDFができました</h2><p class="mu">${fileName}</p><p class="mu">「ファイルに保存」を押して、出てきた画面で「"ファイル"に保存」を選んでください。</p>
-      <div class="row end"><button class="btn" id="pdfX">閉じる</button><button class="btn pri big" id="pdfGo">ファイルに保存</button></div>`;
+    // 作るのに時間がかかったときは、共有の画面をすぐに開けないことがある（iPadの決まり）。ボタンを押してもらう
+    // （白い枠の中を入れ替える。2026-10-19：前は枠ごと消えて、文字とボタンが画面の上に重なっていた）
+    box.innerHTML = `<h2>PDFができました</h2><p class="pdfname">${fileName}</p><p class="mu">「ファイルに保存」を押して、出てきた画面で「"ファイル"に保存」を選んでください。</p>
+      <div class="mfoot"><button class="btn" id="pdfX">閉じる</button><button class="btn pri" id="pdfGo">ファイルに保存</button></div>`;
     md.querySelector('#pdfX').onclick = closeModal;
     md.querySelector('#pdfGo').onclick = () => share().catch(() => toast('保存できませんでした。もう一度押してください'));
     return;
