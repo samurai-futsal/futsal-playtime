@@ -231,16 +231,21 @@ export function playerSection(c) {
   const P = playerStats(M0, evs, goalName, gkLast(byNo), T0);
   const played = M0.periods.reduce((a, p) => a + p.elapsed, 0);
   const sum = (k) => P.rows.reduce((a, r) => a + r[k], 0);
+  // 2026-10-19：パスの出し手・受け手をやめ、枠内率と、評価につながる差（シュート関与の差・進入関与の差・リカバリー−ロスト）を足す。
+  // 並び：本人のプレー → ピッチにいた間（関与）→ 差 → 得失点±
+  const sg = (v) => `${v > 0 ? '+' : ''}${v}`;
+  const rate = (a, b) => (b ? Math.round(a / b * 100) + '%' : '—');
   const rows = tSorted(8, P.rows, (r, k) => r[k], (r) => !r.time).map((r) => {
     const z = (v) => (r.time ? v : `<span class="na">${v}</span>`);
-    return `<tr class="${r.time ? '' : 'zero'} ${hlc('8:' + r.pid)}" data-hlk="8:${r.pid}"><td><span class="pnm">${badge(r.pid)}<span>${esc(last(r.pid))}</span></span></td><td>${mmss(r.time)}</td><td>${z(r.shots)}<small>（${r.sz}）</small></td><td class="w">${z(r.shotOn)}</td><td class="o">${z(r.oshotOn)}</td><td>${z(r.in)}</td><td>${z(r.goals)}</td><td>${z(r.assists)}</td><td>${z(r.z4)}</td><td>${z(r.szE)}</td><td>${z(r.passFrom)}</td><td>${z(r.passTo)}</td><td>${z(r.rec)}</td><td>${z(r.lost)}</td><td>${z(r.foul)}</td><td><b>${r.time ? (r.pm > 0 ? '+' + r.pm : r.pm) : '<span class="na">0</span>'}</b></td></tr>`;
+    return `<tr class="${r.time ? '' : 'zero'} ${hlc('8:' + r.pid)}" data-hlk="8:${r.pid}"><td><span class="pnm">${badge(r.pid)}<span>${esc(last(r.pid))}</span></span></td><td>${mmss(r.time)}</td><td>${z(r.shots)}<small>（${r.sz}）</small></td><td>${z(r.in)}</td><td>${z(rate(r.in, r.shots))}</td><td>${z(r.goals)}</td><td>${z(r.assists)}</td><td>${z(r.z4)}</td><td>${z(r.szE)}</td><td>${z(r.rec)}</td><td>${z(r.lost)}</td><td>${z(r.foul)}</td><td class="w">${z(r.shotOn)}</td><td class="o">${z(r.oshotOn)}</td><td class="df"><b>${z(sg(r.shotDiff))}</b></td><td class="df"><b>${z(sg(r.entDiff))}</b></td><td class="df"><b>${z(sg(r.rlDiff))}</b></td><td><b>${r.time ? sg(r.pm) : '<span class="na">0</span>'}</b></td></tr>`;
   }).join('');
   const tot = (side) => Object.values(R.score[side]).reduce((a, b) => a + b, 0);
   const goalsN = tot('own');
-  return `<section class="rvsec" id="rv8"><div class="rvtt"><b>8. スタッツまとめ</b><span>選手ごと（背番号順、GKは一番下）。見出しを押すと並べ替え。関与＝ピッチにいる間の数。±＝得点−失点</span></div>
-<div class="rvbox"><table class="rvtb rvs8 rveq rvauto rvnm" style="--nmw:${Math.max(2, ...P.rows.map((r) => last(r.pid).length))}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${tSort[8].col ? '' : 'on'}" data-tsort="8:">選手<i>${tSort[8].col ? '' : '背番号順'}</i></th>${tsh(8, 'time', '出場')}${tsh(8, 'shots', 'シュート<br><small>（SZ内）</small>')}${tsh(8, 'shotOn', 'シュート<br>関与', 'w')}${tsh(8, 'oshotOn', '被シュート<br>関与', 'o')}${tsh(8, 'in', '枠内')}${tsh(8, 'goals', '得点')}${tsh(8, 'assists', 'アシスト')}${tsh(8, 'z4', 'Z4進入')}${tsh(8, 'szE', 'SZ進入')}${tsh(8, 'passFrom', 'パス<br>出し手')}${tsh(8, 'passTo', 'パス<br>受け手')}${tsh(8, 'rec', 'リカバリー')}${tsh(8, 'lost', 'ロスト')}${tsh(8, 'foul', 'ファール')}${tsh(8, 'pm', '得失点±')}</tr>${rows}
-<tr class="tot"><td>チーム合計</td><td>${mmss(played)}</td><td>${R.A.shots}<small>（${R.A.sz}）</small></td><td class="w">${R.A.shots}</td><td class="o">${R.B.shots}</td><td>${R.A.in}</td><td>${goalsN}</td><td>${sum('assists')}${P.assistMiss ? `<div class="miss">未入力 ${P.assistMiss}</div>` : ''}</td><td>${R.A.z4}</td><td>${R.A.szE}</td><td>${sum('passFrom')}</td><td>${sum('passTo')}</td><td>${R.rec}</td><td>${R.lost}</td><td>${R.A.foul}</td><td>${goalsN - tot('opp') > 0 ? '+' : ''}${goalsN - tot('opp')}</td></tr></table>
-<p class="rvhint">シュートは得点を含む。Z4進入・SZ進入＝本人が進入に関わった回数（ドリブル・パスの出し手と受け手・リバウンド。パスは2人とも +1 なので、選手の合計はチーム合計（進入の本数）より多くなります）。関与＝ピッチにいる間の数。チーム合計のシュート・リカバリーなどは、選手が「不明」や未入力のものも含むので、選手の合計と合わないことがあります。得点には相手OGを含む</p></div></section>`;
+  const A = R.A, B = R.B;
+  return `<section class="rvsec" id="rv8"><div class="rvtt"><b>8. スタッツまとめ</b><span>選手ごと（背番号順、GKは一番下）。見出しを押すと並べ替え。関与＝ピッチにいる間の数。差＝自チーム−相手。±＝得点−失点</span></div>
+<div class="rvbox"><table class="rvtb rvs8 rveq rvauto rvnm" style="--nmw:${Math.max(2, ...P.rows.map((r) => last(r.pid).length))}"><colgroup><col class="c1"></colgroup><tr><th class="srt ${tSort[8].col ? '' : 'on'}" data-tsort="8:">選手<i>${tSort[8].col ? '' : '背番号順'}</i></th>${tsh(8, 'time', '出場')}${tsh(8, 'shots', 'シュート<br><small>（SZ内）</small>')}${tsh(8, 'in', '枠内')}${tsh(8, 'inRate', '枠内率')}${tsh(8, 'goals', '得点')}${tsh(8, 'assists', 'アシスト')}${tsh(8, 'z4', 'Z4進入')}${tsh(8, 'szE', 'SZ進入')}${tsh(8, 'rec', 'リカバリー')}${tsh(8, 'lost', 'ロスト')}${tsh(8, 'foul', 'ファール')}${tsh(8, 'shotOn', 'シュート<br>関与', 'w')}${tsh(8, 'oshotOn', '被シュート<br>関与', 'o')}${tsh(8, 'shotDiff', 'シュート<br>関与の差', 'df')}${tsh(8, 'entDiff', '進入<br>関与の差', 'df')}${tsh(8, 'rlDiff', 'リカバリー<br>−ロスト', 'df')}${tsh(8, 'pm', '得失点±')}</tr>${rows}
+<tr class="tot"><td>チーム合計</td><td>${mmss(played)}</td><td>${A.shots}<small>（${A.sz}）</small></td><td>${A.in}</td><td>${rate(A.in, A.shots)}</td><td>${goalsN}</td><td>${sum('assists')}${P.assistMiss ? `<div class="miss">未入力 ${P.assistMiss}</div>` : ''}</td><td>${A.z4}</td><td>${A.szE}</td><td>${R.rec}</td><td>${R.lost}</td><td>${A.foul}</td><td class="w">${A.shots}</td><td class="o">${B.shots}</td><td class="df">${sg(A.shots - B.shots)}</td><td class="df">${sg(A.z4 + A.szE - B.z4 - B.szE)}</td><td class="df">${sg(R.rec - R.lost)}</td><td>${sg(goalsN - tot('opp'))}</td></tr></table>
+<p class="rvhint">シュートは得点を含む。枠内率＝枠内÷シュート。シュート関与の差＝シュート関与−被シュート関与。進入関与の差＝ピッチにいる間の自チームのZ4・SZ進入−相手のZ4・SZ進入。Z4進入・SZ進入＝本人が進入に関わった回数（ドリブル・パスの出し手と受け手・リバウンド。パスは2人とも +1 なので、選手の合計はチーム合計（進入の本数）より多くなります）。関与＝ピッチにいる間の数。チーム合計のシュート・リカバリーなどは、選手が「不明」や未入力のものも含むので、選手の合計と合わないことがあります。得点には相手OGを含む</p></div></section>`;
 }
 
 // 試合の状況の帯に出すスコア
@@ -327,8 +332,10 @@ export function sizeCols(root) {
       w[i] = Math.max(w[i], ...lines);
     });
     t.classList.remove('rvmeasure');
-    if (t.classList.contains('rvnm')) w[0] *= t.dataset.nmx ? +t.dataset.nmx : t.closest('.rvpgrid') && window.innerWidth > 1000 ? 1.4 : 2; // 選手の列は倍（2 は表が2つ並ぶので控えめ）
-    const pad = 18; const ws = w.map((x) => Math.max(18, x) + pad);
+    if (t.classList.contains('rvs8') && window.innerWidth < 1000) w[0] *= 1.1; // 8は列が多いので、狭い画面では選手の列を広げすぎない
+    else if (t.classList.contains('rvnm')) w[0] *= t.dataset.nmx ? +t.dataset.nmx : t.closest('.rvpgrid') && window.innerWidth > 1000 ? 1.4 : 2; // 選手の列は倍（2 は表が2つ並ぶので控えめ）
+    // 狭い画面（iPad縦など）はマスの左右の余白が小さいので、足す分も小さく（2026-10-19）
+    const pad = window.innerWidth < 1000 && t.classList.contains('rvs8') ? 8 : 18; const ws = w.map((x) => Math.max(18, x) + pad);
     done.push({ t, ws });
   }
   // 4 と 6 の表は、順位とFP4人のセットの列を同じ幅にそろえる（2026-10-19）
@@ -345,5 +352,8 @@ export function sizeCols(root) {
     const sum = d.ws.reduce((a, b) => a + b, 0); const pct = d.pct || d.ws.map((x) => x / sum * 100);
     let cg = d.t.querySelector('colgroup'); if (!cg) { cg = document.createElement('colgroup'); d.t.prepend(cg); }
     cg.innerHTML = pct.map((x) => `<col style="width:${x.toFixed(2)}%">`).join('');
+    // 中身が枠に入りきらないときは、縮めて重ねずに横に動かして見る（2026-10-19）
+    const W = d.t.parentElement?.clientWidth || 0; const sum2 = d.ws.reduce((x, y) => x + y, 0);
+    if (d.t.classList.contains('rvs8')) { d.t.style.minWidth = W && sum2 > W ? Math.ceil(sum2) + 'px' : ''; if (d.t.parentElement) d.t.parentElement.style.overflowX = W && sum2 > W ? 'auto' : ''; }
   }
 }

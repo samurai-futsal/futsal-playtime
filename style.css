@@ -1374,3 +1374,4 @@ body.bigv .stw .stsheet{gap:0}
 .anteamv .ancmpw h4{margin:0 0 8px;padding:0 0 6px;border-bottom:2px solid #0B2D6B;font-size:14.5px}
 .anteamv{gap:14px}
 .anteamv{grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr))}.anteamv .ancmpw{min-width:0;overflow-x:auto}
+.rvs8 th.df{background:#4B3A8C}.rvs8 td.df{background:#F5F2FB;color:#3B2A7A}.rvs8 tr.hl td.df{background:#FFE9A8!important}
