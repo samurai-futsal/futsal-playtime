@@ -346,12 +346,12 @@ function statsTab(ctx) {
     case 'sum': cols = [...base,
       N('shots', 'シュート<br><small>（SZ内）</small>', (d) => d.shots, { f: (x, d) => `${n(x, d.games)}<small>（${n(d.sz, d.games)}）</small>`, tot: (t) => `${g(t.A.shots)}<small>（${g(t.A.sz)}）</small>` }),
       N('son', 'シュート<br>関与', (d) => d.on.shot, { cls: 'w', tot: tm((t) => t.A.shots) }), N('oson', '被シュート<br>関与', (d) => d.on.oshot, { cls: 'o', tot: tm((t) => t.B.shots) }),
-      N('goals', '得点', (d) => d.goals, { tot: (t) => g(t.score.own) }), N('assists', 'アシスト', (d) => d.assists), N('inv', '進入関与', (d) => d.inv),
+      N('goals', '得点', (d) => d.goals, { tot: (t) => g(t.score.own) }), N('assists', 'アシスト', (d) => d.assists), N('ez4', 'Z4進入', (d) => d.ent.z4.inv, { tot: tm((t) => t.A.z4) }), N('esz', 'SZ進入', (d) => d.ent.sz.inv, { tot: tm((t) => t.A.szE) }),
       N('pf', 'パス<br>出し手', (d) => d.passFrom), N('pt', 'パス<br>受け手', (d) => d.passTo), N('rec', 'リカバリー', (d) => d.rec, { tot: tm((t) => t.rec) }), N('lost', 'ロスト', (d) => d.lost, { tot: tm((t) => t.lost) }),
-      { ...PM('spm', 'シュート<br>／分', (d) => d.on.shot), tot: tmPm((t) => t.A.shots) }, { ...PM('ospm', '被シュート<br>／分', (d) => d.on.oshot), tot: tmPm((t) => t.B.shots) },
-      { ...PM('epm', 'Z4・SZ進入<br>／分', ent), tot: tmPm((t) => t.A.z4 + t.A.szE) }, { ...PM('oepm', '被Z4・SZ<br>進入／分', oent), tot: tmPm((t) => t.B.z4 + t.B.szE) },
+      { ...PM('spm', 'シュート<br>関与／分', (d) => d.on.shot), tot: tmPm((t) => t.A.shots) }, { ...PM('ospm', '被シュート<br>関与／分', (d) => d.on.oshot), tot: tmPm((t) => t.B.shots) },
+      { ...PM('epm', 'Z4・SZ進入<br>関与／分', ent), tot: tmPm((t) => t.A.z4 + t.A.szE) }, { ...PM('oepm', '被Z4・SZ<br>進入関与／分', oent), tot: tmPm((t) => t.B.z4 + t.B.szE) },
       N('pmv', '得失点±', (d) => d.on.gf - d.on.ga, { f: (x, d) => { const v = avg && d.games ? (x / d.games).toFixed(1) : x; return `<b>${x > 0 ? '+' : ''}${v}</b>`; }, tot: (t) => `${t.score.own - t.score.opp > 0 ? '+' : ''}${g(t.score.own - t.score.opp)}` })];
-      note = 'シュート・得点などは本人のプレー。シュート関与・被シュート関与（本数）、／分、得失点±は、その選手がピッチにいる間のチームの数（1分あたり＝合計の本数÷合計の出場時間）。'; break;
+      note = 'シュート・得点・Z4進入・SZ進入などは本人のプレー（進入はパスの出し手と受け手の両方に +1）。〇〇関与（本数）、／分、得失点±は、その選手がピッチにいる間のチームの数（1分あたり＝合計の本数÷合計の出場時間）。'; break;
     case 'shot': cols = [...base,
       N('shots', '合計', (d) => d.shots, { grp: '本人のシュート', tot: tm((t) => t.A.shots) }), N('sz', 'SZ内', (d) => d.sz, { grp: '本人のシュート', tot: tm((t) => t.A.sz) }),
       N('in', '枠内', (d) => d.in, { grp: '本人のシュート', tot: tm((t) => t.A.in) }), N('out', '枠外', (d) => d.out, { grp: '本人のシュート', tot: tm((t) => t.A.out) }), N('block', 'ブロック', (d) => d.block, { grp: '本人のシュート', tot: tm((t) => t.A.block) }),
@@ -366,12 +366,13 @@ function statsTab(ctx) {
       { ...PM('pmm', '±／分', (d) => d.on.gf - d.on.ga), grp: '出場中', tot: tmPm((t) => t.score.own - t.score.opp) }];
       note = '関与＝その選手がピッチにいる間の数。得点関与・失点関与は、相手OG・自チームOGを含む。'; break;
     case 'ent': {
-      const E = (gk, gl) => [N(gk + 'dr', 'ドリブル', (d) => d.ent[gk].dr, { grp: gl }), N(gk + 'pf', 'パス<br>出し手', (d) => d.ent[gk].pf, { grp: gl }), N(gk + 'pt', 'パス<br>受け手', (d) => d.ent[gk].pt, { grp: gl }), N(gk + 'rb', 'リバウンド', (d) => d.ent[gk].rb, { grp: gl }), N(gk + 'iv', '関与', (d) => d.ent[gk].inv, { grp: gl, tot: tm((t) => (gk === 'z4' ? t.A.z4 : t.A.szE)) })];
-      cols = [...base, ...E('z4', 'Z4進入（本人）'), ...E('sz', 'SZ進入（本人）'), N('inv', '本人の<br>進入関与', (d) => d.inv),
-        N('oe', 'Z4・SZ進入<br>関与', ent, { grp: '出場中', tot: tm((t) => t.A.z4 + t.A.szE) }), { ...PM('oem', '／分', ent), grp: '出場中', tot: tmPm((t) => t.A.z4 + t.A.szE) },
-        N('ooe', '被Z4・SZ<br>進入関与', oent, { grp: '出場中', tot: tm((t) => t.B.z4 + t.B.szE) }), { ...PM('ooem', '／分', oent), grp: '出場中', tot: tmPm((t) => t.B.z4 + t.B.szE) },
-        N('ed', '差', (d) => ent(d) - oent(d), { grp: '出場中', tot: tm((t) => t.A.z4 + t.A.szE - t.B.z4 - t.B.szE) })];
-      note = '関与＝その進入に選手（パスは出し手と受け手）として付いている回数。チーム合計の「関与」は進入の本数。本人の進入関与＝Z4とSZの関与の合計。Z4・SZ進入関与＝その選手がピッチにいる間のZ4進入とSZ進入の合計。'; break;
+      // 本人の数（直接）＝Z4進入・SZ進入、ピッチにいた間の数（間接）＝〇〇関与（2026-10-19）
+      const E = (gk, gl, h) => [N(gk + 'dr', 'ドリブル', (d) => d.ent[gk].dr, { grp: gl }), N(gk + 'pf', 'パス<br>出し手', (d) => d.ent[gk].pf, { grp: gl }), N(gk + 'pt', 'パス<br>受け手', (d) => d.ent[gk].pt, { grp: gl }), N(gk + 'rb', 'リバウンド', (d) => d.ent[gk].rb, { grp: gl }), N(gk + 'iv', h, (d) => d.ent[gk].inv, { grp: gl, cls: 'sum', tot: tm((t) => (gk === 'z4' ? t.A.z4 : t.A.szE)) })];
+      const O = (k, h, f, tf, c) => [N(k, h, f, { grp: '出場中（関与）', cls: c, tot: tm(tf) }), { ...PM(k + 'm', '／分', f), grp: '出場中（関与）', tot: tmPm(tf) }];
+      cols = [...base, ...E('z4', 'Z4進入（本人）', 'Z4進入'), ...E('sz', 'SZ進入（本人）', 'SZ進入'),
+        ...O('oz', 'Z4進入<br>関与', (d) => d.on.z4, (t) => t.A.z4, 'w'), ...O('os', 'SZ進入<br>関与', (d) => d.on.sz, (t) => t.A.szE, 'w'),
+        ...O('ooz', '被Z4進入<br>関与', (d) => d.on.oz4, (t) => t.B.z4, 'o'), ...O('oos', '被SZ進入<br>関与', (d) => d.on.osz, (t) => t.B.szE, 'o')];
+      note = 'Z4進入・SZ進入（本人）＝その選手が進入に関わった回数（ドリブル・パスの出し手と受け手・リバウンド。パスは2人とも +1 なので、選手の合計はチーム合計（進入の本数）より多くなります）。〇〇関与＝その選手がピッチにいる間のチームの進入（被〇〇関与は相手の進入）。'; break;
     }
     case 'rl': cols = [...base, N('rec', 'リカバリー', (d) => d.rec, { grp: '本人', tot: tm((t) => t.rec) }), N('lost', 'ロスト', (d) => d.lost, { grp: '本人', tot: tm((t) => t.lost) }), N('rld', '差', (d) => d.rec - d.lost, { grp: '本人', tot: tm((t) => t.rec - t.lost) }),
       N('orec', 'リカバリー<br>関与', (d) => d.on.rec, { grp: '出場中', tot: tm((t) => t.rec) }), { ...PM('orecm', '／分', (d) => d.on.rec), grp: '出場中', tot: tmPm((t) => t.rec) },

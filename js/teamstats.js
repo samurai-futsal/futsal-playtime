@@ -106,6 +106,8 @@ export function playerStats(Mp, events, goalName, pids, T, keys = null) {
       goals: ev.filter((e) => e.kind === 'goal' && e.pid === pid).length,
       assists: ev.filter((e) => e.kind === 'goal' && e.assist === pid).length,
       inv: ent.filter((e) => e.pid === pid || e.pid2 === pid).length,
+      // 本人の Z4進入・SZ進入（ドリブル・パスの出し手と受け手・リバウンド。関わった人それぞれに +1。2026-10-19）
+      z4: ent.filter((e) => e.kind === 'z4' && (e.pid === pid || e.pid2 === pid)).length, szE: ent.filter((e) => e.kind === 'sz' && (e.pid === pid || e.pid2 === pid)).length,
       passFrom: ent.filter((e) => e.method === 'pass' && e.pid === pid).length,
       passTo: ent.filter((e) => e.method === 'pass' && e.pid2 === pid).length,
       rec: ev.filter((e) => e.kind === 'rec' && e.pid === pid).length, lost: ev.filter((e) => e.kind === 'lost' && e.pid === pid).length,

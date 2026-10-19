@@ -193,7 +193,7 @@ export function vReport(m) {
       <div class="card"><div class="scrow"><button class="btn pri" id="rpGo">マッチレポートをPDFで保存</button></div>
       <ol class="dsl"><li><b>試合情報・スコア・チームスタッツ</b>：得点者・アシスト、両チームの比較（SZ内シュート・FINISH SET PLAYの内訳つき）</li>
       <li><b>出場時間と出場回数</b>（上に棒グラフ、下に表）</li><li><b>出場タイムライン</b></li><li><b>マッチ・ペース</b>（1分ごと）</li>
-      ${has ? `<li><b>スタッツ（まとめ）</b>：進入関与・パスの出し手・受け手を含む</li><li><b>セットの集計</b></li><li><b>パワープレー</b></li><li><b>種類別</b></li>
+      ${has ? `<li><b>スタッツ（まとめ）</b>：Z4進入・SZ進入（本人）・パスの出し手・受け手を含む</li><li><b>セットの集計</b></li><li><b>パワープレー</b></li><li><b>局面別</b></li>
       <li><b>進入</b>（方法、パスの出し手・受け手）</li><li><b>リカバリーとロスト</b>（ゾーン別）</li><li><b>FINISH SET PLAY の内訳</b></li><li><b>ファールとカード</b></li>` : '<li class="mu">スタッツなどのページは、イベントを入力すると入ります</li>'}</ol>
       <p class="mu sm">中身は分析画面と同じ計算です（前半・後半とパワープレーは分けず、試合全体）。</p></div></div>`,
     bind: (root) => {
