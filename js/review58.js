@@ -25,6 +25,17 @@ export function tSorted(t, rows, val, last = () => false) {
   return rows.slice().sort((a, b) => (last(a) - last(b)) || (val(a, s.col) - val(b, s.col)) * k || ix.get(a) - ix.get(b));
 }
 
+// 順位（2026-10-19）：並べ替えている列の数が多い順の順位（同じ数は同じ順位）。並べ替えていないときは def の多い順。
+// 少ない順に並べると、下から 1位・2位… になる（順位の意味はいつも「多い順」）
+export function tRank(t, rows, val, def) {
+  const s = tSort[t]; const f = s.col ? (r) => val(r, s.col) : def;
+  const vs = rows.map(f); const out = new Map();
+  rows.forEach((r, i) => out.set(r, 1 + vs.filter((v) => v > vs[i]).length));
+  return out;
+}
+// 順位の見出しの下に小さく、何の順位か
+export const tRankHead = (t, labels, defLabel) => { const s = tSort[t]; const l = s.col ? labels(s.col) : defLabel; return `順位<small class="rkof">${l}</small>`; };
+
 // 得点・失点の一覧（時刻順）。label＝線の上に出す短い文字
 export function goalMarks(R, c) {
   return R.goals.map(({ e, own }) => {
@@ -297,6 +308,7 @@ export function bandTip(box, area, sel, textOf) {
 export function sizeCols(root) {
   const rng = document.createRange();
   const textW = (el) => { rng.selectNodeContents(el); return rng.getBoundingClientRect().width; };
+  const done = [];
   for (const t of root.querySelectorAll('table.rvauto')) {
     const rows = [...t.rows]; if (rows.length < 2) continue;
     const head = rows[0]; const n = head.cells.length;
@@ -316,8 +328,22 @@ export function sizeCols(root) {
     });
     t.classList.remove('rvmeasure');
     if (t.classList.contains('rvnm')) w[0] *= t.dataset.nmx ? +t.dataset.nmx : t.closest('.rvpgrid') && window.innerWidth > 1000 ? 1.4 : 2; // 選手の列は倍（2 は表が2つ並ぶので控えめ）
-    const pad = 18; const ws = w.map((x) => Math.max(18, x) + pad); const sum = ws.reduce((a, b) => a + b, 0);
-    let cg = t.querySelector('colgroup'); if (!cg) { cg = document.createElement('colgroup'); t.prepend(cg); }
-    cg.innerHTML = ws.map((x) => `<col style="width:${(x / sum * 100).toFixed(2)}%">`).join('');
+    const pad = 18; const ws = w.map((x) => Math.max(18, x) + pad);
+    done.push({ t, ws });
+  }
+  // 4 と 6 の表は、順位とFP4人のセットの列を同じ幅にそろえる（2026-10-19）
+  const sets = done.filter((d) => d.t.classList.contains('rvset4') || d.t.classList.contains('rvset2'));
+  if (sets.length > 1) {
+    const fix = [0, 1].map((i) => Math.max(...sets.map((d) => d.ws[i])));
+    for (const d of sets) {
+      const W = d.t.parentElement?.clientWidth || 0; const rest = d.ws.slice(2).reduce((a, b) => a + b, 0);
+      const fx = fix[0] + fix[1];
+      if (W > fx + rest * 0.6) { d.pct = [fix[0] / W * 100, fix[1] / W * 100, ...d.ws.slice(2).map((x) => x / rest * (100 - fx / W * 100))]; }
+    }
+  }
+  for (const d of done) {
+    const sum = d.ws.reduce((a, b) => a + b, 0); const pct = d.pct || d.ws.map((x) => x / sum * 100);
+    let cg = d.t.querySelector('colgroup'); if (!cg) { cg = document.createElement('colgroup'); d.t.prepend(cg); }
+    cg.innerHTML = pct.map((x) => `<col style="width:${x.toFixed(2)}%">`).join('');
   }
 }

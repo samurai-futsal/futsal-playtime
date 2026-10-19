@@ -1338,3 +1338,10 @@ body.bigv .stw .stsheet{gap:0}
 .ctopt{display:grid;gap:8px;margin-top:4px}.ctopt>.chk{font-weight:600}.ctopt .chk .mu{font-weight:400;margin-left:6px}
 .ctown{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-left:28px}.ctown .mu{margin:0;font-size:12.5px}
 .ctown[hidden],#ctBox[hidden]{display:none}
+/* マッチレビュー 1・2：FPの平均の行（いちばん上）、2：1回の出場・休憩の平均（2026-10-19） */
+.rvtb tr.avg td{background:#FFF6E0!important;font-weight:700;border-bottom:2px solid #E8C77A}
+.rvtb tr.avg .avgl{display:inline-flex;flex-direction:column;align-items:center;line-height:1.15;color:#7A5200}.rvtb tr.avg .avgl small{font-size:10.5px;font-weight:600;color:#9A7A3A}
+.rvtb .cy{background:#F1F6FF}.rvtb th.cy{background:#2C5AA0!important;color:#fff}
+.rvwholeg{margin-top:14px;grid-template-columns:minmax(0,1fr)!important;max-width:620px}
+/* 4・6：順位の見出しの下に「何の順位か」 */
+.rvtb th.rk .rkof{display:block;font-size:10px;font-weight:600;opacity:.85;white-space:nowrap}
