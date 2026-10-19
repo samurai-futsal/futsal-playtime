@@ -1437,3 +1437,12 @@ a.mtile.mtlink{color:var(--ink);text-decoration:none}.mtlink .go{margin-left:aut
 .prgkhero{background:linear-gradient(135deg,#7A1F18,#C8312B);color:#fff;border-radius:12px;padding:14px 18px}.prgkhero em{display:block;font-style:normal;font-size:13px;font-weight:700;opacity:.9}.prgkhero b{font-size:48px;line-height:1.1}.prgkhero b i{font-style:normal;font-size:22px}.prgkhero small{display:block;font-size:12px;opacity:.9}
 .prgkt{background:#fff;border:1.5px solid #D5DDEA;border-radius:12px;padding:6px 14px}.prgkt table{width:100%;border-collapse:collapse}.prgkt th{text-align:left;font-size:13px;color:#56607A;font-weight:600;padding:6px 0;white-space:nowrap}.prgkt td{text-align:right;padding:6px 0}.prgkt td b{font-size:18px}.prgkt td small{display:block;font-size:11px;color:#6B7486}.prgkt tr+tr th,.prgkt tr+tr td{border-top:1px solid #EEF1F6}
 .prpie h3 small+small{margin-left:6px}
+/* 選手の記録のPDF（A4縦）2026-10-19 */
+.prrep .rpw.rpP{width:726px;height:1027px}
+.prhead .sp{flex:1}
+.prrep .prprint .h{margin:10px 0 6px;font-size:16px}.prrep .prprint .card{box-shadow:none}.prrep .prprint .prtb tr[data-go] td.gt,.prrep .prprint .prtb th:last-child{display:none}
+.prrep .prprint .prgw{overflow:visible}.prrep .prprint .prtbw{overflow:visible}
+.prrep .prpc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 20px;align-items:start}.prrep .prpc .prgrid2{grid-template-columns:1fr}.prrep .prpc .prgrid2.three{grid-template-columns:1fr 1fr}
+.prrep .prpc{grid-template-columns:minmax(0,.8fr) minmax(0,1.45fr)}.prrep .prprint .prtb{font-size:12.5px}.prrep .prprint .prtb td,.prrep .prprint .prtb th{padding:5px 5px}.prrep .prprint .prtb td.po{white-space:normal}.prrep .prprint .prpair td.pb{width:22%}
+.prrep .prgraph{width:100%;height:auto}.prrep .prpc .prgrid2.three{grid-template-columns:1fr}.prrep .prpie,.prrep .prpair{overflow:visible}
+.prrep .prgraph{max-height:190px;width:auto;max-width:100%}

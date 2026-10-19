@@ -7,6 +7,9 @@ import { shotsOf, CLS_KEYS } from './teamstats.js';
 import { setTable } from './model.js';
 import { esc, fmtDate, fmtShort } from './ui.js';
 import { render } from './views.js';
+import { savePdfPages, safeName, preloadPdf } from './pdfsave.js';
+import { reportHTML } from './report.js';
+import { toast } from './ui.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const sg = (v) => `${v > 0 ? '+' : ''}${v}`;
@@ -67,7 +70,7 @@ export function vPlayerRecord(r) {
       ${mm.length ? `<div class="pkms">${mm.map((m) => `<label class="pkm ${on ? '' : 'off'}"><input type="checkbox" data-pm="${m.id}" ${on && !ex.m.has(m.id) ? 'checked' : ''} ${on ? '' : 'disabled'}>${fmtShort(m.date)} vs ${esc(m.opponent || '')}${m.category ? `<small>${esc(m.category)}</small>` : ''}</label>`).join('')}</div>` : ''}</div>`;
   };
   const head = `<div class="crumb"><a class="btn sm mpback" href="#/players">‹ 選手</a></div>
-    <div class="prhead"><h1>${esc(`${p.last || ''} ${p.first || ''}`.trim())}<small>${esc(p.kana || '')}</small></h1><span class="pos ${gk ? 'gk' : 'fp'}">${gk ? 'GK' : 'FP'}</span>${p.status === 'former' ? '<span class="prformer">過去所属</span>' : ''}</div>
+    <div class="prhead"><h1>${esc(`${p.last || ''} ${p.first || ''}`.trim())}<small>${esc(p.kana || '')}</small></h1><span class="pos ${gk ? 'gk' : 'fp'}">${gk ? 'GK' : 'FP'}</span>${p.status === 'former' ? '<span class="prformer">過去所属</span>' : ''}<span class="sp"></span><button class="btn sm" id="prPdf" title="この選手の記録を、A4縦の1ページのPDFにします（いま選んでいる活動・試合で）">PDFで保存（1ページ）</button></div>
     <details class="prpick" ${pickOpen ? 'open' : ''}><summary><span class="prpt">対象</span><b>${allOn ? 'すべての活動・試合' : `${acts.length}活動・${ms.length}試合を選択中`}</b><small>（招集 ${allActs.length}活動・終わった試合 ${allMs.length}試合のうち）</small><span class="prpbtn">活動と試合を選ぶ</span></summary>
       <div class="prpbody"><div class="row"><button class="btn sm" id="prAll">すべて選ぶ</button><button class="btn sm" id="prNone">すべて外す</button></div>
       ${allActs.length ? allActs.map(actRow).join('') : '<p class="mu">招集された活動はありません</p>'}</div></details>`;
@@ -105,7 +108,8 @@ export function vPlayerRecord(r) {
   // ---------- ④ 試合ごとの記録 ----------
   const resC = (r0) => (/勝/.test(r0.res) ? 'w' : /負/.test(r0.res) ? 'l' : 'd');
   const z = (v) => (v ? v : '<span class="z">0</span>');
-  const trs = rows.slice().reverse().map((r0) => { const d = r0.d; const a = activityById(r0.m.activityId);
+  const PR_MAX = 14; const shown = r.print ? rows.slice().reverse().slice(0, PR_MAX) : rows.slice().reverse();
+  const trs = shown.map((r0) => { const d = r0.d; const a = activityById(r0.m.activityId);
     return `<tr data-go="#/m/${r0.m.id}/review" class="${d.time ? '' : 'zero'}"><td class="pd">${fmtDate(r0.m.date, false)}</td><td class="po">vs ${esc(r0.m.opponent || '')}<small>${esc(a?.name || '')}${r0.m.category ? '・' + esc(r0.m.category) : ''}</small></td>
       <td><span class="prres ${resC(r0)}">${r0.res}</span> ${r0.own}−${r0.opp}${r0.pk && r0.res.startsWith('PK') ? `<small>（PK ${r0.pk.own}−${r0.pk.opp}）</small>` : ''}</td><td>${r0.start ? '◯' : ''}</td>
       <td><b>${d.time ? mmss(d.time) : '<span class="z">0:00</span>'}</b></td><td>${d.time ? pct(d.time, r0.len) : '—'}</td><td>${z(d.count)}</td>
@@ -198,10 +202,17 @@ export function vPlayerRecord(r) {
   const pie = (title, arr) => { const tot = arr.reduce((a, b) => a + b, 0); return `<div class="prpie"><h3>${title}<small>合計 ${tot}</small></h3>${tot ? `<div class="anpiew">${pieSvg(arr)}<table class="anpiel"><tbody>${arr.map((v, i) => (v ? `<tr><td><i style="background:${PIEC[i]}"></i>${PL[i]}</td><td><b>${v}</b></td><td>${Math.round(v / tot * 100)}%</td></tr>` : '')).join('')}</tbody></table></div>` : '<p class="mu">ありません</p>'}</div>`; };
   const trendH = rows.length ? `<h2 class="h">プレーの傾向</h2><div class="prgrid2 three">${gk ? pie('被シュートの局面', G.cls) + pie('失点の局面', G.gcls) : pie('シュートの局面<small>本人が打ったシュート（得点を含む）</small>', sc) + pie('得点の局面', gc)}</div>` : '';
 
+  if (r.print) { // PDF（1ページ）用：選ぶ画面やボタンのない形
+    const who = `${esc(`${p.last || ''} ${p.first || ''}`.trim())}（${gk ? 'GK' : 'FP'}）<small>${allOn ? 'すべての活動・試合' : `${acts.length}活動・${ms.length}試合`}（${rows.length}試合）</small>`;
+    const more = rows.length > PR_MAX ? `<p class="mu">試合ごとの記録は新しい ${PR_MAX}試合（ほか ${rows.length - PR_MAX}試合）</p>` : '';
+    return { loading, who, name: `${p.last || ''}${p.first || ''}`, html: `<div class="prw prprint">${sumH}${graphH}<div class="prpc"><div>${gk ? withH : ''}${trendH}</div><div>${matchH}${more}${gk ? '' : withH}${actH}</div></div></div>` }; // 左右2列にして縦を短く
+  }
   return {
     active: 'players',
     html: `<div class="prw">${head}${sumH}${gk ? withH : ""}${graphH}${matchH}${gk ? "" : withH}${trendH}${actH}</div>`, // GKはパフォーマンスをまとめのすぐ下に
     bind(root) {
+      preloadPdf();
+      const pdf = root.querySelector('#prPdf'); if (pdf) pdf.onclick = () => printPlayer(pid);
       const dt = root.querySelector('details.prpick'); if (dt) dt.ontoggle = () => { pickOpen = dt.open; };
       root.querySelectorAll('[data-part]').forEach((c) => { c.indeterminate = true; });
       const upd = (f) => { const e = exOf(pid); f(e); setEx(pid, e); render(); };
@@ -212,4 +223,21 @@ export function vPlayerRecord(r) {
       root.querySelectorAll('tr[data-go]').forEach((tr) => { tr.onclick = () => { location.hash = tr.dataset.go; }; });
     },
   };
+}
+
+// 選手の記録を A4縦の1ページのPDFに（2026-10-19）。中身を組む幅を変えて、いちばん大きく入る倍率を探す
+export function printPlayer(pid) {
+  const v = vPlayerRecord({ id: pid, print: true });
+  if (!v || v.loading) { toast('記録を読み込んでいます。少し待ってからもう一度押してください'); return; }
+  const day = new Date(); const ymd = `${day.getFullYear()}${String(day.getMonth() + 1).padStart(2, '0')}${String(day.getDate()).padStart(2, '0')}`;
+  savePdfPages((stage) => {
+    stage.innerHTML = reportHTML([{ title: '', who: v.who, html: v.html }], '選手の記録');
+    const pg = stage.querySelector('.rpw'); pg.classList.add('rpP');
+    const bx = pg.querySelector('.rpbx'), w = pg.querySelector('.rpin');
+    const aw = pg.clientWidth, ah = bx.clientHeight;
+    let best = null;
+    for (let W = 900; W <= 2200; W += 50) { w.style.width = W + 'px'; const h = w.scrollHeight, sw = w.scrollWidth; const z = Math.min(aw / Math.max(W, sw), (ah - 6) / h, 1.4); if (!best || z > best.z + 1e-4) best = { W, z }; }
+    w.style.width = best.W + 'px'; w.style.transform = `scale(${best.z.toFixed(4)})`;
+    pg.setAttribute('data-pdfpg', ''); return [pg];
+  }, `${safeName(`選手の記録_${v.name}_${ymd}`)}.pdf`, { stageCls: 'prrep', orient: 'P', margin: 20 });
 }
