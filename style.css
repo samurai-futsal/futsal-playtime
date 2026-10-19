@@ -1356,3 +1356,16 @@ body.bigv .stw .stsheet{gap:0}
 .antb tr.hl td:last-child{box-shadow:inset -2px 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
 @media print{.antb tr.hl td{background:none!important;box-shadow:none!important}}
 .anteam .anvs{font-style:normal;font-size:.7em;font-weight:700;color:#56607A;margin:0 .45em}
+/* スタッツのチームの数字・局面別の円グラフ（2026-10-19） */
+.anteamv{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px 22px;margin:4px 0 6px;align-items:start}
+.ancmpw h4{margin:4px 0 6px;font-size:14px;color:#0B2D6B}.ancmpw .anhint{margin:4px 0 0}
+.ancmp{width:100%;border-collapse:collapse;font-size:15px;font-variant-numeric:tabular-nums}
+.ancmp th{font-size:12px;font-weight:800;padding:3px 6px;white-space:nowrap}.ancmp th.w{color:#1F5FBF}.ancmp th.o{color:#C8312B}
+.ancmp td{padding:4px 6px;border-bottom:1px solid #EEF1F6}.ancmp td.cl{text-align:center;font-size:13px;font-weight:700;color:#3A4558;white-space:nowrap}
+.ancmp td.cv{text-align:center;font-weight:800;width:56px}.ancmp td.cv.w{color:#1F5FBF}.ancmp td.cv.o{color:#C8312B}
+.ancmp td.cbar{width:24%}.ancmp td.cbar i{display:block;height:12px;border-radius:2px}.ancmp td.cbar.l i{background:#1F5FBF;margin-left:auto}.ancmp td.cbar.r i{background:#E04A3A}
+.ancmp tr.tot td{border-top:2px solid #C9D3E3;font-weight:900}
+.anband{width:auto!important;min-width:0}.anband td,.anband th{text-align:center}.anband td.w{color:#1F5FBF}.anband td.o{color:#C8312B}
+.anpie h3{margin-top:6px}.anpiew{display:flex;align-items:center;gap:18px;flex-wrap:wrap}.anpies{flex:0 0 auto}
+.anpiel{border-collapse:collapse;font-size:14px}.anpiel td{padding:3px 8px;white-space:nowrap}.anpiel td:nth-child(2){text-align:right}.anpiel td:nth-child(3){color:#56607A}
+.anpiel i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:7px;vertical-align:-1px}
