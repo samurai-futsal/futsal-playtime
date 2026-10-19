@@ -13,7 +13,7 @@ import { esc, fmtShort, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 import { printStats } from './stats.js';
 import { downloadDatasheet } from './dsview.js';
-import { printReport } from './report.js';
+import { printReport, printTime } from './report.js';
 import { bigBtn, bindBig, fitBox } from './bigview.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -249,9 +249,9 @@ function timeTab(ctx) {
   const chk = `<span class="${Math.abs(sum - expect) < 1000 * ok.length * 5 ? 'anok' : 'anng'}">全員の合計 ${mmss(sum)} ＝ 試合時間 ${mmss(team.len)} × 5人${team.empty ? ` − 退場による空席 ${mmss(team.empty)}` : ''}${Math.abs(sum - expect) < 1000 * ok.length * 5 ? ' ✓' : `（${mmss(expect)} と合いません）`}</span>`;
   // 2026-10-19：チェックでパワープレー（5×4・4×5と退場の時間帯）を除く。上の「時間帯：数的同数だけ」と同じ切り替え
   const nopp = `<label class="annopp" title="5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除いて、グラフ・各試合・合計・出場率を出します"><input type="checkbox" id="anNoPP"${A.pp === 'ex' ? ' checked' : ''}>パワープレーの時間を除く</label>`;
-  const tv = `<div class="ansubs"><button class="${A.tview !== 'tl' ? 'on' : ''}" data-tview="list">一覧</button><button class="${A.tview === 'tl' ? 'on' : ''}" data-tview="tl">タイムライン</button>${A.tview === 'tl' ? '' : nopp}</div>`;
+  const tv = `<div class="ansubs"><button class="${A.tview !== 'tl' ? 'on' : ''}" data-tview="list">一覧</button><button class="${A.tview === 'tl' ? 'on' : ''}" data-tview="tl">タイムライン</button>${A.tview === 'tl' ? '' : nopp + '<span class="sp"></span><button class="btn sm" id="anTimePdf" title="いま出ているグラフと表を、A4横の1ページのPDFにします">PDF（1ページ）</button>'}</div>`;
   if (A.tview === 'tl' && !A.print) return tv + tlView(ctx);
-  return `${A.print ? '' : tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ。棒に触れると試合ごとの時間' : 'ピリオドを積み上げ。棒に触れると前半・後半の時間'}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間${A.pp === 'ex' ? '（パワープレーの時間を除いた' + mmss(team.len) + '）' : '（' + mmss(team.len) + '）'}に対して。試合ごと・ピリオドごとの出場率は、その試合・そのピリオドの時間に対して${A.print ? '' : '。「タイムライン」は1試合を選んだときに見られます'}` })}</div>`;
+  return `${A.print ? '' : tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ' + (A.print ? '' : '。棒に触れると試合ごとの時間') : 'ピリオドを積み上げ' + (A.print ? '' : '。棒に触れると前半・後半の時間')}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間${A.pp === 'ex' ? '（パワープレーの時間を除いた' + mmss(team.len) + '）' : '（' + mmss(team.len) + '）'}に対して。試合ごと・ピリオドごとの出場率は、その試合・そのピリオドの時間に対して${A.print ? '' : '。「タイムライン」は1試合を選んだときに見られます'}` })}</div>`;
 }
 
 // ---------- スタッツ ----------
@@ -350,6 +350,7 @@ function bindAnalysis(root) {
   const ds = root.querySelector('#anExpDs'); if (ds) ds.onclick = () => { const ms = selected(); if (ms.length) downloadDatasheet(ms); };
   const rp = root.querySelector('#anExpRep'); if (rp) rp.onclick = () => { const ms = selected(); if (ms.length) printReport(ms, A.scope === 'match' ? 'sum' : A.agg); };
   const ex = root.querySelector('#anExpStats'); if (ex) ex.onclick = () => { const ms = selected(); if (ms.length) printStats(ms); };
+  const tp = root.querySelector('#anTimePdf'); if (tp) tp.onclick = () => { const ms = selected(); if (ms.length) printTime(ms); };
   const np = root.querySelector('#anNoPP'); if (np) np.onchange = () => { A.pp = np.checked ? 'ex' : 'all'; keep(); render(); };
   root.querySelectorAll('[data-tview]').forEach((b) => b.onclick = () => { A.tview = b.dataset.tview; keep(); render(); });
   root.querySelectorAll('[data-bin-set]').forEach((b) => b.onclick = () => { A.bin = +b.dataset.binSet; keep(); render(); });
@@ -586,6 +587,18 @@ export function reportPages(ms, agg = 'sum', { perMatch = true } = {}) {
       pushCommon(pages, one.ctx, vs(m));
     }
     return pages;
+  } finally { Object.assign(A, save); delete A.print; }
+}
+// 出場時間の一覧（グラフと表）だけを1ページに（2026-10-19）。いまの画面の切り替え（対象・合計/平均・前半/後半・パワープレーを除く・並べ替え）のまま
+export function timePage(ms) {
+  const save = { ...A, sort: { ...A.sort }, rows: [...A.rows] };
+  try {
+    Object.assign(A, { tview: 'list', print: true });
+    const { ctx, loading } = buildCtx(ms); if (loading) return null;
+    const multi = ms.length > 1;
+    const who = multi ? `${ms.length}試合の${A.agg === 'avg' ? '1試合平均' : '合計'}` : `${fmtShort(ms[0].date)} vs ${esc(ms[0].opponent || '')}`;
+    const cond = [A.per !== 'all' ? periodLabel(A.per) + 'だけ' : '', A.pp === 'ex' ? 'パワープレーの時間を除く' : ''].filter(Boolean).join('・');
+    return { title: `出場時間と出場回数${cond ? `（${cond}）` : ''}`, who, html: timeTab(ctx) };
   } finally { Object.assign(A, save); delete A.print; }
 }
 // 合計のページにも、試合ごとのページにも入るもの

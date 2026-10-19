@@ -882,6 +882,8 @@ svg.pace .prow.on .phl{fill:#FFE9A8}svg.pace .pbin{cursor:pointer}svg.pace .pbin
 .rpsum th small{color:#C9D6EE}
 .rpsum2{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 36px;align-items:start}.rpsc{width:100%}.rpsc td,.rpsc th{text-align:center}
 .prrep .anscroll .antb{width:100%;min-width:0}
+/* 出場時間の1ページPDF：表の字を大きく（2026-10-19） */
+.prrep .rpone .antb{font-size:19px}.prrep .rpone .antb th,.prrep .rpone .antb td{padding:3px 6px}.prrep .rpone .antb thead th{font-size:15px}.prrep .rpone .anlg{font-size:15px}
 /* 要確認の「このままにする」・相手の退場（4×3）・ピリオドの長さ（2026-10-17） */
 .evw .evok{display:inline-block;font-size:11px;font-weight:700;background:#E9EDF3;color:#44546A;border-radius:6px;padding:0 6px;margin-left:2px}
 .evkeep{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 0;padding:8px 12px;background:#FDECEA;border:1px solid #E3A49E;border-radius:10px;color:#8E2A20;font-size:14px}

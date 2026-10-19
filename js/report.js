@@ -2,7 +2,7 @@
 // 1試合：試合情報・スコア → 出場時間 → タイムライン → マッチ・ペース → スタッツ → セット → パワープレー → 種類別 → 進入 → リカバリー・ロスト → FINISH SET PLAY → ファール・カード
 // 複数試合：試合ごとの結果と合計・1試合平均 → 合計のページ → 試合ごとのページ
 import { S, watchOps, watchEvents } from './store.js';
-import { reportPages } from './analysis.js';
+import { reportPages, timePage } from './analysis.js';
 import { savePdfPages, safeName, preloadPdf } from './pdfsave.js';
 import { esc, toast, openModal, closeModal } from './ui.js';
 
@@ -31,6 +31,18 @@ function go(ms, agg, perMatch) {
     `${safeName(name)}.pdf`, { stageCls: 'prrep', quality: ms.length > 5 ? 0.8 : 0.88 });
 }
 
+// 分析の出場時間（一覧）を、A4横の1ページだけのPDFに。分けずに、用紙いっぱいの大きさで（2026-10-19）
+export function printTime(ms) {
+  if (!ms.length) return;
+  preloadPdf();
+  const pg = timePage(ms);
+  if (!pg) { toast('記録を読み込んでいます。少し待ってからもう一度押してください'); ms.forEach((m) => { watchOps(m.id); watchEvents(m.id); }); return; }
+  const day = (m) => (m.date || '').replace(/-/g, ''); const ds = ms.map(day).sort();
+  const name = ms.length === 1 ? `出場時間_vs${ms[0].opponent || ''}_${day(ms[0])}` : `出場時間_${ms.length}試合_${ds[0]}-${ds[ds.length - 1]}`;
+  savePdfPages((stage) => { stage.innerHTML = reportHTML([pg], '出場時間'); const el = stage.querySelector('.rpw'); el.classList.add('rpone'); fitOne(el, new Map(), null, 1.6); el.setAttribute('data-pdfpg', ''); return [el]; },
+    `${safeName(name)}.pdf`, { stageCls: 'prrep', margin: 14 });
+}
+
 // A4横（余白8mm）＝ 約1062×733px。見出しと下の一行はそのままの大きさで、中身だけを用紙いっぱいに広げる：
 // ① 中身を組む幅を 1400px から狭めていき、縮めずに収まる一番大きい倍率を探す（最大1.3倍）
 // ② それでも下が余るときは、表の行の高さを少しずつ広げて埋める
@@ -38,10 +50,10 @@ function go(ms, agg, perMatch) {
 //    （表の見出しの行をくり返し、ページの見出しに「（続き）」。合計などの下の行は最後のページに。2026-10-17 決11）
 const PAGE_W = 1062, PAGE_H = 726, MAX_Z = 1.3, MIN_Z = 0.55;
 // same：続きのページは、前のページと同じ幅・倍率で入るならそれにそろえる（同じ表の字の大きさが変わらないように）
-function fitOne(pg, lastW, same = null) {
+function fitOne(pg, lastW, same = null, maxZ = MAX_Z) {
   const bx = pg.querySelector('.rpbx'), w = pg.querySelector('.rpin');
   const availH = bx.clientHeight, availW = PAGE_W;
-  const fits = (W) => { w.style.width = W + 'px'; const h = w.scrollHeight, sw = w.scrollWidth; const z = Math.min(availW / W, MAX_Z); return { W, h, z, ok: sw <= W + 2 && h * z <= availH }; };
+  const fits = (W) => { w.style.width = W + 'px'; const h = w.scrollHeight, sw = w.scrollWidth; const z = Math.min(availW / W, maxZ); return { W, h, z, ok: sw <= W + 2 && h * z <= availH }; };
   if (same) { w.style.width = same.W + 'px'; if (w.scrollWidth <= same.W + 2 && w.scrollHeight * same.z <= availH) { w.style.transform = `scale(${same.z.toFixed(4)})`; return same; } }
   let best = fits(1400);
   if (!best.ok) { // 1400px でも高さが入らない：さらに広く組んで、全体を縮める
@@ -51,7 +63,7 @@ function fitOne(pg, lastW, same = null) {
     // 1350px から 25px ずつ狭めて、収まる一番狭い幅（狭いほど高くなるので、収まらなくなったらその先も収まらない）。
     // 1つずつ試す代わりに二分探索で同じ幅を探す（組み直しの回数を約20回 → 5回に）。
     // 同じ見出しのページ（試合ごとの同じ表）は同じ幅になることが多いので、前のページの幅から確かめる
-    const Ws = []; for (let W = 1350; W >= availW / MAX_Z; W -= 25) Ws.push(W);
+    const Ws = []; for (let W = 1350; W >= availW / maxZ; W -= 25) Ws.push(W);
     let lo = 0, hi = Ws.length; // Ws[0..lo) は収まる、Ws[hi..] は収まらない
     const memo = new Map();
     const test = (i) => { const g = fits(Ws[i]); memo.set(i, g); if (g.ok) lo = Math.max(lo, i + 1); else hi = Math.min(hi, i); };
@@ -161,11 +173,11 @@ export function fitPages(root) {
   pgs.forEach((pg, i) => { const no = pg.querySelector('.rpno'); if (no) no.textContent = `${i + 1} / ${pgs.length}`; });
 }
 
-export function reportHTML(pages) {
+export function reportHTML(pages, label = 'マッチレポート') {
   const now = new Date(); const made = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')} 作成`;
   const team = esc(S.team?.name || '');
   // 用紙をA4横にする（印刷が終わると #prArea ごと消える）
-  return '<style>@media print{@page{size:A4 landscape;margin:8mm}}</style>' + pages.map((p, i) => `<div class="rpw"><div class="rphd"><b class="rpt">マッチレポート</b><span class="rpwho">${team} ${p.who}</span><span class="rpttl">${p.title}</span><span class="rpno">${i + 1} / ${pages.length}</span></div>
+  return '<style>@media print{@page{size:A4 landscape;margin:8mm}}</style>' + pages.map((p, i) => `<div class="rpw"><div class="rphd"><b class="rpt">${label}</b><span class="rpwho">${team} ${p.who}</span><span class="rpttl">${p.title}</span>${pages.length > 1 ? `<span class="rpno">${i + 1} / ${pages.length}</span>` : ''}</div>
     <div class="rpbx"><div class="rpin"><div class="rpbody">${p.html}</div></div></div><div class="rpft">${made}。MATCH PLAYとイベント入力の記録から作成（分析画面と同じ計算）</div></div>`).join('');
 }
 
