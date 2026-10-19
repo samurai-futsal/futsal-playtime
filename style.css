@@ -1369,3 +1369,8 @@ body.bigv .stw .stsheet{gap:0}
 .anpie h3{margin-top:6px}.anpiew{display:flex;align-items:center;gap:18px;flex-wrap:wrap}.anpies{flex:0 0 auto}
 .anpiel{border-collapse:collapse;font-size:14px}.anpiel td{padding:3px 8px;white-space:nowrap}.anpiel td:nth-child(2){text-align:right}.anpiel td:nth-child(3){color:#56607A}
 .anpiel i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:7px;vertical-align:-1px}
+/* チームの数字：まとまりごとに枠で仕切る（2026-10-19） */
+.anteamv .ancmpw{background:#fff;border:1.5px solid #D5DDEA;border-radius:10px;padding:8px 12px 10px;box-shadow:0 1px 2px rgba(14,27,51,.05)}
+.anteamv .ancmpw h4{margin:0 0 8px;padding:0 0 6px;border-bottom:2px solid #0B2D6B;font-size:14.5px}
+.anteamv{gap:14px}
+.anteamv{grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr))}.anteamv .ancmpw{min-width:0;overflow-x:auto}

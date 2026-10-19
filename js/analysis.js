@@ -315,7 +315,7 @@ function teamFsp(ctx, g) {
   const sum = (k) => T[k].reduce((a, b) => a + b, 0) + miss[k];
   const rows = [...L.map((l, i) => [l, T.at[i], T.df[i]]), ...(miss.at || miss.df ? [['種類が未入力', miss.at, miss.df]] : []), ['合計', sum('at'), sum('df'), { cls: 'tot' }]];
   const res = cmpTable('セットプレーの局面のシュートと得点', [['シュート', set.own[0], set.opp[0]], ['得点', set.own[1], set.opp[1]], ['決定率', pctS(set.own[1], set.own[0]), pctS(set.opp[1], set.opp[0]), { pct: true }],
-    ['FINISH SET PLAY 1本あたりのシュート', sum('at') ? (set.own[0] / sum('at')).toFixed(2) : '—', sum('df') ? (set.opp[0] / sum('df')).toFixed(2) : '—', { pct: true }]], g, { note: '局面が「セットプレー」のシュート・得点（得点・失点の種類から分類したものを含む）' });
+    ['1本あたりのシュート', sum('at') ? (set.own[0] / sum('at')).toFixed(2) : '—', sum('df') ? (set.opp[0] / sum('df')).toFixed(2) : '—', { pct: true }]], g, { note: '局面が「セットプレー」のシュート・得点（得点・失点の種類から分類したものを含む）' });
   const perT = per.length > 1 ? `<div class="ancmpw"><h4>試合ごと</h4><table class="antb anband"><thead><tr><th class="apl">試合</th><th class="w">自チーム</th><th class="o">相手</th></tr></thead><tbody>${per.map(([x, c]) => `<tr><td class="apl">${fmtShort(x.m.date)} vs ${esc(x.m.opponent || '')}</td><td class="w">${c.at}</td><td class="o">${c.df}</td></tr>`).join('')}</tbody></table></div>` : '';
   return `<div class="anteamv">${cmpTable('FINISH SET PLAY の種類', rows, g, { note: '自チーム＝自チームのセットプレー（AT）、相手＝相手のセットプレー（こちらのDF）' })}${res}
     ${bandRows('時間帯ごとの FINISH SET PLAY', bandLabels(ctx), ctx.team.A.fspBand, ctx.team.B.fspBand, g)}${perT}</div>`;
