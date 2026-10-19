@@ -5,6 +5,7 @@ import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvent
 import { replay, periodLabel, periodLen, perLen, nowElapsed } from './engine.js';
 import { matchModel, toRunning, playerTable, playedTime, periodSig, entryOrder } from './model.js';
 import { ppWindows, setSplit, setCountTable, asOfLabel } from './teamstats.js';
+import { bindCellTip, hideCellTip } from './rowtip.js';
 import { esc, fmtShort, fmtDate, openModal, closeModal } from './ui.js';
 import { render } from './views.js';
 import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge, rvHl, hlc, bindPacePick, bandTip, sizeCols, tSort, tSortNext, tsh, tSorted, tRank, tRankHead } from './review58.js';
@@ -313,6 +314,7 @@ function bindReview(m) {
     const sel = root.querySelector('#rvMatch'); if (sel) sel.onchange = () => { location.hash = `#/m/${sel.value}/review`; };
     // 表の行を押すと強調（1・2・4・6・8。何行でも。もう一度押すと戻す）
     root.querySelectorAll('tr[data-hlk]').forEach((tr) => tr.onclick = () => { const k = tr.dataset.hlk; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); tr.classList.toggle('hl', rvHl.has(k)); });
+    hideCellTip(); bindCellTip(root, 'table.rvtb'); // 数字にカーソル（iPadは触れる）→ 数字の上にその行の選手（セットは4人）。2026-10-19
     bindPacePick(root);
     sizeCols(root); // 表の列幅を中身に合わせる（大きく表示で枠を広げる前に）
     bindFull(root);
