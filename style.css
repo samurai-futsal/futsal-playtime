@@ -1375,3 +1375,18 @@ body.bigv .stw .stsheet{gap:0}
 .anteamv{gap:14px}
 .anteamv{grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr))}.anteamv .ancmpw{min-width:0;overflow-x:auto}
 .rvs8 th.df{background:#4B3A8C}.rvs8 td.df{background:#F5F2FB;color:#3B2A7A}.rvs8 tr.hl td.df{background:#FFE9A8!important}
+/* 選手の記録（2026-10-19） */
+.prgo{margin-left:auto}.lrow .prgo+.go{margin-left:10px}
+.prhead{display:flex;align-items:center;gap:14px;margin:6px 0 4px}.prhead h1{margin:0;display:flex;align-items:baseline;gap:10px}.prhead h1 small{font-size:13px;color:#6B7486;font-weight:500}
+.prhead .no.big{min-width:54px;width:auto;padding:0 10px;height:46px;font-size:24px;border-radius:10px;flex:0 0 auto}.prhead .pos{margin-right:8px}.prformer{font-size:12px;font-weight:700;color:#8A5A10;background:#FFF2D6;border-radius:6px;padding:2px 8px;margin-right:8px}
+.prf{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-end;background:#EEF3FB;border-radius:10px;padding:8px 12px;margin:8px 0 6px}.prf label{display:flex;flex-direction:column;font-size:12px;font-weight:700;color:#56607A;gap:3px}.prf select,.prf input{font:inherit;font-size:14px}
+.prw .h small{font-size:12px;color:#6B7486;font-weight:500;margin-left:10px}
+.prtiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin:6px 0 10px}
+.prt{background:#fff;border:1.5px solid #D5DDEA;border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:2px}.prt em{font-style:normal;font-size:12px;font-weight:700;color:#56607A}.prt b{font-size:24px;color:#0B2D6B;font-variant-numeric:tabular-nums}.prt b i{font-style:normal;font-size:13px;margin-left:3px;color:#56607A}.prt small{font-size:11.5px;color:#6B7486}
+.prtiles.prply .prt{border-color:#E3D9F3}
+.prtbw{padding:0;overflow-x:auto}.prtb{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.prtb th{background:#0B2D6B;color:#fff;font-size:12px;font-weight:700;padding:6px 8px;white-space:nowrap;text-align:center}.prtb th.df{background:#4B3A8C}.prtb th small{font-weight:500;opacity:.85}
+.prtb td{padding:7px 8px;border-bottom:1px solid #EEF1F6;text-align:center;white-space:nowrap}.prtb td.pd{color:#3A4558}.prtb td.po{text-align:left;font-weight:700}.prtb td.po small{display:block;font-weight:500;font-size:11.5px;color:#6B7486}
+.prtb td small{font-size:11px;color:#6B7486}.prtb td.df{background:#F5F2FB;color:#3B2A7A;font-weight:700}.prtb td.gt{color:#8A93A6;font-weight:700}.prtb .z{color:#AAB2C0}
+.prtb tr[data-go]{cursor:pointer}.prtb tr[data-go]:hover td{background:#F2F6FD}.prtb tr.zero td{color:#8A93A6}
+.prres{display:inline-block;min-width:30px;border-radius:5px;padding:1px 6px;font-size:12px;font-weight:800;color:#fff}.prres.w{background:#1F5FBF}.prres.l{background:#C8312B}.prres.d{background:#8C96A8}

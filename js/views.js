@@ -12,6 +12,7 @@ import { vFix } from './fix.js';
 import { vEvents, vSplit, openTodo } from './evinput.js';
 import { vStats } from './stats.js';
 import { vAnalysis } from './analysis.js';
+import { vPlayerRecord } from './precord.js';
 import { vSportscode } from './scview.js';
 import { vScImport } from './scimportview.js';
 import { vReport } from './report.js';
@@ -23,7 +24,7 @@ export { promptBackup }; // 試合が終わったときのバックアップの�
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js', 'js/guide.js', 'js/options.js', 'js/backup.js', 'js/restoreplan.js', 'js/pdfsave.js', 'js/bigview.js', 'js/rowtip.js', 'vendor/html2canvas.min.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js', 'js/guide.js', 'js/options.js', 'js/backup.js', 'js/restoreplan.js', 'js/pdfsave.js', 'js/bigview.js', 'js/rowtip.js', 'js/precord.js', 'vendor/html2canvas.min.js'];
 const FB_FILES = ['firebase-app.js', 'firebase-auth.js', 'firebase-firestore.js'].map((f) => 'https://www.gstatic.com/firebasejs/10.12.2/' + f);
 export function startApp(c) {
   ctx = c;
@@ -95,7 +96,7 @@ function topbar(active) {
 
 const VIEWS = {
   home: vHome, teams: vTeams, players: vPlayers, acts: vActivities, a: vActivity, m: vMatch,
-  search: vSearch, settings: vSettings, analysis: (r) => vAnalysis(r), guide: vGuide,
+  search: vSearch, settings: vSettings, pl: vPlayerRecord, analysis: (r) => vAnalysis(r), guide: vGuide,
 };
 
 export function render() {
@@ -261,8 +262,9 @@ function vPlayers(r) {
   const list = sortPlayers(S.players.filter((p) => (tab === 'former' ? p.status === 'former' : p.status !== 'former')));
   const sec = (pos) => {
     const ps = list.filter((p) => (pos === 'GK' ? p.pos === 'GK' : p.pos !== 'GK'));
-    return `<h2 class="h">${pos}（${ps.length}人）</h2><div class="card list">${ps.length ? ps.map((p) => `<button class="lrow" data-edit="${p.id}">
-      <span class="pos ${p.pos === 'GK' ? 'gk' : 'fp'}">${p.pos === 'GK' ? 'GK' : 'FP'}</span><span class="o">${esc(playerName(p))}<small>${esc(p.kana || '')}</small></span><span class="go">編集 ›</span></button>`).join('')
+    // 2026-10-19：行を押すと編集、「記録 ›」でその選手の記録のページへ
+    return `<h2 class="h">${pos}（${ps.length}人）</h2><div class="card list">${ps.length ? ps.map((p) => `<div class="lrow" data-edit="${p.id}">
+      <span class="pos ${p.pos === 'GK' ? 'gk' : 'fp'}">${p.pos === 'GK' ? 'GK' : 'FP'}</span><span class="o">${esc(playerName(p))}<small>${esc(p.kana || '')}</small></span><a class="btn sm prgo" href="#/pl/${p.id}">記録 ›</a><span class="go">編集 ›</span></div>`).join('')
       : '<div class="empty">いません</div>'}</div>`;
   };
   const nFormer = S.players.filter((p) => p.status === 'former').length;
@@ -273,7 +275,7 @@ function vPlayers(r) {
     ${sec('GK')}${sec('FP')}`,
     bind(root) {
       $('#btnAddP').onclick = () => playerForm(null);
-      root.addEventListener('click', (e) => { const b = e.target.closest('[data-edit]'); if (b) playerForm(playerById(b.dataset.edit)); });
+      root.addEventListener('click', (e) => { if (e.target.closest('a')) return; const b = e.target.closest('[data-edit]'); if (b) playerForm(playerById(b.dataset.edit)); });
     },
   };
 }

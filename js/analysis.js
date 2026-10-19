@@ -98,6 +98,12 @@ function calcOne(m, per, st, M, evC) {
   return { m, st, M, Mw, T, R, D, keys, len, empty, hasEv: evs.length > 0, todo, ready: evC.ready, hasOpp: W.hasOpp, evs, gn, W, win, wins, lazy: {} };
 }
 
+// 選手の記録（precord.js）用：試合ごとの計算（試合全体・パワープレーも含めたすべての時間）。読み込み中の試合があれば loading
+export function matchCalcs(ms) {
+  const save = A.pp; A.pp = 'all';
+  try { const res = ms.map((m) => oneMatch(m, 'all')); return { list: res.filter(Boolean), loading: res.some((x) => !x) }; } finally { A.pp = save; }
+}
+
 // 選んだ試合の計算と、選手ごと・チームの合計（画面とマッチレポートで使う）
 export function buildCtx(ms) {
   const per = A.per;
