@@ -257,6 +257,7 @@ function timeTab(ctx) {
 }
 
 // ---------- スタッツ ----------
+const VS = '<i class="anvs">vs</i>';
 function statsTab(ctx) {
   const { team, hasEv } = ctx; const { n, pm, avg } = cellFns(ctx);
   const subs = `<div class="ansubs">${SUBS.map(([v, l]) => `<button class="${A.sub === v ? 'on' : ''}" data-sub="${v}">${l}</button>`).join('')}</div>`;
@@ -264,8 +265,9 @@ function statsTab(ctx) {
   const g = (v) => (avg ? (v / Math.max(1, team.games)).toFixed(1) : v);
   const tA = team.A, tB = team.B;
   const bar = `<div class="anteam">${[
-    ['得点−失点', `${g(team.score.own)}−${g(team.score.opp)}`], ['シュート', `${g(tA.shots)}<small>（SZ内 ${g(tA.sz)}）</small> / ${g(tB.shots)}`], ['Z4・SZ進入', `${g(tA.z4 + tA.szE)} / ${g(tB.z4 + tB.szE)}`],
-    ['リカバリー／ロスト', `${g(team.rec)} / ${g(team.lost)}`], ['FINISH SET PLAY', `${g(tA.fsp)} / ${g(tB.fsp)}`], ['ファール', `${g(tA.foul)} / ${g(tB.foul)}`]].map(([l, v]) => `<span><em>${l}</em><b>${v}</b></span>`).join('')}<span class="mu">自チーム / 相手${avg ? '（1試合平均）' : ''}</span></div>`;
+    // 自チームと相手は「vs」で並べる（リカバリー／ロストはどちらも自チームの数なので「/」のまま。2026-10-19）
+    ['得点−失点', `${g(team.score.own)}${VS}${g(team.score.opp)}`], ['シュート', `${g(tA.shots)}<small>（SZ内 ${g(tA.sz)}）</small>${VS}${g(tB.shots)}`], ['Z4・SZ進入', `${g(tA.z4 + tA.szE)}${VS}${g(tB.z4 + tB.szE)}`],
+    ['リカバリー／ロスト', `${g(team.rec)} / ${g(team.lost)}`], ['FINISH SET PLAY', `${g(tA.fsp)}${VS}${g(tB.fsp)}`], ['ファール', `${g(tA.foul)}${VS}${g(tB.foul)}`]].map(([l, v]) => `<span><em>${l}</em><b>${v}</b></span>`).join('')}<span class="mu">自チーム vs 相手${avg ? '（1試合平均）' : ''}</span></div>`;
   const N = (k, h, v, extra = {}) => ({ k, h, v, f: (x, d) => n(x, d.games), ...extra });
   const PM = (k, h, v) => ({ k, h, v: (d) => (d.time ? v(d) / (d.time / 60000) : -1), f: (x, d) => pm(v(d), d.time), pm: true, cls: 'pmc' });
   const tm = (f) => (t) => g(f(t));

@@ -1355,3 +1355,4 @@ body.bigv .stw .stsheet{gap:0}
 .antb tr.hl td:first-child{box-shadow:inset 2px 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
 .antb tr.hl td:last-child{box-shadow:inset -2px 2px 0 #F0A030,inset 0 -2px 0 #F0A030}
 @media print{.antb tr.hl td{background:none!important;box-shadow:none!important}}
+.anteam .anvs{font-style:normal;font-size:.7em;font-weight:700;color:#56607A;margin:0 .45em}
