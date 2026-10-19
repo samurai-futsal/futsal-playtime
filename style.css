@@ -1452,3 +1452,8 @@ a.mtile.mtlink{color:var(--ink);text-decoration:none}.mtlink .go{margin-left:aut
 .anteamv .ancmpw .anband th{font-size:12px;line-height:1.25}
 .anteamv .ancmpw .anband td.apl,.anteamv .ancmpw .anband th.apl{padding-left:8px}
 .anteamv .ancmpw .anband col.c1{width:5.6em}
+/* 分析の表は、見出しも中身も真ん中にそろえる（1列目の名前・項目も。棒の列だけは左から）2026-10-19 */
+.anbody table.antb th,.anbody table.antb td,.prrep table.antb th,.prrep table.antb td{text-align:center}
+.anbody table.antb td.xbar,.prrep table.antb td.xbar{text-align:left!important}
+.anteamv .ancmpw .anband td.apl,.anteamv .ancmpw .anband th.apl{padding-left:3px}
+.anbody .anscroll .antb{width:100%}
