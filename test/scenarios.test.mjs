@@ -11,13 +11,13 @@ let ok = 0; const fails = [];
 function T(name, fn) { try { fn(); ok++; } catch (e) { fails.push(name + ': ' + e.message); } }
 const eq = (a, b, m) => { if (a !== b) throw new Error(`${m}: ${a} !== ${b}`); };
 // builder: ops at real times; clock runs from kickoff unless stopped
-function mk() {
-  const ops = []; let n = 0; const T0 = 1e12;
+function mk(over = {}) {
+  const cfg2 = { ...cfg, ...over }; const ops = []; let n = 0; const T0 = 1e12;
   const at = (s) => T0 + s * sec;
   return {
     ops,
-    add(s, o) { ops.push({ id: 'x' + n, n: n++, t: at(s), period: o.period || replay(ops, cfg).current, ...o }); return this; },
-    S() { return replay(ops, cfg); },
+    add(s, o) { ops.push({ id: 'x' + n, n: n++, t: at(s), period: o.period || replay(ops, cfg2).current, ...o }); return this; },
+    S() { return replay(ops, cfg2); },
     at,
   };
 }
@@ -122,6 +122,19 @@ T('前半だけリセット → 後半の記録は残る', () => {
   b.add(2700, { type: 'reset', scope: '1H' });
   S = b.S(); eq(S.current, '1H', 'back to 1H'); eq(S.periods['2H'].status, 'done', '2H kept'); eq(S.periods['1H'].status, 'none', '1H cleared');
   b.add(2800, { type: 'undo' }); S = b.S(); eq(S.periods['1H'].status, 'done', 'undo the reset');
+});
+
+T('延長戦なしの試合：後半が終わると、質問なしで試合終了', () => {
+  const b = mk(); ko(b); b.add(1200, { type: 'periodEnd' });
+  b.add(1300, { type: 'kickoff', lineup: ['G', 'E', 'F', 'H', 'J'] }); b.add(2500, { type: 'periodEnd' });
+  const S = b.S(); eq(S.askExtra, false, 'no question'); eq(S.matchOver, true, 'over');
+});
+
+T('延長戦ありの試合：後半が終わると「延長戦を行いますか？」', () => {
+  const b = mk({ times: { half: 20, extra: true, extraHalf: 5 } }); ko(b); b.add(1200, { type: 'periodEnd' });
+  b.add(1300, { type: 'kickoff', lineup: ['G', 'E', 'F', 'H', 'J'] }); b.add(2500, { type: 'periodEnd' });
+  let S = b.S(); eq(S.askExtra, true, 'asks'); eq(S.matchOver, false, 'not over yet');
+  b.add(2600, { type: 'extra', yes: false }); S = b.S(); eq(S.matchOver, true, 'no → over');
 });
 
 T('時刻合わせ（残り時間を戻す）でも合計が合う', () => {

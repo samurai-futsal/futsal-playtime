@@ -249,7 +249,8 @@ export function replay(ops, cfg) {
     const free = (k) => S.periods[k].status === 'none';
     if (free('1H')) { S.current = '1H'; return; }
     if (free('2H')) { S.current = '2H'; return; }
-    if (S.extraDecided === undefined && free('E1')) { S.askExtra = true; return; }
+    // 延長戦の質問は、試合の設定が「延長戦あり」のときだけ（なしの試合は後半の終了で試合終了。2026-10-19 決定）
+    if (S.extraDecided === undefined && free('E1') && S.cfg.times?.extra) { S.askExtra = true; return; }
     if (S.extraDecided && free('E1')) { S.current = 'E1'; return; }
     if (S.extraDecided && free('E2')) { S.current = 'E2'; return; }
     S.matchOver = true;
