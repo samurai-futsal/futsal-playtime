@@ -1,6 +1,6 @@
 // 選手の記録（2026-10-19）：選手ページ（・活動の招集メンバー・試合のメンバー）から開く、1人の選手のページ。
 // ① 見出しと絞り込み ② 通算のまとめ ④ 試合ごとの記録 ⑤ 招集歴（③グラフ・⑥一緒にプレーした選手・⑦傾向は次の回）
-import { S, playerById, activityById, opts } from './store.js';
+import { S, playerById, activityById } from './store.js';
 import { matchCalcs } from './analysis.js';
 import { esc, fmtDate, fmtShort } from './ui.js';
 import { render } from './views.js';
@@ -8,12 +8,14 @@ import { render } from './views.js';
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const sg = (v) => `${v > 0 ? '+' : ''}${v}`;
 const pct = (a, b) => (b ? Math.round(a / b * 100) + '%' : '—');
-const F = { type: '', cat: '', from: '', to: '' };
-try { Object.assign(F, JSON.parse(localStorage.getItem('fpt.precord') || '{}')); } catch {}
-const keepF = () => { try { localStorage.setItem('fpt.precord', JSON.stringify(F)); } catch {} };
-
-const actOk = (a) => (!F.type || a?.type === F.type) && (!F.from || (a?.end || a?.start || '') >= F.from) && (!F.to || (a?.start || '') <= F.to);
-const matchOk = (m) => { const a = activityById(m.activityId); return (!F.type || a?.type === F.type) && (!F.cat || m.category === F.cat) && (!F.from || (m.date || '') >= F.from) && (!F.to || (m.date || '') <= F.to); };
+// 対象の絞り込み（2026-10-19）：活動と、その中の試合をチェックで選ぶ。外したものだけ覚える（新しい試合は初めから入る）
+// X[pid] = { a: [外した活動], m: [外した試合] }
+let X = {};
+try { X = JSON.parse(localStorage.getItem('fpt.precordX') || '{}') || {}; } catch {}
+const keepX = () => { try { localStorage.setItem('fpt.precordX', JSON.stringify(X)); } catch {} };
+const exOf = (pid) => { const e = X[pid] || {}; return { a: new Set(e.a || []), m: new Set(e.m || []) }; };
+const setEx = (pid, ex) => { X[pid] = { a: [...ex.a], m: [...ex.m] }; keepX(); };
+let pickOpen = false;
 
 // 1試合ぶんの、その選手の数字
 function oneRow(x, pid) {
@@ -33,50 +35,61 @@ export function vPlayerRecord(r) {
   const pid = r.id; const p = playerById(pid);
   if (!p) return { active: 'players', html: '<div class="card empty">選手が見つかりません。<div class="mt"><a class="btn" href="#/players">‹ 選手</a></div></div>' };
   const gk = p.pos === 'GK';
-  const ms = S.matches.filter((m) => !m.deleted && m.members?.[pid] && m.status === 'done' && matchOk(m)).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.kickoff || '').localeCompare(b.kickoff || ''));
+  const ex = exOf(pid);
+  const byDate = (a, b) => (a.date || '').localeCompare(b.date || '') || (a.kickoff || '').localeCompare(b.kickoff || '');
+  const allActs = S.activities.filter((a) => !a.deleted && a.members?.[pid]).sort((a, b) => (b.start || '').localeCompare(a.start || ''));
+  const allMs = S.matches.filter((m) => !m.deleted && m.members?.[pid] && m.status === 'done').sort(byDate);
+  const msOf = (aid) => allMs.filter((m) => m.activityId === aid);
+  const acts = allActs.filter((a) => !ex.a.has(a.id));
+  const ms = allMs.filter((m) => !ex.a.has(m.activityId) && !ex.m.has(m.id));
   const live = S.matches.filter((m) => !m.deleted && m.members?.[pid] && m.status === 'playing').length;
-  const acts = S.activities.filter((a) => !a.deleted && a.members?.[pid] && actOk(a)).sort((a, b) => (b.start || '').localeCompare(a.start || ''));
   const { list, loading } = matchCalcs(ms);
   const rows = list.map((x) => oneRow(x, pid)).filter((r0) => r0.d);
   const played = rows.filter((r0) => r0.d.time > 0);
 
-  // ---------- ① 見出しと絞り込み ----------
-  const o = (lst, v) => `<option value="">すべて</option>${lst.map((n) => `<option ${n === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}`;
-  const lastM = S.matches.filter((m) => !m.deleted && m.members?.[pid]).sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
-  const no = lastM ? lastM.members[pid].no : null;
+  // ---------- ① 見出しと対象（活動と試合をチェック） ----------
+  const allOn = acts.length === allActs.length && ms.length === allMs.length;
+  const actRow = (a) => {
+    const mm = msOf(a.id); const on = !ex.a.has(a.id); const nOn = on ? mm.filter((m) => !ex.m.has(m.id)).length : 0;
+    const part = on && mm.length && nOn < mm.length;
+    return `<div class="pkact"><label class="pka"><input type="checkbox" data-pa="${a.id}" ${on ? 'checked' : ''} ${part ? 'data-part="1"' : ''}><b>${esc(a.name || '')}</b><small>${fmtDate(a.start, false)}${a.end && a.end !== a.start ? `〜${fmtShort(a.end)}` : ''}${a.type ? '・' + esc(a.type) : ''}</small><em>${mm.length ? `${nOn} / ${mm.length}試合` : '試合なし'}</em></label>
+      ${mm.length ? `<div class="pkms">${mm.map((m) => `<label class="pkm ${on ? '' : 'off'}"><input type="checkbox" data-pm="${m.id}" ${on && !ex.m.has(m.id) ? 'checked' : ''} ${on ? '' : 'disabled'}>${fmtShort(m.date)} vs ${esc(m.opponent || '')}${m.category ? `<small>${esc(m.category)}</small>` : ''}</label>`).join('')}</div>` : ''}</div>`;
+  };
   const head = `<div class="crumb"><a class="btn sm mpback" href="#/players">‹ 選手</a></div>
-    <div class="prhead"><span class="no ${gk ? 'gk' : 'fp'} big">${esc(no ?? '—')}</span><div><h1>${esc(`${p.last || ''} ${p.first || ''}`.trim())}<small>${esc(p.kana || '')}</small></h1>
-      <span class="pos ${gk ? 'gk' : 'fp'}">${gk ? 'GK' : 'FP'}</span>${p.status === 'former' ? '<span class="prformer">過去所属</span>' : ''}<span class="mu">${no != null ? '背番号は最近の試合のもの' : ''}</span></div></div>
-    <div class="prf"><label>活動の種類<select data-f="type">${o(opts('activityTypes', true).map((x) => x.name), F.type)}</select></label>
-      <label>試合の区分<select data-f="cat">${o(opts('matchCategories', true).map((x) => x.name), F.cat)}</select></label>
-      <label>期間<span class="pkd"><input type="date" data-f="from" value="${esc(F.from)}">〜<input type="date" data-f="to" value="${esc(F.to)}"></span></label>
-      ${F.type || F.cat || F.from || F.to ? '<button class="btn sm" id="prClear">絞り込みをやめる</button>' : ''}</div>`;
+    <div class="prhead"><h1>${esc(`${p.last || ''} ${p.first || ''}`.trim())}<small>${esc(p.kana || '')}</small></h1><span class="pos ${gk ? 'gk' : 'fp'}">${gk ? 'GK' : 'FP'}</span>${p.status === 'former' ? '<span class="prformer">過去所属</span>' : ''}</div>
+    <details class="prpick" ${pickOpen ? 'open' : ''}><summary><span class="prpt">対象</span><b>${allOn ? 'すべての活動・試合' : `${acts.length}活動・${ms.length}試合を選択中`}</b><small>（招集 ${allActs.length}活動・終わった試合 ${allMs.length}試合のうち）</small><span class="prpbtn">活動と試合を選ぶ</span></summary>
+      <div class="prpbody"><div class="row"><button class="btn sm" id="prAll">すべて選ぶ</button><button class="btn sm" id="prNone">すべて外す</button></div>
+      ${allActs.length ? allActs.map(actRow).join('') : '<p class="mu">招集された活動はありません</p>'}</div></details>`;
 
-  // ---------- ② 通算のまとめ ----------
+  // ---------- ② 通算のまとめ（大事なものほど大きく。2026-10-19） ----------
   const sum = (f) => rows.reduce((a, r0) => a + f(r0), 0);
   const T = sum((r0) => r0.d.time), N = sum((r0) => r0.d.count), L = sum((r0) => r0.len);
   const rests = rows.flatMap((r0) => r0.rests);
   const D = (f) => sum((r0) => f(r0.d));
   const shots = D((d) => d.shots), inn = D((d) => d.in);
-  const tile = (l, v, sub = '') => `<div class="prt"><em>${l}</em><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
-  const tilesTime = [
-    tile('招集された活動', `${acts.length}<i>回</i>`), tile('試合メンバー', `${rows.length}<i>試合</i>`, `先発 ${rows.filter((r0) => r0.start).length}試合`), tile('出場した試合', `${played.length}<i>試合</i>`),
-    tile('出場時間（合計）', mmss(T), played.length ? `1試合平均 ${mmss(T / played.length)}` : ''), tile('出場率', pct(T, L), 'メンバーに入った試合の時間に対して'),
-    tile('1回の出場の平均', N ? mmss(T / N) : '—', `出場 ${N}回`), tile('休憩の平均', rests.length ? mmss(rests.reduce((a, b) => a + b, 0) / rests.length) : '—', '同じピリオドの中で'),
-  ];
-  const tilesPlay = gk ? [
-    tile('被シュート関与', D((d) => d.on.oshot)), tile('失点関与', D((d) => d.on.ga)), tile('得点関与', D((d) => d.on.gf)),
-    tile('シュート関与の差', sg(D((d) => d.on.shot - d.on.oshot))), tile('得失点±', sg(D((d) => d.on.gf - d.on.ga))),
-    tile('リカバリー−ロスト', sg(D((d) => d.rec - d.lost)), `リカバリー ${D((d) => d.rec)}・ロスト ${D((d) => d.lost)}`), tile('得点・アシスト', `${D((d) => d.goals)}・${D((d) => d.assists)}`), tile('カード', `${D((d) => d.cY)}・${D((d) => d.cR)}`, 'イエロー・レッド'),
-  ] : [
-    tile('得点', D((d) => d.goals)), tile('アシスト', D((d) => d.assists)), tile('シュート', shots, `枠内 ${inn}（枠内率 ${pct(inn, shots)}）・SZ内 ${D((d) => d.sz)}`),
-    tile('Z4進入・SZ進入', `${D((d) => d.ent.z4.inv)}・${D((d) => d.ent.sz.inv)}`), tile('リカバリー−ロスト', sg(D((d) => d.rec - d.lost)), `リカバリー ${D((d) => d.rec)}・ロスト ${D((d) => d.lost)}`),
-    tile('シュート関与の差', sg(D((d) => d.on.shot - d.on.oshot)), `シュート関与 ${D((d) => d.on.shot)}・被 ${D((d) => d.on.oshot)}`),
-    tile('進入関与の差', sg(D((d) => d.on.z4 + d.on.sz - d.on.oz4 - d.on.osz))), tile('得失点±', sg(D((d) => d.on.gf - d.on.ga)), `得点関与 ${D((d) => d.on.gf)}・失点関与 ${D((d) => d.on.ga)}`),
-    tile('カード', `${D((d) => d.cY)}・${D((d) => d.cR)}`, 'イエロー・レッド'),
-  ];
+  const rate = L ? T / L : 0;
+  // 出場：大きく出場時間と出場率（棒）、下に小さく回数など
+  const heroTime = `<div class="prhero"><div class="prh1"><em>出場時間</em><b>${mmss(T)}</b><small>${played.length ? `1試合平均 ${mmss(T / played.length)}` : '出場なし'}</small></div>
+    <div class="prh1"><em>出場率</em><b>${L ? Math.round(rate * 100) + '<i>%</i>' : '—'}</b><span class="prbar"><i style="width:${Math.round(rate * 100)}%"></i></span><small>メンバーに入った試合の時間に対して</small></div>
+    <ul class="prmini"><li><em>招集</em><b>${acts.length}</b>活動</li><li><em>試合メンバー</em><b>${rows.length}</b>試合<small>（先発 ${rows.filter((r0) => r0.start).length}）</small></li><li><em>出場</em><b>${played.length}</b>試合</li>
+      <li><em>1回の出場</em><b>${N ? mmss(T / N) : '—'}</b><small>（${N}回）</small></li><li><em>休憩</em><b>${rests.length ? mmss(rests.reduce((a, b) => a + b, 0) / rests.length) : '—'}</b><small>（同じピリオド内）</small></li></ul></div>`;
+  // 結果：得点・アシスト（GKは失点関与・被シュート関与）
+  const big = (l, v, sub = '', c = '') => `<div class="prbig ${c}"><em>${l}</em><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const res = gk ? [big('失点関与', D((d) => d.on.ga), `${played.length ? (D((d) => d.on.ga) / Math.max(1, T / 2400000)).toFixed(1) + '／40分' : ''}`, 'o'), big('被シュート関与', D((d) => d.on.oshot), '', 'o')]
+    : [big('得点', D((d) => d.goals), '', D((d) => d.goals) ? 'g' : ''), big('アシスト', D((d) => d.assists), '', D((d) => d.assists) ? 'g' : '')];
+  // 評価の指標：差（プラスは緑・マイナスは赤、真ん中から左右に伸びる棒）
+  const difs = [['シュート関与の差', D((d) => d.on.shot - d.on.oshot), `関与 ${D((d) => d.on.shot)} − 被 ${D((d) => d.on.oshot)}`],
+    ['進入関与の差', D((d) => d.on.z4 + d.on.sz - d.on.oz4 - d.on.osz), `関与 ${D((d) => d.on.z4 + d.on.sz)} − 被 ${D((d) => d.on.oz4 + d.on.osz)}`],
+    ['得失点±', D((d) => d.on.gf - d.on.ga), `得点関与 ${D((d) => d.on.gf)} − 失点関与 ${D((d) => d.on.ga)}`],
+    ['リカバリー−ロスト', D((d) => d.rec - d.lost), `リカバリー ${D((d) => d.rec)} − ロスト ${D((d) => d.lost)}`]];
+  const dm = Math.max(1, ...difs.map((x) => Math.abs(x[1])));
+  const difH = `<div class="prdif"><h3>評価の指標<small>差＝自チーム − 相手（リカバリー−ロストは本人）</small></h3>${difs.map(([l, v, sub]) => `<div class="prdr"><em>${l}</em><span class="prdb"><i class="${v >= 0 ? 'p' : 'm'}" style="width:${Math.round(Math.abs(v) / dm * 50)}%"></i></span><b class="${v > 0 ? 'p' : v < 0 ? 'm' : ''}">${sg(v)}</b><small>${sub}</small></div>`).join('')}</div>`;
+  // 本人のプレー：小さな一覧
+  const plays = [['シュート', `${shots}`, `枠内 ${inn}（${pct(inn, shots)}）・SZ内 ${D((d) => d.sz)}`], ['Z4進入', D((d) => d.ent.z4.inv), ''], ['SZ進入', D((d) => d.ent.sz.inv), ''],
+    ['リカバリー', D((d) => d.rec), ''], ['ロスト', D((d) => d.lost), ''], ['ファール', D((d) => d.foul), ''], ['カード', `${D((d) => d.cY)}・${D((d) => d.cR)}`, 'イエロー・レッド'], ...(gk ? [['得点・アシスト', `${D((d) => d.goals)}・${D((d) => d.assists)}`, '']] : [])];
+  const playH = `<div class="prply"><h3>本人のプレー</h3><table>${plays.map(([l, v, sub]) => `<tr><th>${l}</th><td><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</td></tr>`).join('')}</table></div>`;
   const sumH = `<h2 class="h">通算のまとめ<small>${rows.length}試合${loading ? '（読み込み中…）' : ''}</small></h2>
-    <div class="prtiles">${tilesTime.join('')}</div><div class="prtiles prply">${tilesPlay.join('')}</div>`;
+    ${heroTime}<div class="prgrid"><div class="prres2">${res.join('')}</div>${difH}${playH}</div>`;
 
   // ---------- ④ 試合ごとの記録 ----------
   const resC = (r0) => (/勝/.test(r0.res) ? 'w' : /負/.test(r0.res) ? 'l' : 'd');
@@ -104,8 +117,13 @@ export function vPlayerRecord(r) {
     active: 'players',
     html: `<div class="prw">${head}${sumH}${matchH}${actH}</div>`,
     bind(root) {
-      root.querySelectorAll('[data-f]').forEach((el) => { el.onchange = () => { F[el.dataset.f] = el.value; keepF(); render(); }; });
-      const cl = root.querySelector('#prClear'); if (cl) cl.onclick = () => { Object.assign(F, { type: '', cat: '', from: '', to: '' }); keepF(); render(); };
+      const dt = root.querySelector('details.prpick'); if (dt) dt.ontoggle = () => { pickOpen = dt.open; };
+      root.querySelectorAll('[data-part]').forEach((c) => { c.indeterminate = true; });
+      const upd = (f) => { const e = exOf(pid); f(e); setEx(pid, e); render(); };
+      root.querySelectorAll('[data-pa]').forEach((c) => { c.onchange = () => upd((e) => { const id = c.dataset.pa; if (c.checked) { e.a.delete(id); msOf(id).forEach((m) => e.m.delete(m.id)); } else e.a.add(id); }); });
+      root.querySelectorAll('[data-pm]').forEach((c) => { c.onchange = () => upd((e) => { c.checked ? e.m.delete(c.dataset.pm) : e.m.add(c.dataset.pm); }); });
+      const al = root.querySelector('#prAll'); if (al) al.onclick = () => upd((e) => { e.a.clear(); e.m.clear(); });
+      const nn = root.querySelector('#prNone'); if (nn) nn.onclick = () => upd((e) => { allActs.forEach((a) => e.a.add(a.id)); });
       root.querySelectorAll('tr[data-go]').forEach((tr) => { tr.onclick = () => { location.hash = tr.dataset.go; }; });
     },
   };
