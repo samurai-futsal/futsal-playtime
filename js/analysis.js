@@ -279,7 +279,7 @@ function cmpTable(title, rows, g, { note = '' } = {}) {
 function bandRows(title, labels, a, b, g) {
   if (!labels || !a || !b) return '';
   const sum = (x) => x.reduce((s, y) => s + y, 0);
-  return `<div class="ancmpw"><h4>${title}</h4><table class="antb anband"><thead><tr><th class="apl"></th>${labels.map((l) => `<th>${l.replace('~', '〜')}${/:/.test(l) ? '' : '分'}</th>`).join('')}<th>合計</th></tr></thead><tbody>
+  return `<div class="ancmpw"><h4>${title}</h4><table class="antb anband"><colgroup><col class="c1"></colgroup><thead><tr><th class="apl"></th>${labels.map((l) => `<th>${l.replace('~', '〜')}${/:/.test(l) ? '' : '分'}</th>`).join('')}<th>合計</th></tr></thead><tbody>
     <tr><td class="apl w">自チーム</td>${a.map((x) => `<td class="w">${g(x)}</td>`).join('')}<td class="w"><b>${g(sum(a))}</b></td></tr>
     <tr><td class="apl o">相手</td>${b.map((x) => `<td class="o">${g(x)}</td>`).join('')}<td class="o"><b>${g(sum(b))}</b></td></tr></tbody></table></div>`;
 }
@@ -300,7 +300,7 @@ function teamEnt(ctx, g) {
   const how = { z4: { dribble: 0, pass: 0, rebound: 0, no: 0 }, sz: { dribble: 0, pass: 0, rebound: 0, no: 0 } };
   for (const x of ctx.ok) for (const e of evIn(x)) if (e.kind === 'z4' || e.kind === 'sz') how[e.kind][how[e.kind][e.method] != null && e.method !== 'no' ? e.method : 'no']++;
   const hm = [['ドリブル', 'dribble'], ['パス', 'pass'], ['リバウンド', 'rebound'], ['未入力', 'no']];
-  const howT = `<div class="ancmpw"><h4>進入の方法（自チーム）</h4><table class="antb anband"><thead><tr><th class="apl"></th>${hm.map(([l]) => `<th>${l}</th>`).join('')}<th>合計</th></tr></thead><tbody>
+  const howT = `<div class="ancmpw"><h4>進入の方法（自チーム）</h4><table class="antb anband"><colgroup><col class="c1"></colgroup><thead><tr><th class="apl"></th>${hm.map(([l]) => `<th>${l}</th>`).join('')}<th>合計</th></tr></thead><tbody>
     ${[['Z4進入', 'z4'], ['SZ進入', 'sz']].map(([l, k]) => `<tr><td class="apl w">${l}</td>${hm.map(([, m]) => `<td>${g(how[k][m])}</td>`).join('')}<td><b>${g(hm.reduce((s, [, m]) => s + how[k][m], 0))}</b></td></tr>`).join('')}</tbody></table></div>`;
   return `<div class="anteamv">${cmpTable('Z4・SZ進入', [['Z4進入', a.z4, b.z4], ['SZ進入', a.szE, b.szE], ['合計', a.z4 + a.szE, b.z4 + b.szE, { cls: 'tot' }]], g)}
     ${howT}${cmpTable('局面ごとのZ4進入', LCLS.map((l, i) => [l, a.zcls?.[i] || 0, b.zcls?.[i] || 0]), g)}
@@ -322,7 +322,7 @@ function teamFsp(ctx, g) {
   const rows = [...L.map((l, i) => [l, T.at[i], T.df[i]]), ...(miss.at || miss.df ? [['種類が未入力', miss.at, miss.df]] : []), ['合計', sum('at'), sum('df'), { cls: 'tot' }]];
   const res = cmpTable('セットプレーの局面のシュートと得点', [['シュート', set.own[0], set.opp[0]], ['得点', set.own[1], set.opp[1]], ['決定率', pctS(set.own[1], set.own[0]), pctS(set.opp[1], set.opp[0]), { pct: true }],
     ['1本あたりのシュート', sum('at') ? (set.own[0] / sum('at')).toFixed(2) : '—', sum('df') ? (set.opp[0] / sum('df')).toFixed(2) : '—', { pct: true }]], g, { note: '局面が「セットプレー」のシュート・得点（得点・失点の種類から分類したものを含む）' });
-  const perT = per.length > 1 ? `<div class="ancmpw"><h4>試合ごと</h4><table class="antb anband"><thead><tr><th class="apl">試合</th><th class="w">自チーム</th><th class="o">相手</th></tr></thead><tbody>${per.map(([x, c]) => `<tr><td class="apl">${fmtShort(x.m.date)} vs ${esc(x.m.opponent || '')}</td><td class="w">${c.at}</td><td class="o">${c.df}</td></tr>`).join('')}</tbody></table></div>` : '';
+  const perT = per.length > 1 ? `<div class="ancmpw"><h4>試合ごと</h4><table class="antb anband"><colgroup><col style="width:60%"></colgroup><thead><tr><th class="apl">試合</th><th class="w">自チーム</th><th class="o">相手</th></tr></thead><tbody>${per.map(([x, c]) => `<tr><td class="apl">${fmtShort(x.m.date)} vs ${esc(x.m.opponent || '')}</td><td class="w">${c.at}</td><td class="o">${c.df}</td></tr>`).join('')}</tbody></table></div>` : '';
   return `<div class="anteamv">${cmpTable('FINISH SET PLAY の種類', rows, g, { note: '自チーム＝自チームのセットプレー（AT）、相手＝相手のセットプレー（こちらのDF）' })}${res}
     ${bandRows('時間帯ごとの FINISH SET PLAY', bandLabels(ctx), ctx.team.A.fspBand, ctx.team.B.fspBand, g)}${perT}</div>`;
 }

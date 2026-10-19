@@ -1446,3 +1446,9 @@ a.mtile.mtlink{color:var(--ink);text-decoration:none}.mtlink .go{margin-left:aut
 .prrep .prpc{grid-template-columns:minmax(0,.8fr) minmax(0,1.45fr)}.prrep .prprint .prtb{font-size:12.5px}.prrep .prprint .prtb td,.prrep .prprint .prtb th{padding:5px 5px}.prrep .prprint .prtb td.po{white-space:normal}.prrep .prprint .prpair td.pb{width:22%}
 .prrep .prgraph{width:100%;height:auto}.prrep .prpc .prgrid2.three{grid-template-columns:1fr}.prrep .prpie,.prrep .prpair{overflow:visible}
 .prrep .prgraph{max-height:190px;width:auto;max-width:100%}
+/* チームの表（時間帯・進入の方法・試合ごと）：白い枠の中の幅いっぱいに、はみ出さない（2026-10-19） */
+.anteamv .ancmpw .anband{width:100%!important;table-layout:fixed}
+.anteamv .ancmpw .anband th,.anteamv .ancmpw .anband td{padding:6px 3px;white-space:normal;overflow-wrap:anywhere;font-size:13.5px}
+.anteamv .ancmpw .anband th{font-size:12px;line-height:1.25}
+.anteamv .ancmpw .anband td.apl,.anteamv .ancmpw .anband th.apl{padding-left:8px}
+.anteamv .ancmpw .anband col.c1{width:5.6em}
