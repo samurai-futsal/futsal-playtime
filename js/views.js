@@ -348,14 +348,15 @@ function vActivities() {
     bind() { $('#btnAddA').onclick = () => activityForm(null); },
   };
 }
-function timesFields(t, locked = false, pkGame = false) {
+function timesFields(t, locked = false, pkGame = false, exLocked = locked) {
   // 延長戦の長さは「延長戦あり」のときだけ出す。locked＝試合が始まったあと（事前設定では変えられない。2026-10-17 決定）
-  const dis = locked ? 'disabled' : '';
+  // 延長戦あり／なしと延長の長さは、延長戦を始めるまでは試合が始まったあとも変えられる（なしの試合は後半で試合終了になるので。2026-10-19）
+  const dis = locked ? 'disabled' : ''; const exDis = exLocked ? 'disabled' : '';
   return `<div><label for="fHalf">前後半の長さ（分）</label><input id="fHalf" name="half" type="number" min="1" max="40" inputmode="numeric" value="${esc(t.half)}" ${dis}></div>
-    <div class="chks2"><label class="chk"><input id="fExtra" type="checkbox" name="extra" ${t.extra ? 'checked' : ''} ${dis}> 延長戦あり</label>
+    <div class="chks2"><label class="chk"><input id="fExtra" type="checkbox" name="extra" ${t.extra ? 'checked' : ''} ${exDis}> 延長戦あり</label>
       <label class="chk" title="試合が始まったあとも変えられます"><input id="fPk" type="checkbox" name="pkGame" ${pkGame ? 'checked' : ''}> PK戦あり</label></div>
-    <div id="extraBox" ${t.extra ? '' : 'hidden'}><label for="fExtraHalf">延長戦の長さ（分・前後半それぞれ）</label><input id="fExtraHalf" name="extraHalf" type="number" min="1" max="20" inputmode="numeric" value="${esc(t.extraHalf)}" ${dis}></div>
-    ${locked ? '<p class="span2 note info">試合時間は、試合が始まったあとは記録の修正の『試合情報』で直せます（PK戦あり／なしはここで変えられます）</p>' : ''}`;
+    <div id="extraBox" ${t.extra ? '' : 'hidden'}><label for="fExtraHalf">延長戦の長さ（分・前後半それぞれ）</label><input id="fExtraHalf" name="extraHalf" type="number" min="1" max="20" inputmode="numeric" value="${esc(t.extraHalf)}" ${exDis}></div>
+    ${locked ? `<p class="span2 note info">前後半の長さは、試合が始まったあとは記録の修正の『試合情報』で直せます（${exLocked ? '' : '延長戦あり／なし・'}PK戦あり／なしはここで変えられます）</p>` : ''}`;
 }
 document.addEventListener('change', (e) => {
   if (e.target.id === 'fExtra') { const b = document.getElementById('extraBox'); if (b) b.hidden = !e.target.checked; }
@@ -684,6 +685,8 @@ function vMatchSetup(m) {
   const t = { ...DEFAULT_TIMES, ...(m.times || {}) };
   const ct = m.colorTimer || { orange: teamSettings().colorOrange, red: teamSettings().colorRed };
   const started = m.status === 'playing' || m.status === 'done';
+  // 延長戦を始めた（または「行う」を選んだ）あとは、延長戦あり／なしを変えられない
+  const exStarted = (() => { try { const st = replay(watchOps(m.id).list, { times: m.times || {}, members: m.members || {} }); return st.extraDecided === true || ['E1', 'E2'].some((k) => st.periods[k]?.status && st.periods[k].status !== 'none'); } catch { return false; } })();
   const legacyCat = !m.categoryId && m.category; // 一覧にない名前（古い記録）。選び直すまでそのまま残す
   return {
     active: 'acts',
@@ -696,7 +699,7 @@ function vMatchSetup(m) {
       <div class="span2"><label for="sVenue">会場（任意）</label><input id="sVenue" name="venue" value="${esc(m.venue || '')}"></div>
       <div class="span2"><label for="sMemo">メモ（任意）</label><textarea id="sMemo" name="memo" rows="2">${esc(m.memo || '')}</textarea></div>
       <div class="span2 subh">試合時間</div>
-      ${timesFields(t, started, !!m.pkGame)}
+      ${timesFields(t, started, !!m.pkGame, exStarted)}
       <div class="span2 subh">カラータイマー（連続出場時間で色が変わる。GKは対象外）</div>
       <div><label for="sOr">オレンジになる時間（分:秒）</label><input id="sOr" name="orange" value="${mmss(ct.orange)}" inputmode="numeric"></div>
       <div><label for="sRed">赤になる時間（分:秒）</label><input id="sRed" name="red" value="${mmss(ct.red)}" inputmode="numeric"></div>
@@ -711,7 +714,7 @@ function vMatchSetup(m) {
         const orange = parseMmss(v.orange, ct.orange), red = parseMmss(v.red, ct.red);
         if (red <= orange) return toast('赤になる時間は、オレンジより後にしてください');
         put(teamPath('matches', m.id), { date: v.date, opponent: v.opponent, ...(v.categoryId === '=' ? {} : { categoryId: v.categoryId, category: optName('matchCategories', v.categoryId) || (v.categoryId ? m.category : '') }), kickoff: v.kickoff, venue: v.venue, memo: v.memo,
-          ...(started ? {} : { times: readTimes(v) }), pkGame: !!v.pkGame, colorTimer: { orange, red } });
+          ...(started ? (exStarted ? {} : { times: { ...t, extra: !!v.extra, extraHalf: readTimes(v).extraHalf } }) : { times: readTimes(v) }), pkGame: !!v.pkGame, colorTimer: { orange, red } });
         toast('保存しました'); goBack();
       };
     },
