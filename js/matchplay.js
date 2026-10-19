@@ -133,7 +133,7 @@ export function vPlay(m) {
     }
     const p = playerById(v.pid); const mm = m.members[v.pid] || {};
     const c = live ? contTime(st, v.pid, el, v) : 0;
-    const col = mm.pos === 'GK' ? '' : c >= ct.red * 1000 ? 'red' : c >= ct.orange * 1000 ? 'orange' : '';
+    const pc = ctOf(ct, v.pid); const col = mm.pos === 'GK' ? '' : c >= pc.red * 1000 ? 'red' : c >= pc.orange * 1000 ? 'orange' : '';
     return `<button class="pc ${v.waiting ? 'waiting' : ''} ${v.tentative ? 'tent' : ''} ${ejectMode ? 'ejpick' : ''}" data-p="${v.pid}" data-kind="${v.waiting ? 'waiting' : v.tentative ? 'tent' : v.draft ? 'draft' : 'on'}">
       ${nameRow(v.pid, p?.last)}
       ${v.waiting ? `<div class="wt">交代待ち（OUT ${mmss(len - v.outAt)}）</div>` : v.tentative ? '<div class="wt tn">仮に入る（押すと取り消し）</div>' : `<div class="ct ${col}" data-ct="${v.pid}">${mmssFloor(c)}</div>`}
@@ -217,6 +217,8 @@ export function vPlay(m) {
     bind(root) { bindPlay(root, m, st, cfg, draft); },
   };
 }
+// カラータイマー：選手ページで「この選手だけ変える」にした選手はその時間、ほかは試合の設定（2026-10-19）
+function ctOf(ct, pid) { const o = playerById(pid)?.colorTimer; return o && o.orange > 0 && o.red > o.orange ? o : ct; }
 // 試合が終わったあと：ピッチの5枠の代わりに「試合終了」とスコア、行き先を出す（決 MP-04）
 function finishedPanel(m, st) {
   let score = '';
@@ -460,7 +462,7 @@ function updateTick(m0) {
       const c = contTime(st, v.pid, el, v);
       e.textContent = mmssFloor(c);
       const gk = m.members[v.pid]?.pos === 'GK';
-      e.className = 'ct ' + (gk ? '' : c >= ct.red * 1000 ? 'red' : c >= ct.orange * 1000 ? 'orange' : '');
+      const pc = ctOf(ct, v.pid); e.className = 'ct ' + (gk ? '' : c >= pc.red * 1000 ? 'red' : c >= pc.orange * 1000 ? 'orange' : '');
     }
   });
   Object.keys(m.members || {}).forEach((pid) => {

@@ -1334,3 +1334,7 @@ body.bigv .stw .stsheet{gap:0}
 .stw .stt .lb,.stw .stt tr.sec td{line-height:1.15}
 /* マッチスタッツの縮小表示：2ページを左右に並べて1画面に */
 .stsheet.cols2{grid-template-columns:auto auto;justify-content:center;align-items:start;gap:24px}
+/* 選手ごとのカラータイマー（選手を編集） */
+.ctopt{display:grid;gap:8px;margin-top:4px}.ctopt>.chk{font-weight:600}.ctopt .chk .mu{font-weight:400;margin-left:6px}
+.ctown{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-left:28px}.ctown .mu{margin:0;font-size:12.5px}
+.ctown[hidden],#ctBox[hidden]{display:none}

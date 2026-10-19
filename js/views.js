@@ -287,17 +287,28 @@ function playerForm(p) {
     <div class="span2"><label>ポジション</label><div class="seg">
       <label class="rad"><input type="radio" name="pos" value="GK" ${p.pos === 'GK' ? 'checked' : ''}>GK</label>
       <label class="rad"><input type="radio" name="pos" value="FP" ${p.pos !== 'GK' ? 'checked' : ''}>FP</label></div></div>
+    ${ctFields(p)}
     ${isNew ? '' : `<div class="span2 sub">
       ${p.status === 'former' ? '<button class="btn sm" data-act="active">在籍に戻す</button>' : '<button class="btn sm" data-act="former">過去所属にする（移籍・退団）</button>'}
       ${canDelete ? '<button class="btn sm dangerline" data-act="delete">削除</button>' : '<span class="mu">試合に登録されたことがある選手は削除できません（過去所属にしてください）</span>'}</div>`}
   </div><div class="mfoot"><button class="btn" data-c>やめる</button><button class="btn pri" data-s>保存</button></div>`);
   autoKana($('#pLast'), $('#pFirst'), $('#pKana'), !p.kana);
+  const ctSync = () => { const fp = m.querySelector('input[name="pos"]:checked')?.value !== 'GK'; m.querySelector('#ctBox').hidden = !fp; const own = m.querySelector('input[name="ctm"]:checked')?.value === 'own'; m.querySelector('#ctOwn').hidden = !own; };
+  m.querySelectorAll('input[name="pos"], input[name="ctm"]').forEach((x) => { x.onchange = ctSync; }); ctSync();
   m.querySelector('[data-c]').onclick = closeModal;
   m.querySelector('[data-s]').onclick = () => {
     const v = formVals(m.querySelector('.mbody'));
     if (!v.last) return toast('姓を入れてください');
     const id = isNew ? newId() : p.id;
-    put(teamPath('players', id), { last: v.last, first: v.first, kana: v.kana, pos: v.pos, ...(isNew ? { status: 'active', deleted: false, createdAt: now() } : {}) });
+    // カラータイマー（FPだけ）：「この選手だけ変える」のときだけ選手に持たせる。ほかは消す（チームの設定に合わせる）
+    let colorTimer = null;
+    if (v.pos !== 'GK' && v.ctm === 'own') {
+      const orange = parseMmss(v.ctOr, -1), red = parseMmss(v.ctRed, -1);
+      if (!(orange > 0) || !(red > 0)) return toast('カラータイマーの時間は「1:30」のように入れてください');
+      if (red <= orange) return toast('赤になる時間は、オレンジより後にしてください');
+      colorTimer = { orange, red };
+    }
+    put(teamPath('players', id), { last: v.last, first: v.first, kana: v.kana, pos: v.pos, colorTimer, ...(isNew ? { status: 'active', deleted: false, createdAt: now() } : {}) });
     closeModal(); toast(isNew ? `${v.last} ${v.first} を登録しました` : '保存しました');
   };
   m.addEventListener('click', async (e) => {
@@ -308,6 +319,22 @@ function playerForm(p) {
       put(teamPath('players', p.id), { deleted: true }); toast('削除しました');
     }
   });
+}
+
+// 選手ごとのカラータイマー（2026-10-19）。はじめは「チームの設定に合わせる」。
+// 「この選手だけ変える」を選ぶと 1:30・2:00 が入っている（2026年10月の大会4試合の分析の目安）
+const CT_HINT = { orange: 90, red: 120 };
+function ctFields(p) {
+  const ts = teamSettings(); const own = !!p.colorTimer; const v = p.colorTimer || CT_HINT;
+  return `<div class="span2" id="ctBox"><label>カラータイマー（連続出場時間で色が変わる）</label>
+    <div class="ctopt">
+      <label class="chk"><input type="radio" name="ctm" value="team" ${own ? '' : 'checked'}> チームの設定に合わせる<span class="mu">（いまは オレンジ ${mmss(ts.colorOrange)}・赤 ${mmss(ts.colorRed)}）</span></label>
+      <label class="chk"><input type="radio" name="ctm" value="own" ${own ? 'checked' : ''}> この選手だけ変える</label>
+      <div id="ctOwn" class="ctown">
+        <div><label for="ctOr">オレンジになる時間（分:秒）</label><input id="ctOr" name="ctOr" value="${mmss(v.orange)}" inputmode="numeric"></div>
+        <div><label for="ctRed">赤になる時間（分:秒）</label><input id="ctRed" name="ctRed" value="${mmss(v.red)}" inputmode="numeric"></div>
+        <p class="mu span2">${own ? '' : 'はじめは 1:30・2:00 が入っています（2026年10月の大会4試合のデータの目安：同じ4人が出て2分を超えると被シュートが倍以上に増えた）。'}試合の事前設定より、こちらが優先されます。GKには使いません。</p>
+      </div></div></div>`;
 }
 
 // ふりがなの自動入力：姓・名を日本語入力で打つとき、漢字に変換する前のひらがなを拾って
