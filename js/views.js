@@ -452,7 +452,7 @@ function vActivity(r) {
   const tile = (p) => {
     const n = mem[p.id]?.no ?? '';
     const isDup = dup.includes(String(n).trim());
-    if (!editMode) return `<div class="mtile">${no(n || '—', p.pos)}<span>${esc(playerName(p))}</span></div>`;
+    if (!editMode) return `<a class="mtile mtlink" href="#/pl/${p.id}" title="${esc(playerName(p))}の記録">${no(n || '—', p.pos)}<span>${esc(playerName(p))}</span><i class="go">記録 ›</i></a>`; // 2026-10-19：名前から選手の記録へ
     return `<div class="mtile edit ${isDup ? 'dup' : ''}"><input id="no_${p.id}" class="noin" inputmode="numeric" value="${esc(n)}" data-no="${p.id}" aria-label="${esc(playerName(p))}の背番号">
       <span>${esc(playerName(p))}<small>${p.pos === 'GK' ? 'GK' : 'FP'}</small></span>
       ${played.has(p.id) ? '<span class="mu xs">出場済み</span>' : `<button class="btn xs" data-out="${p.id}">外す</button>`}</div>`;
@@ -765,7 +765,7 @@ function vMatchMembers(m) {
     const num = sel ? mem[p.id].no : info?.no;
     return `<div class="pcard ${sel ? 'sel' : ''}">
       <button class="pc-main" data-tog="${p.id}">${no(num || '—', p.pos)}<span>${esc(playerName(p))}</span>${sel ? '<b class="ok">✓</b>' : ''}</button>
-      ${sel && p.pos !== 'GK' ? `<button class="pc-pp ${pp ? 'on' : ''}" data-pp="${p.id}">${pp ? 'パワープレー可 ✓' : 'パワープレー可'}</button>` : ''}</div>`;
+      ${sel && p.pos !== 'GK' ? `<button class="pc-pp ${pp ? 'on' : ''}" data-pp="${p.id}">${pp ? 'パワープレー可 ✓' : 'パワープレー可'}</button>` : ''}<a class="pc-rec" href="#/pl/${p.id}">記録 ›</a></div>`;
   };
   return {
     active: 'acts',

@@ -637,8 +637,8 @@ function typeTab(ctx) {
 }
 
 // 円グラフ（12時から時計回り）
-const PIEC = ['#1F5FBF', '#E0832B', '#2E8B57', '#8A5AC8', '#C8312B', '#8C96A8', '#D5DAE3'];
-function pieSvg(arr) {
+export const PIEC = ['#1F5FBF', '#E0832B', '#2E8B57', '#8A5AC8', '#C8312B', '#8C96A8', '#D5DAE3'];
+export function pieSvg(arr) {
   const tot = arr.reduce((a, b) => a + b, 0); const R = 80, C = 90; let a0 = -Math.PI / 2; let out = '';
   const nz = arr.filter((v) => v).length;
   arr.forEach((v, i) => {

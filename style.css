@@ -1418,3 +1418,18 @@ body.bigv .stw .stsheet{gap:0}
 .prdb i{position:absolute;top:0;bottom:0;border-radius:6px}.prdb i.p{left:50%;background:#1F9E5B}.prdb i.m{right:50%;background:#E04A3A}
 .prply table{width:100%;border-collapse:collapse;font-size:14px}.prply th{text-align:left;font-weight:600;color:#56607A;padding:4px 0;font-size:13px;white-space:nowrap}.prply td{text-align:right;padding:4px 0}.prply td b{font-size:16px}.prply td small{display:block;font-size:11px;color:#6B7486}
 .prply tr+tr th,.prply tr+tr td{border-top:1px solid #EEF1F6}
+/* 選手の記録（2回目：グラフ・一緒にプレーした選手・傾向・入口） 2026-10-19 */
+a.mtile.mtlink{color:var(--ink);text-decoration:none}.mtlink .go{margin-left:auto;font-style:normal;font-size:12px;font-weight:700;color:#1F5FBF;white-space:nowrap}.mtlink:hover{background:#F2F6FD}
+.pc-rec{display:block;text-align:right;font-size:12px;font-weight:700;color:#1F5FBF;padding:2px 8px 4px;text-decoration:none}
+.prgw{overflow-x:auto;padding:8px 10px}.prgraph{display:block}
+.prgrid2{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px;margin-bottom:14px;align-items:start}.prgrid2.three{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+@media (max-width:999px){.prgrid2{grid-template-columns:1fr}}
+.prpair,.prpie{background:#fff;border:1.5px solid #D5DDEA;border-radius:12px;padding:10px 14px;min-width:0;overflow-x:auto}
+.prpair h3,.prpie h3{margin:0 0 8px;font-size:14px;color:#0B2D6B;border-bottom:2px solid #0B2D6B;padding-bottom:5px}.prpair h3 small,.prpie h3 small{font-size:11px;font-weight:500;color:#6B7486;margin-left:8px}
+.prpair table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}.prpair th{font-size:11.5px;color:#56607A;font-weight:700;padding:3px 6px;text-align:center;white-space:nowrap}.prpair th:first-child{text-align:left}
+.prpair td{padding:5px 6px;border-top:1px solid #EEF1F6;text-align:center;white-space:nowrap}.prpair td:first-child{text-align:left;font-weight:700}
+.prpair td.pb{width:30%;min-width:60px}.prpair td.pb i{display:block;height:10px;border-radius:3px;background:#7FA6E0}
+.prpair td.df{font-weight:800;color:#56607A;background:#F5F2FB}.prpair td.df.p{color:#1F9E5B}.prpair td.df.m{color:#C8312B}
+.prpair td.sn span{display:inline-block;margin-right:8px}.prpair td.sn span.me{color:#1F5FBF;text-decoration:underline}
+.prstack{display:flex;height:22px;border-radius:6px;overflow:hidden;margin:8px 0}.prstack i{display:block;height:100%}
+.prleg{list-style:none;margin:0;padding:0;font-size:13.5px}.prleg li{padding:3px 0}.prleg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:7px;vertical-align:-1px}

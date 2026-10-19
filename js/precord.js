@@ -1,7 +1,10 @@
 // 選手の記録（2026-10-19）：選手ページ（・活動の招集メンバー・試合のメンバー）から開く、1人の選手のページ。
 // ① 見出しと絞り込み ② 通算のまとめ ④ 試合ごとの記録 ⑤ 招集歴（③グラフ・⑥一緒にプレーした選手・⑦傾向は次の回）
 import { S, playerById, activityById } from './store.js';
-import { matchCalcs } from './analysis.js';
+import { matchCalcs, pieSvg, PIEC } from './analysis.js';
+import { pitchAt } from './events.js';
+import { shotsOf, CLS_KEYS } from './teamstats.js';
+import { setTable } from './model.js';
 import { esc, fmtDate, fmtShort } from './ui.js';
 import { render } from './views.js';
 
@@ -113,9 +116,75 @@ export function vPlayerRecord(r) {
         <td>${c.n} / ${all}<small>試合</small></td><td>${c.p}<small>試合</small></td><td>${c.t ? mmss(c.t) : '<span class="z">0:00</span>'}</td><td class="gt">›</td></tr>`; }).join('')}</table></div>
     <p class="mu">試合メンバー＝メンバーに入った試合 / その活動の試合（終わった試合で数えます）</p>` : '<div class="card empty">招集された活動はありません</div>'}`;
 
+  // ---------- ③ 出場時間の移り変わり（試合ごとの棒。得点・アシストの印）----------
+  const gW = Math.max(640, rows.length * 56), gH = 220, pl = 46, pb = 54, pt = 30;
+  const maxT = Math.max(60000, ...rows.map((r0) => r0.d.time)); const top = Math.ceil(maxT / 300000) * 300000;
+  const bw = Math.min(80, (gW - pl - 10) / Math.max(1, rows.length)); // 試合が少ないときは棒を太くしすぎない
+  let sv = `<svg class="prgraph" viewBox="0 0 ${gW} ${gH}" width="${gW}" height="${gH}">`;
+  for (let t = 0; t <= top; t += 300000) { const y = pt + (gH - pt - pb) * (1 - t / top); sv += `<line x1="${pl}" x2="${gW - 6}" y1="${y}" y2="${y}" stroke="#E6EAF1"/><text x="${pl - 6}" y="${y + 4}" text-anchor="end" font-size="11" fill="#6B7486">${t / 60000}:00</text>`; }
+  rows.forEach((r0, i) => {
+    const d = r0.d; const x = pl + i * bw + bw * 0.18, w = bw * 0.64; const h = (gH - pt - pb) * (d.time / top); const y = gH - pb - h;
+    const c = r0.start ? '#1F5FBF' : '#7FA6E0';
+    sv += `<g><title>${fmtShort(r0.m.date)} vs ${esc(r0.m.opponent || '')}　${mmss(d.time)}（${pct(d.time, r0.len)}）${r0.start ? '・先発' : ''}</title><rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(0, h).toFixed(1)}" rx="3" fill="${c}"/>`;
+    if (d.time) sv += `<text x="${(x + w / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="#0B2D6B">${mmss(d.time)}</text>`;
+    const mk = [...Array(d.goals).fill('G'), ...Array(d.assists).fill('A')];
+    mk.forEach((k, j) => { const cy = y - 20 - j * 15; sv += `<circle cx="${(x + w / 2).toFixed(1)}" cy="${cy.toFixed(1)}" r="7" fill="${k === 'G' ? '#1F9E5B' : '#E0832B'}"/><text x="${(x + w / 2).toFixed(1)}" y="${(cy + 4).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="800" fill="#fff">${k}</text>`; });
+    sv += `<text x="${(x + w / 2).toFixed(1)}" y="${gH - pb + 16}" text-anchor="middle" font-size="11" fill="#3A4558">${fmtShort(r0.m.date)}</text><text x="${(x + w / 2).toFixed(1)}" y="${gH - pb + 31}" text-anchor="middle" font-size="10" fill="#6B7486">${esc((r0.m.opponent || '').slice(0, 6))}</text></g>`;
+  });
+  sv += '</svg>';
+  const graphH = rows.length ? `<h2 class="h">出場時間の移り変わり<small>古い順。濃い青＝先発。G＝得点、A＝アシスト</small></h2><div class="card prgw">${sv}</div>` : '';
+
+  // ---------- ⑥ 一緒にプレーした選手・セット ----------
+  const pair = new Map(); // 相手の選手 → { t, sf, sa, gf, ga }
+  const P = (o) => pair.get(o) || (pair.set(o, { t: 0, sf: 0, sa: 0, gf: 0, ga: 0 }), pair.get(o));
+  const sets = new Map();
+  for (const r0 of rows) {
+    const x = r0.x; const M = x.M;
+    const mine = M.stints.filter((q) => q.pid === pid);
+    for (const q of M.stints) { if (q.pid === pid) continue; for (const a of mine) { if (a.period !== q.period) continue; const ov = Math.min(a.to, q.to) - Math.max(a.from, q.from); if (ov > 0) P(q.pid).t += ov; } }
+    const evs = x.evs.filter((e) => !e.deleted);
+    const on = (e, side) => pitchAt(M, e.period, e.at, e.side || side);
+    for (const sh of shotsOf(evs, x.gn, true)) { const o = on(sh.e, 'before'); if (o.includes(pid)) o.forEach((q) => q !== pid && P(q).sf++); }
+    for (const sh of shotsOf(evs, x.gn, false)) { const o = on(sh.e, 'before'); if (o.includes(pid)) o.forEach((q) => q !== pid && P(q).sa++); }
+    for (const e of evs) if (e.kind === 'goal' || e.kind === 'conc') { const o = on(e, 'before'); if (o.includes(pid)) o.forEach((q) => q !== pid && P(q)[e.kind === 'goal' ? 'gf' : 'ga']++); }
+    if (!gk) for (const st of setTable(M)) {
+      if (!st.pids.includes(pid)) continue;
+      const inSpan = (e) => st.spans.some((sp) => sp.period === e.period && sp.from < e.at && e.at <= sp.to);
+      const c = sets.get(st.key) || { pids: st.pids, time: 0, count: 0, sf: 0, sa: 0 };
+      c.time += st.time; c.count += st.count;
+      c.sf += shotsOf(evs, x.gn, true).filter((q) => inSpan(q.e)).length; c.sa += shotsOf(evs, x.gn, false).filter((q) => inSpan(q.e)).length;
+      sets.set(st.key, c);
+    }
+  }
+  const nm = (q) => { const pp = playerById(q); return pp ? `${pp.last || ''}` : '—'; };
+  const pos = (q) => (playerById(q)?.pos === 'GK' ? 'gk' : 'fp');
+  const prs = [...pair.entries()].filter(([, v]) => v.t > 0).sort((a, b) => b[1].t - a[1].t).slice(0, 10);
+  const pmax = Math.max(1, ...prs.map(([, v]) => v.t));
+  const pairH = `<div class="prpair"><h3>一緒にピッチにいた時間<small>長い順に10人。差・±は2人が一緒にいた間の数</small></h3><table><tr><th>選手</th><th></th><th>時間</th><th>割合</th><th class="df">シュート<br>関与の差</th><th class="df">得失点±</th></tr>
+    ${prs.map(([q, v]) => `<tr><td><span class="pos ${pos(q)}">${pos(q) === 'gk' ? 'GK' : 'FP'}</span> ${esc(nm(q))}</td><td class="pb"><i style="width:${Math.round(v.t / pmax * 100)}%"></i></td><td><b>${mmss(v.t)}</b></td><td>${pct(v.t, T)}</td><td class="df ${v.sf - v.sa > 0 ? 'p' : v.sf - v.sa < 0 ? 'm' : ''}">${sg(v.sf - v.sa)}</td><td class="df ${v.gf - v.ga > 0 ? 'p' : v.gf - v.ga < 0 ? 'm' : ''}">${sg(v.gf - v.ga)}</td></tr>`).join('') || '<tr><td colspan="6" class="mu">ありません</td></tr>'}</table></div>`;
+  const st5 = [...sets.values()].sort((a, b) => b.time - a.time).slice(0, 5);
+  const setH = gk ? '' : `<div class="prpair"><h3>この選手が入った4人のセット<small>長い順に5つ（GK1人・FP4人がそろった時間）</small></h3><table><tr><th>FP4人</th><th>時間</th><th>回数</th><th class="df">シュート<br>の差</th></tr>
+    ${st5.map((c) => `<tr><td class="sn">${c.pids.map((q) => `<span class="${q === pid ? 'me' : ''}">${esc(nm(q))}</span>`).join('')}</td><td><b>${mmss(c.time)}</b></td><td>${c.count}</td><td class="df ${c.sf - c.sa > 0 ? 'p' : c.sf - c.sa < 0 ? 'm' : ''}">${sg(c.sf - c.sa)}</td></tr>`).join('') || '<tr><td colspan="4" class="mu">ありません</td></tr>'}</table></div>`;
+  const withH = rows.length ? `<h2 class="h">一緒にプレーした選手</h2><div class="prgrid2">${pairH}${setH}</div>` : '';
+
+  // ---------- ⑦ プレーの傾向 ----------
+  const LCLS = ['定位置', 'セットプレー', 'トランジション', 'GK活用', '特殊局面'];
+  const sc = [0, 0, 0, 0, 0, 0, 0], gc = [0, 0, 0, 0, 0, 0, 0];
+  const perT = {};
+  for (const r0 of rows) {
+    const x = r0.x; const evs = x.evs.filter((e) => !e.deleted);
+    for (const sh of shotsOf(evs, x.gn, true)) { if (sh.pid !== pid) continue; const i = CLS_KEYS.indexOf(sh.cls); sc[i >= 0 ? i : 6]++; if (sh.goal) gc[i >= 0 ? i : 6]++; }
+    for (const [k, c] of Object.entries(x.T[pid]?.per || {})) perT[k] = (perT[k] || 0) + c.time;
+  }
+  const PL = [...LCLS, '', '局面が分からない'];
+  const pie = (title, arr) => { const tot = arr.reduce((a, b) => a + b, 0); return `<div class="prpie"><h3>${title}<small>合計 ${tot}</small></h3>${tot ? `<div class="anpiew">${pieSvg(arr)}<table class="anpiel"><tbody>${arr.map((v, i) => (v ? `<tr><td><i style="background:${PIEC[i]}"></i>${PL[i]}</td><td><b>${v}</b></td><td>${Math.round(v / tot * 100)}%</td></tr>` : '')).join('')}</tbody></table></div>` : '<p class="mu">ありません</p>'}</div>`; };
+  const pk = [['1H', '前半', '#1F5FBF'], ['2H', '後半', '#8FB3EC'], ['E1', '延長前半', '#0E8A6E'], ['E2', '延長後半', '#86D3BE']].filter(([k]) => perT[k]);
+  const perH = `<div class="prpie"><h3>前半・後半の出場時間</h3>${T ? `<div class="prstack">${pk.map(([k, l, c]) => `<i style="width:${(perT[k] / T * 100).toFixed(1)}%;background:${c}"></i>`).join('')}</div><ul class="prleg">${pk.map(([k, l, c]) => `<li><i style="background:${c}"></i>${l} <b>${mmss(perT[k])}</b>（${pct(perT[k], T)}）</li>`).join('')}</ul>` : '<p class="mu">出場なし</p>'}</div>`;
+  const trendH = rows.length ? `<h2 class="h">プレーの傾向</h2><div class="prgrid2 three">${gk ? '' : pie('シュートの局面', sc) + pie('得点の局面', gc)}${perH}</div>` : '';
+
   return {
     active: 'players',
-    html: `<div class="prw">${head}${sumH}${matchH}${actH}</div>`,
+    html: `<div class="prw">${head}${sumH}${graphH}${matchH}${withH}${trendH}${actH}</div>`,
     bind(root) {
       const dt = root.querySelector('details.prpick'); if (dt) dt.ontoggle = () => { pickOpen = dt.open; };
       root.querySelectorAll('[data-part]').forEach((c) => { c.indeterminate = true; });
