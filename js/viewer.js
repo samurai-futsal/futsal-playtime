@@ -56,10 +56,12 @@ function stale() {
 function syncState(c) {
   const t = Date.now();
   const lastTxt = c.srvAt ? `${clock(c.srvAt)}時点` : '保存済みの数字';
-  if (!navigator.onLine) return { cls: 'ng blink', txt: `つながっていません（${lastTxt}）`, need: true };
+  // 同期をうながす状態は1つの表示にまとめる（つながっていない／最新でないかもしれない。2026-10-19）
+  const ng = { cls: 'ng blink', txt: `同期できていません（${c.srvAt ? `${clock(c.srvAt)}時点の数字` : '保存済みの数字'}）`, short: `同期できていません（${lastTxt}）`, need: true };
+  if (!navigator.onLine) return ng;
   const since = c.checkAt || c.cacheAt || t;
   if (c.fromCache && t - since < 10000) return { cls: 'wait', txt: '確認中…' };
-  if (c.fromCache || stale()) return { cls: 'ng blink', txt: `最新ではないかもしれません（${lastTxt}）`, short: `最新でないかも（${lastTxt}）`, need: true };
+  if (c.fromCache || stale()) return ng;
   return { cls: 'ok', txt: `最新${W.okAt ? `（${clockS(W.okAt)} 確認）` : ''}` };
 }
 export function stopPhysTick() { clearInterval(tick); tick = null; }
@@ -122,14 +124,16 @@ export function vPhys(m) {
   else if (live) state = `<span class="phper">${periodLabel(st.current)}</span><span class="phclk">残り <b>${mmssUp(len - el)}</b></span><span class="phrun ${running ? 'on' : ''}">● ${running ? '時計が動いています' : '時計が止まっています'}</span><span class="phrt">実際の経過 <b>${mmss(runEl)}</b></span>`;
   else if (lastEnd) state = `<span class="phst">${st.periods['1H']?.status === 'done' && st.periods['2H']?.status !== 'done' ? 'ハーフタイム' : 'ピリオドの間'}</span><span class="phrt">${[...PERIODS].reverse().find((p) => st.periods[p.key].status === 'done')?.label || ''}終了時点の数字（止まっています）</span>`;
   else state = '<span class="phst">試合前</span>';
-  startWatch(m.id);
+  // 試合が終わったら、同期の表示とボタンは出さない（数字はもう動かないので。見張りも止める。2026-10-19）
+  const over = !!st.matchOver;
+  if (over) { clearInterval(W.timer); W.timer = null; W.id = null; } else startWatch(m.id);
   const ss = syncState(opsC);
   const lastOp = opsC.list.reduce((a, o) => Math.max(a, o.t || 0), 0);
-  if (!live && ss.cls === 'wait') setTimeout(() => { if (physMatch() === m.id) render(); }, 10500 - (Date.now() - (opsC.checkAt || opsC.cacheAt || 0)));
+  if (!live && !over && ss.cls === 'wait') setTimeout(() => { if (physMatch() === m.id) render(); }, 10500 - (Date.now() - (opsC.checkAt || opsC.cacheAt || 0)));
   // 上の帯は、いつも同じ2段の形（状態や文字の長さで並びが変わらないように。2026-10-18）
   // 1段目：試合の状態 … マッチレビュー・試合ページ　2段目：相手・最新かどうか … 最後の記録・同期ボタン
   const head = `<div class="phtop"><div class="phr1">${state}<span class="sp"></span><a class="btn sm phrv" href="#/m/${m.id}/review">マッチレビュー ›</a><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></div>
-    <div class="phr2"><span class="phvs">vs ${esc(m.opponent || '')}</span><span class="phsy ${ss.cls}">● ${ss.short ? `<span class="l">${ss.txt}</span><span class="s">${ss.short}</span>` : ss.txt}</span><span class="sp"></span>${lastOp ? `<span class="phlast">最後の記録 ${clockS(lastOp)}</span>` : ''}<button class="btn sm phsyb ${ss.need ? 'need' : ''}" id="phSync">${ss.need ? '⟳ 同期してください' : '⟳ 同期'}</button></div></div>
+    <div class="phr2"><span class="phvs">vs ${esc(m.opponent || '')}</span>${over ? '' : `<span class="phsy ${ss.cls}">● ${ss.short ? `<span class="l">${ss.txt}</span><span class="s">${ss.short}</span>` : ss.txt}</span>`}<span class="sp"></span>${lastOp ? `<span class="phlast">最後の記録 ${clockS(lastOp)}</span>` : ''}${over ? '' : `<button class="btn sm phsyb ${ss.need ? 'need' : ''}" id="phSync">${ss.need ? '⟳ 同期してください' : '⟳ 同期'}</button>`}</div></div>
     <div class="phlg"><span class="lgrun">0:00</span><span>黒＝<b>実際の時間</b>（ランニングタイム）</span><span class="ptv s">0:00</span><span>緑＝<b>試合の時計</b>（プレーイングタイム）</span><span>枠の色<i class="org"></i>${mmss(OR)}〜<i class="red"></i>${mmss(RD)}〜</span></div>`;
 
   const bar = (ms) => `<div class="phbar"><i class="${col(ms)}" style="width:${Math.min(100, ms / MAX * 100).toFixed(1)}%"></i><b style="left:${(OR / MAX * 100).toFixed(1)}%"></b><b style="left:${(RD / MAX * 100).toFixed(1)}%"></b></div>
