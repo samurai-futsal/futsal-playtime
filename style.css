@@ -1484,3 +1484,9 @@ a.mtile.mtlink{color:var(--ink);text-decoration:none}.mtlink .go{margin-left:aut
 .anrec{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;background:#FFF8E6;border:1px solid #F0D58A;border-radius:10px;padding:6px 12px;margin:6px 0 2px;font-size:14px}
 .anrec b{color:#0B2D6B}.anrec .w{color:#1F5FBF;font-weight:800}.anrec .l{color:#C8312B;font-weight:800}.anrec small{color:#6B7486;font-size:11px;margin-left:auto}
 .rgrow{flex-direction:row!important;margin:0!important}.rgrow span{min-width:0;white-space:normal}.rgrow select{width:200px!important;flex:0 0 200px;max-width:50%}
+/* 2026-10-22：試合を選ぶボタンの文字を真ん中に、絞り込みの一覧の崩れを直す */
+.mppick{align-items:center!important;justify-content:center;line-height:1.2}.mppick small{align-self:center}
+.pkrow{grid-template-columns:24px 46px minmax(0,1fr) auto!important;cursor:pointer}.pkrow input{width:20px;height:20px;margin:0;accent-color:#0B2D6B}
+.pkrow .nm{display:flex;flex-direction:column;min-width:0}.pkrow .nm b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pkrow .nm small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pkrow .d{color:#56607A;font-variant-numeric:tabular-nums}
+.pkbar{align-items:center;gap:8px}.pkbar .mu{margin-left:auto;font-size:13px;font-weight:700;color:#0B2D6B}
+label.chk{display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer}label.chk input{width:20px;height:20px}

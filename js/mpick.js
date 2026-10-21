@@ -28,6 +28,8 @@ export function guessRegion(name) {
 }
 // 決まった地域（設定で直したもの → 自動の推定 → なし）
 export const regionOf = (name) => S.team?.oppRegion?.[name] || guessRegion(name) || '';
+// 代表チームのモード：相手の地域で絞り込めるようにする（設定で切り替え。初めはチーム名に「代表」が入っていればオン）
+export const isNational = () => S.team?.settings?.national ?? /代表/.test(S.team?.name || '');
 export function setRegion(name, r) { put(['teams', S.teamId], { oppRegion: { [name]: r || '' } }); }
 // 相手の名前の一覧（試合中・終わった試合。試合数の多い順）
 export function opponents() {
@@ -46,7 +48,7 @@ export function regionModal(after) {
 }
 
 // ---------- 試合を探して選ぶ（マッチレビュー・マッチスタッツ） ----------
-const F = { type: '', cat: '', from: '', to: '', q: '', rg: '' };
+const F = { act: '', type: '', cat: '', from: '', to: '', q: '', rg: '' };
 const played = () => S.matches.filter((m) => !m.deleted && (m.status === 'playing' || m.status === 'done'));
 const byTime = (a, b) => (a.date || '').localeCompare(b.date || '') || (a.kickoff || '').localeCompare(b.kickoff || '') || (a.createdOrder || 0) - (b.createdOrder || 0);
 // 同じ活動の、前の試合・次の試合（試合中・終わった試合だけ）
@@ -69,19 +71,21 @@ export function openMatchPicker(cur, sub) {
   const list = () => {
     const q = F.q.trim();
     const ms = played().filter((m) => { const a = activityById(m.activityId);
-      return (!F.type || a?.type === F.type) && (!F.cat || m.category === F.cat) && (!F.from || (m.date || '') >= F.from) && (!F.to || (m.date || '') <= F.to)
-        && (!q || (m.opponent || '').includes(q) || (a?.name || '').includes(q)) && (!F.rg || regionOf(m.opponent) === F.rg); });
+      return (!F.act || m.activityId === F.act) && (!F.type || a?.type === F.type) && (!F.cat || m.category === F.cat) && (!F.from || (m.date || '') >= F.from) && (!F.to || (m.date || '') <= F.to)
+        && (!q || (m.opponent || '').includes(q)) && (!F.rg || !isNational() || regionOf(m.opponent) === F.rg); });
     const groups = new Map(); for (const m of ms.sort(byTime).reverse()) { const k = m.activityId; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(m); }
     return [...groups].map(([aid, arr]) => { const a = activityById(aid);
       return `<div class="mpg"><h4>${esc(a?.name || '活動なし')}<small>${a?.type ? esc(a.type) + '・' : ''}${arr.length}試合</small></h4>${arr.map((m) => `<button class="mprow ${m.id === cur.id ? 'cur' : ''}" data-go="${m.id}"><span class="d">${fmtShort(m.date)}</span><b>vs ${esc(m.opponent || '')}</b><small>${esc(m.category || '')}</small><em>${esc(matchStatus(m))}</em></button>`).join('')}</div>`; }).join('')
       || '<p class="mu">条件に合う試合はありません</p>';
   };
+  const acts = S.activities.filter((a) => !a.deleted).sort((a, b) => (b.start || '').localeCompare(a.start || ''));
   const md = openModal(`<h2>試合を選ぶ</h2>
-    <div class="pkf"><label>相手・活動の名前<input data-f="q" value="${esc(F.q)}" placeholder="例：モロッコ"></label>
-      <label>相手の地域<select data-f="rg">${o(REGIONS, F.rg)}</select></label>
+    <div class="pkf"><label>活動<select data-f="act"><option value="">すべて</option>${acts.map((a) => `<option value="${a.id}" ${a.id === F.act ? 'selected' : ''}>${esc(a.name)}（${fmtShort(a.start)}）</option>`).join('')}</select></label>
       <label>活動の種類<select data-f="type">${o(opts('activityTypes', true).map((x) => x.name), F.type)}</select></label>
       <label>試合の区分<select data-f="cat">${o(opts('matchCategories', true).map((x) => x.name), F.cat)}</select></label>
-      <label>期間<span class="pkd"><input type="date" data-f="from" value="${F.from}">〜<input type="date" data-f="to" value="${F.to}"></span></label></div>
+      <label>期間<span class="pkd"><input type="date" data-f="from" value="${F.from}">〜<input type="date" data-f="to" value="${F.to}"></span></label>
+      <label>相手チーム名<input data-f="q" value="${esc(F.q)}" placeholder="例：モロッコ"></label>
+      ${isNational() ? `<label>相手の地域<select data-f="rg">${o(REGIONS, F.rg)}</select></label>` : ''}</div>
     <p class="mu">試合中・終わった試合を、活動ごとに新しい順で出します。押すとその試合の${sub === 'stats' ? 'マッチスタッツ' : 'マッチレビュー'}へ。</p>
     <div id="mpList" class="pklist mplist">${list()}</div><div class="mfoot"><button class="btn" data-c>閉じる</button></div>`, { wide: true });
   const redraw = () => { md.querySelector('#mpList').innerHTML = list(); };

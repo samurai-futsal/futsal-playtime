@@ -9,13 +9,13 @@ import { missing, pitchAt, isFsp, OPP_OG, isOG } from './events.js';
 import { shotsOf, CLS_KEYS } from './teamstats.js';
 import { paceSection, goalMarks, PACE_ROWS, teamSection, bandTip } from './review58.js';
 import { timelineHTML, declutterTimeline } from './review.js';
-import { esc, fmtShort, openModal, closeModal } from './ui.js';
+import { esc, fmtShort, openModal, closeModal, toast } from './ui.js';
 import { render } from './views.js';
 import { printStats } from './stats.js';
 import { downloadDatasheet } from './dsview.js';
 import { printReport, printTime } from './report.js';
 import { bindRowHl } from './rowtip.js';
-import { REGIONS, regionOf, opponents, regionModal } from './mpick.js';
+import { REGIONS, regionOf, opponents, regionModal, isNational } from './mpick.js';
 import { bigBtn, bindBig, fitBox } from './bigview.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -43,7 +43,7 @@ function filtered() {
     return (!f.act || m.activityId === f.act) && (!f.type || a?.type === f.type) && (!f.cat || m.category === f.cat)
       && (!f.from || (m.date || '') >= f.from) && (!f.to || (m.date || '') <= f.to)
       // 相手・相手の地域（2026-10-22）：同じ相手との対戦の傾向、大陸ごとの傾向を見る
-      && (!f.opp || m.opponent === f.opp) && (!f.rg || regionOf(m.opponent) === f.rg);
+      && (!f.opp || m.opponent === f.opp) && (!f.rg || !isNational() || regionOf(m.opponent) === f.rg);
   });
 }
 // 複数の試合（全試合・選んだ試合）は、試合中の試合を入れない（未7、2026-10-17 決定）。「この試合」は試合中でも見られる
@@ -163,7 +163,7 @@ export function vAnalysis(r, mFrom = null) {
   const cand = pre ? [mFrom, ...candidates()] : candidates();
   const seg = (key, list) => `<span class="anseg">${list.map(([v, l, t]) => `<button class="${A[key] === v ? 'on' : ''}" data-set="${key}" data-v="${v}"${t ? ` title="${t}"` : ''}>${l}</button>`).join('')}</span>`;
   const one = A.scope === 'match' ? `<select id="anMatch" class="ansel" data-fresh="1">${cand.map((m) => `<option value="${m.id}" ${m.id === A.matchId ? 'selected' : ''}>${fmtShort(m.date)} vs ${esc(m.opponent)}</option>`).join('')}</select>` : '';
-  const fl = [A.f.opp, A.f.rg && `${A.f.rg}の相手`].filter(Boolean).join('・');
+  const fl = [A.f.opp, A.f.rg && isNational() && `${A.f.rg}の相手`].filter(Boolean).join('・');
   const multi = A.scope !== 'match' ? `<button class="btn sm" id="anPick">${A.scope === 'pick' ? '試合を選ぶ' : '絞り込み'}${fl ? `：${esc(fl)}` : ''}（${ms.length}試合）</button>` : '';
   const todoN = ok.filter((x) => x.todo).length; const noOpp = ok.filter((x) => !x.hasOpp).length;
   const head = `<div class="anhead">
@@ -458,31 +458,41 @@ function bindAnalysis(root) {
   });
 }
 function pickModal() {
-  const f = A.f; const acts = S.activities.filter((a) => !a.deleted);
+  // 2026-10-22：絞り込み（全試合）でも選んだ試合でも、チェックで1試合ずつ選べる。全部にチェックなら「全試合」、外したものがあれば「選んだ試合」になる
+  const f = A.f; const acts = S.activities.filter((a) => !a.deleted).sort((a, b) => (b.start || '').localeCompare(a.start || ''));
   const o = (list, v) => `<option value="">すべて</option>${list.map(([k, l]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
+  const chk = new Set(A.scope === 'pick' ? (A.picked || []) : candidates().map((m) => m.id));
+  const nat = isNational();
   const draw = (md) => {
-    const list = filtered(); const set = new Set(A.picked || []);
-    md.querySelector('#pkList').innerHTML = list.map((m) => `<label class="pkrow">${A.scope === 'pick' ? `<input type="checkbox" data-pk="${m.id}" ${set.has(m.id) ? 'checked' : ''}>` : ''}<span>${fmtShort(m.date)}</span><b>vs ${esc(m.opponent)}</b><small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small><em>${esc(matchStatus(m))}</em></label>`).join('') || '<p class="mu">条件に合う試合はありません</p>';
+    const list = filtered();
+    md.querySelector('#pkList').innerHTML = list.map((m) => `<label class="pkrow"><input type="checkbox" data-pk="${m.id}" ${chk.has(m.id) ? 'checked' : ''}><span class="d">${fmtShort(m.date)}</span><span class="nm"><b>vs ${esc(m.opponent)}</b><small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small></span><em>${esc(matchStatus(m))}</em></label>`).join('') || '<p class="mu">条件に合う試合はありません</p>';
+    const n = list.filter((m) => chk.has(m.id)).length; const c = md.querySelector('#pkCnt'); if (c) c.textContent = `${n} / ${list.length}試合を選んでいます`;
   };
-  const md = openModal(`<h2>${A.scope === 'pick' ? '試合を選ぶ' : '試合を絞り込む'}</h2>
-    <div class="pkf"><label>活動<select data-f="act">${o(acts.map((a) => [a.id, a.name]), f.act)}</select></label>
+  const md = openModal(`<h2>試合を絞り込む・選ぶ</h2>
+    <div class="pkf"><label>活動<select data-f="act">${o(acts.map((a) => [a.id, `${a.name}（${fmtShort(a.start)}）`]), f.act)}</select></label>
       <label>活動の種類<select data-f="type">${o(opts('activityTypes', true).map((x) => [x.name, x.name]), f.type)}</select></label>
       <label>試合の区分<select data-f="cat">${o(opts('matchCategories', true).map((x) => [x.name, x.name]), f.cat)}</select></label>
       <label>期間<span class="pkd"><input type="date" data-f="from" value="${f.from}">〜<input type="date" data-f="to" value="${f.to}"></span></label>
-      <label>相手<select data-f="opp">${o(opponents().map(([n, k]) => [n, `${n}（${k}試合）`]), f.opp)}</select></label>
-      <label>相手の地域<span class="pkd"><select data-f="rg">${o(REGIONS.map((r) => [r, r]), f.rg)}</select><button class="btn sm" id="pkRg" type="button">地域を直す</button></span></label></div>
-    ${A.scope === 'pick' ? '<div class="row"><button class="btn sm" id="pkAll">すべて選ぶ</button><button class="btn sm" id="pkNone">すべて外す</button></div>' : ''}
-    <div id="pkList" class="pklist"></div><div class="row end"><button class="btn pri" id="pkOk">これで見る</button></div>`, { wide: true });
+      <label>相手チーム名<select data-f="opp">${o(opponents().map(([n, k]) => [n, `${n}（${k}試合）`]), f.opp)}</select></label>
+      ${nat ? `<label>相手の地域<span class="pkd"><select data-f="rg">${o(REGIONS.map((r) => [r, r]), f.rg)}</select><button class="btn sm" id="pkRg" type="button">地域を直す</button></span></label>` : ''}</div>
+    <div class="row pkbar"><button class="btn sm" id="pkAll">すべて選ぶ</button><button class="btn sm" id="pkNone">すべて外す</button><span class="mu" id="pkCnt"></span></div>
+    <div id="pkList" class="pklist"></div><div class="row end"><button class="btn" id="pkX">やめる</button><button class="btn pri" id="pkOk">これで見る</button></div>`, { wide: true });
   draw(md);
   md.addEventListener('change', (e) => {
     const t = e.target;
     if (t.dataset.f) { A.f[t.dataset.f] = t.value; draw(md); }
-    if (t.dataset.pk) { const s = new Set(A.picked || []); t.checked ? s.add(t.dataset.pk) : s.delete(t.dataset.pk); A.picked = [...s]; }
+    if (t.dataset.pk) { t.checked ? chk.add(t.dataset.pk) : chk.delete(t.dataset.pk); draw(md); }
   });
-  const all = md.querySelector('#pkAll'); if (all) all.onclick = () => { A.picked = [...new Set([...(A.picked || []), ...filtered().map((m) => m.id)])]; draw(md); };
-  const none = md.querySelector('#pkNone'); if (none) none.onclick = () => { const ids = new Set(filtered().map((m) => m.id)); A.picked = (A.picked || []).filter((x) => !ids.has(x)); draw(md); };
-  md.querySelector('#pkRg').onclick = () => { keep(); regionModal(pickModal); };
-  md.querySelector('#pkOk').onclick = () => { keep(); closeModal(); render(); };
+  md.querySelector('#pkAll').onclick = () => { filtered().forEach((m) => chk.add(m.id)); draw(md); };
+  md.querySelector('#pkNone').onclick = () => { filtered().forEach((m) => chk.delete(m.id)); draw(md); };
+  const rg = md.querySelector('#pkRg'); if (rg) rg.onclick = () => { keep(); regionModal(pickModal); };
+  md.querySelector('#pkX').onclick = closeModal;
+  md.querySelector('#pkOk').onclick = () => {
+    const ids = filtered().map((m) => m.id); const sel = ids.filter((id) => chk.has(id));
+    if (!sel.length) return toast('試合を1つ以上選んでください');
+    if (sel.length === ids.length) A.scope = 'all'; else { A.scope = 'pick'; A.picked = sel; }
+    keep(); closeModal(); render();
+  };
 }
 
 // ---------- 1試合だけの表示の共通 ----------
