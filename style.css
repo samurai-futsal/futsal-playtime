@@ -1529,3 +1529,4 @@ body.jpn .tile{border-top:4px solid #1B2550}
 .flg.fbar{width:27px!important;height:18px!important;margin:0!important;vertical-align:middle}
 @media (max-width:1240px){.bar .jbwm img:first-child{display:none}}
 @media (max-width:900px){.bar .jbwm{display:none}.bar .jbem img{height:32px}}
+.antrend .fsplg{flex-wrap:wrap;gap:6px 14px;margin-top:6px;font-weight:600}.antrend .fsplg .fspk i{width:10px;height:12px;border-radius:2px;margin-right:0}.antrend .fsplg .fspk i+i{margin-right:5px}.antrend .fsplg small{color:#7A8699;font-weight:400}
