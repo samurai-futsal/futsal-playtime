@@ -105,7 +105,7 @@ export function vPlayerRecord(r) {
       <li><em>1回の出場</em><b>${N ? mmss(T / N) : '—'}</b><small>（${N}回）</small></li><li><em>休憩</em><b>${rests.length ? mmss(rests.reduce((a, b) => a + b, 0) / rests.length) : '—'}</b><small>（同じピリオド内）</small></li></ul></div>`;
   // 結果：得点・アシスト（GKは失点関与・被シュート関与）
   const big = (l, v, sub = '', c = '') => `<div class="prbig ${c}"><em>${l}</em><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
-  const res = gk ? [big('失点関与', D((d) => d.on.ga), `${played.length ? (D((d) => d.on.ga) / Math.max(1, T / 2400000)).toFixed(1) + '／40分' : ''}`, 'o'), big('被シュート関与', D((d) => d.on.oshot), '', 'o')]
+  const res = gk ? [big('失点関与', D((d) => d.on.ga), '', 'o'), big('被シュート関与', D((d) => d.on.oshot), '', 'o')]
     : [big('得点', D((d) => d.goals), '', D((d) => d.goals) ? 'g' : ''), big('アシスト', D((d) => d.assists), '', D((d) => d.assists) ? 'g' : '')];
   // 評価の指標：差（プラスは緑・マイナスは赤、真ん中から左右に伸びる棒）
   const nOnAll = D((d) => d.on.shot + d.on.oshot); const expAll = sum((r0) => (r0.d.on.shot + r0.d.on.oshot) * r0.share);
@@ -202,7 +202,6 @@ export function vPlayerRecord(r) {
   const setH = gk ? '' : `<div class="prpair"><h3>この選手が入った4人のセット<small>長い順に5つ（GK1人・FP4人がそろった時間）</small></h3><table><tr><th>FP4人</th><th>時間</th><th>回数</th><th class="df">シュート<br>の差</th><th class="df">関与率</th><th class="df">チーム<br>との差</th></tr>
     ${st5.map((c) => `<tr class="${c.time < SHORT ? 'short' : ''}"><td class="sn">${c.pids.map((q) => `<span class="${q === pid ? 'me' : ''}">${esc(nm(q))}</span>`).join('')}</td><td><b>${mmss(c.time)}</b></td><td>${c.count}</td><td class="df ${c.sf - c.sa > 0 ? 'p' : c.sf - c.sa < 0 ? 'm' : ''}">${sg(c.sf - c.sa)}</td><td class="df">${pct(c.sf, c.sf + c.sa)}</td>${relTd(c.sf, c.sa, c.exp)}</tr>`).join('') || '<tr><td colspan="6" class="mu">ありません</td></tr>'}</table></div>`;
   const G = rows.reduce((a, r0) => { for (const k of ['f', 'sz', 'ot', 'ga', 'og']) a[k] += r0.g[k]; r0.g.cls.forEach((v, i) => { a.cls[i] += v; }); r0.g.gcls.forEach((v, i) => { a.gcls[i] += v; }); return a; }, { f: 0, sz: 0, ot: 0, ga: 0, og: 0, cls: [0, 0, 0, 0, 0, 0, 0], gcls: [0, 0, 0, 0, 0, 0, 0] });
-  const per40 = (v) => (T ? (v / (T / 2400000)).toFixed(1) : '—');
   const sav = G.ot - G.ga;
   const gkH = `<h2 class="h">GKのパフォーマンス<small>ピッチにいる間の相手のシュート</small></h2>
     <div class="prgkw"><div class="prgkhero"><em>セーブ率</em><b>${G.ot ? Math.round(sav / G.ot * 100) + '<i>%</i>' : '—'}</b><span class="prbar"><i style="width:${G.ot ? Math.round(sav / G.ot * 100) : 0}%"></i></span><small>セーブ ${sav} ÷ 被枠内シュート ${G.ot}</small></div>
@@ -211,7 +210,7 @@ export function vPlayerRecord(r) {
       <tr><th>被枠内シュート</th><td><b>${G.ot}</b><small>被シュートの ${pct(G.ot, G.f)}</small></td></tr>
       <tr><th>セーブ</th><td><b>${sav}</b></td></tr>
       <tr><th>失点</th><td><b>${G.ga}</b><small>${G.og ? `ほかにOG ${G.og}` : 'OGは除く'}</small></td></tr>
-      <tr><th>40分あたり</th><td><b>${per40(G.f)}</b><small>被シュート・失点 ${per40(G.ga)}</small></td></tr></table></div></div>
+</table></div></div>
     <p class="mu">枠内＝結果が「枠内」の相手のシュート（失点を含む）。セーブ＝被枠内シュート − 失点。相手のシュートの結果が入っていないものは、枠内に数えません。</p>`;
   // ---------- 出場した場面（2026-10-22） ----------
   const SC = rows.reduce((a, r0) => { r0.sc.st.forEach((v, i) => { a.st[i].t += v.t; a.st[i].sf += v.sf; a.st[i].sa += v.sa; }); r0.sc.sh.forEach((v, i) => { a.sh[i].t += v.t; a.sh[i].sf += v.sf; a.sh[i].sa += v.sa; }); return a; }, { st: [0, 1, 2].map(() => ({ t: 0, sf: 0, sa: 0 })), sh: [0, 1, 2].map(() => ({ t: 0, sf: 0, sa: 0 })) });
