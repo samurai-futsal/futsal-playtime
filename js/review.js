@@ -1,6 +1,7 @@
 // マッチレビュー (spec 7章「マッチレビュー」). 1〜4 は出場と交代の記録だけで作るので常に表示。
 // 5〜8 はイベントが必要（今あるのは 6 セットごとのシュート…。マッチ・ペース・スコア・スタッツは後の工程）。
 // 番号は1〜8で固定（出ていない項目は飛ぶ。上部に理由を書く）。ランニングタイムの切り替えは 1〜4 に効く。
+import { flag, vsName } from './flags.js';
 import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvents, opts, activityById } from './store.js';
 import { replay, periodLabel, periodLen, perLen, nowElapsed } from './engine.js';
 import { matchModel, toRunning, playerTable, playedTime, periodSig, entryOrder } from './model.js';
@@ -88,7 +89,7 @@ export function vReview(m) {
   // PDFで書き出すとき（印刷）だけ出す見出し：どの試合の、どこまでの記録か
   const asOf = asOfLabel(M0); // マッチスタッツ・マッチレポートと同じ（最後に終わったピリオドから）
   const act = activityById(m.activityId);
-  const printHead = `<div class="rvprint"><div class="rvpt">マッチレビュー（${TT}）　${esc(S.team?.name || '')} vs ${esc(m.opponent || '')}</div>
+  const printHead = `<div class="rvprint"><div class="rvpt">マッチレビュー（${TT}）　${esc(S.team?.name || '')} ${vsName(m.opponent)}</div>
     <div class="rvps">${esc(fmtDate(m.date))}${m.kickoff ? ' ' + esc(m.kickoff) + 'キックオフ' : ''}　${esc(m.venue || '')}　${esc(act?.name || '')}${m.category ? '　' + esc(m.category) : ''}　<b>${asOf}</b>　（MATCH PLAYの記録から作成${M.fixed.length ? '・記録の修正を反映' : ''}）</div></div>`;
 
   if (!started) {

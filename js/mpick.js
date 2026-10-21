@@ -2,6 +2,7 @@
 // 相手の地域（大陸）も、ここで扱う（分析の絞り込みでも使う）。
 import { S, put, activityById, opts, matchStatus } from './store.js';
 import { esc, fmtShort, openModal, closeModal, toast } from './ui.js';
+import { flag } from './flags.js';
 
 // ---------- 相手の地域（大陸） ----------
 // 国の名前が相手の名前に入っていれば、地域を自動で決める（設定で直せる。直したものはチームに保存）
@@ -61,7 +62,7 @@ export function neighbors(m) {
 export function pickBar(m, sub) {
   const { prev, next } = neighbors(m);
   const b = (x, l, cls) => (x ? `<a class="btn sm mpnav ${cls}" href="#/m/${x.id}/${sub}" title="vs ${esc(x.opponent)}（${fmtShort(x.date)}）">${l}</a>` : `<span class="btn sm mpnav ${cls} off">${l}</span>`);
-  return `<span class="mpbar">${b(prev, '‹ 前の試合', 'p')}<button class="btn mppick" data-mpick="${sub}" title="どの活動のどの試合でも探して選べます"><b>vs ${esc(m.opponent || '')}</b><small>${fmtShort(m.date)}</small> ▾</button>${b(next, '次の試合 ›', 'n')}</span>`;
+  return `<span class="mpbar">${b(prev, '‹ 前の試合', 'p')}<button class="btn mppick" data-mpick="${sub}" title="どの活動のどの試合でも探して選べます"><b>vs ${flag(m.opponent)}${esc(m.opponent || '')}</b><small>${fmtShort(m.date)}</small> ▾</button>${b(next, '次の試合 ›', 'n')}</span>`;
 }
 export function bindPickBar(root, m) {
   root.querySelectorAll('[data-mpick]').forEach((btn) => { btn.onclick = () => openMatchPicker(m, btn.dataset.mpick); });
@@ -75,7 +76,7 @@ export function openMatchPicker(cur, sub) {
         && (!q || (m.opponent || '').includes(q)) && (!F.rg || !isNational() || regionOf(m.opponent) === F.rg); });
     const groups = new Map(); for (const m of ms.sort(byTime).reverse()) { const k = m.activityId; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(m); }
     return [...groups].map(([aid, arr]) => { const a = activityById(aid);
-      return `<div class="mpg"><h4>${esc(a?.name || '活動なし')}<small>${a?.type ? esc(a.type) + '・' : ''}${arr.length}試合</small></h4>${arr.map((m) => `<button class="mprow ${m.id === cur.id ? 'cur' : ''}" data-go="${m.id}"><span class="d">${fmtShort(m.date)}</span><b>vs ${esc(m.opponent || '')}</b><small>${esc(m.category || '')}</small><em>${esc(matchStatus(m))}</em></button>`).join('')}</div>`; }).join('')
+      return `<div class="mpg"><h4>${esc(a?.name || '活動なし')}<small>${a?.type ? esc(a.type) + '・' : ''}${arr.length}試合</small></h4>${arr.map((m) => `<button class="mprow ${m.id === cur.id ? 'cur' : ''}" data-go="${m.id}"><span class="d">${fmtShort(m.date)}</span><b>vs ${flag(m.opponent)}${esc(m.opponent || '')}</b><small>${esc(m.category || '')}</small><em>${esc(matchStatus(m))}</em></button>`).join('')}</div>`; }).join('')
       || '<p class="mu">条件に合う試合はありません</p>';
   };
   const acts = S.activities.filter((a) => !a.deleted).sort((a, b) => (b.start || '').localeCompare(a.start || ''));

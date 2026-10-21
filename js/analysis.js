@@ -16,6 +16,7 @@ import { downloadDatasheet } from './dsview.js';
 import { printReport, printTime } from './report.js';
 import { bindRowHl } from './rowtip.js';
 import { REGIONS, regionOf, opponents, regionModal, isNational } from './mpick.js';
+import { flag } from './flags.js';
 import { bigBtn, bindBig, fitBox } from './bigview.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -203,7 +204,7 @@ const resMark = (o) => `<b class="anres ${o.r}">${o.r === 'w' ? '勝' : o.r === 
 function mHead(x, prev) {
   let gap = '';
   if (prev) { const a = dayN(prev.m.date), b = dayN(x.m.date); if (a != null && b != null) gap = b === a ? '同じ日' : b - a === 1 ? '連日' : `中${b - a - 1}日`; }
-  return `<small>${fmtShort(x.m.date)}</small><br>vs ${esc(x.m.opponent || '')}${gap ? `<br><small class="angap">${gap}</small>` : ''}`;
+  return `<small>${fmtShort(x.m.date)}</small><br>vs ${flag(x.m.opponent)}${esc(x.m.opponent || '')}${gap ? `<br><small class="angap">${gap}</small>` : ''}`;
 }
 function byMatchTab(ctx) {
   if (ctx.ok.length < 2) return need2('試合ごとの表');
@@ -254,7 +255,7 @@ function teamTrend(ctx) {
   const met = A.print ? '' : `<div class="ansubs"><span class="anlab">棒グラフ</span>${TMET.map(([k, l]) => `<button class="${A.tmet === k ? 'on' : ''}" data-aset="tmet" data-v="${k}">${l}</button>`).join('')}</div>`;
   const pair = (a, b, sa, sb) => `<td class="w">${a}${sa != null ? `<small>（${sa}）</small>` : ''}</td><td class="o">${b}${sb != null ? `<small>（${sb}）</small>` : ''}</td>`;
   const rows = xs.map((x) => { const a = x.R.A, b = x.R.B, o = resOf(x); const sc = x.R.rangeScore;
-    return `<tr><td class="apl">${fmtShort(x.m.date)}</td><td class="apl">vs ${esc(x.m.opponent || '')}</td><td>${resMark(o)}</td><td><b>${sc.own}−${sc.opp}</b></td>${pair(a.shots, b.shots, a.sz, b.sz)}${pair(a.in, b.in)}${pair(a.z4 + a.szE, b.z4 + b.szE)}${pair(a.fsp, b.fsp)}<td>${x.R.rec}</td><td>${x.R.lost}</td>${pair(a.foul, b.foul)}</tr>`; }).join('');
+    return `<tr><td class="apl">${fmtShort(x.m.date)}</td><td class="apl">vs ${flag(x.m.opponent)}${esc(x.m.opponent || '')}</td><td>${resMark(o)}</td><td><b>${sc.own}−${sc.opp}</b></td>${pair(a.shots, b.shots, a.sz, b.sz)}${pair(a.in, b.in)}${pair(a.z4 + a.szE, b.z4 + b.szE)}${pair(a.fsp, b.fsp)}<td>${x.R.rec}</td><td>${x.R.lost}</td>${pair(a.foul, b.foul)}</tr>`; }).join('');
   const T = ctx.team, a = T.A || {}, b = T.B || {}; const av = (v) => (n ? (v / n).toFixed(1) : '—');
   const tl = (lab, f) => `<tr class="tot"><td class="apl" colspan="3">${lab}</td><td><b>${f(T.score.own)}−${f(T.score.opp)}</b></td>${pair(f(a.shots), f(b.shots), f(a.sz), f(b.sz))}${pair(f(a.in), f(b.in))}${pair(f(a.z4 + a.szE), f(b.z4 + b.szE))}${pair(f(a.fsp), f(b.fsp))}<td>${f(T.rec)}</td><td>${f(T.lost)}</td>${pair(f(a.foul), f(b.foul))}</tr>`;
   const c = condTxt();
@@ -277,8 +278,8 @@ export function oppTable(ctx, mode) {
     const n = list.length; const av = (v) => (v / n).toFixed(1);
     return `<tr class="${cls}"><td class="apl"><b>${lab}</b>${sub ? `<small class="anopps">${sub}</small>` : ''}</td><td><b>${n}</b></td><td class="w">${w}</td><td>${d}</td><td class="o">${l}</td><td><b>${gf}−${ga}</b></td><td class="w">${av(sgf)}</td><td class="o">${av(sga)}</td><td class="w">${av(sh)}</td><td class="o">${av(osh)}</td><td class="w">${av(en)}</td><td class="o">${av(oen)}</td></tr>`;
   };
-  const oppsOf = (list) => { const m = new Map(); list.forEach((x) => m.set(x.m.opponent, (m.get(x.m.opponent) || 0) + 1)); return [...m].map(([nm, k]) => esc(nm) + (k > 1 ? `×${k}` : '')).join('・'); };
-  const body = keys.map((k) => row(esc(k), groups.get(k), mode === 'rg' ? oppsOf(groups.get(k)) : '')).join('');
+  const oppsOf = (list) => { const m = new Map(); list.forEach((x) => m.set(x.m.opponent, (m.get(x.m.opponent) || 0) + 1)); return [...m].map(([nm, k]) => flag(nm) + esc(nm) + (k > 1 ? `×${k}` : '')).join('・'); };
+  const body = keys.map((k) => row(mode === 'rg' ? esc(k) : flag(k) + esc(k), groups.get(k), mode === 'rg' ? oppsOf(groups.get(k)) : '')).join('');
   const c = condTxt();
   return `<div class="antbl"><table class="antb anauto anopp"><thead><tr class="grp"><th></th><th colspan="5" class="g">対戦成績（試合全体）</th><th colspan="6" class="g">1試合平均${c ? `（${c}）` : ''}</th></tr><tr><th class="apl">${mode === 'rg' ? '相手の地域' : '相手チーム'}</th><th>試合</th><th class="w">勝</th><th>分</th><th class="o">負</th><th>得点−失点</th><th class="w">得点</th><th class="o">失点</th><th class="w">シュート</th><th class="o">被シュート</th><th class="w">Z4・SZ<br>進入</th><th class="o">被Z4・SZ<br>進入</th></tr></thead><tbody>${body}</tbody><tfoot>${row('合計', ctx.ok, '', 'tot')}</tfoot></table></div>
     <p class="anhint">${mode === 'rg' ? '地域は相手の名前から自動で決めたもの（試合の選び方の画面の「地域を直す」で直せます）。地域の下は、その地域の相手と試合数。' : ''}勝・分・負と得点−失点は試合全体（PK戦は勝ち・負けに入れる）。1試合平均は、上の切り替え（前半・後半・数的同数だけ）に合わせた数。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。</p>`;
@@ -572,7 +573,7 @@ function pickModal() {
   const toManual = () => { if (!manual) { manual = true; filtered().forEach((m) => chk.add(m.id)); } };
   const draw = (md) => {
     const list = filtered();
-    md.querySelector('#pkList').innerHTML = list.map((m) => `<label class="pkrow"><input type="checkbox" data-pk="${m.id}" ${isOn(m.id) ? 'checked' : ''}><span class="d">${fmtShort(m.date)}</span><span class="nm"><b>vs ${esc(m.opponent)}</b><small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small></span><em>${esc(matchStatus(m))}</em></label>`).join('') || '<p class="mu">条件に合う試合はありません</p>';
+    md.querySelector('#pkList').innerHTML = list.map((m) => `<label class="pkrow"><input type="checkbox" data-pk="${m.id}" ${isOn(m.id) ? 'checked' : ''}><span class="d">${fmtShort(m.date)}</span><span class="nm"><b>vs ${flag(m.opponent)}${esc(m.opponent)}</b><small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small></span><em>${esc(matchStatus(m))}</em></label>`).join('') || '<p class="mu">条件に合う試合はありません</p>';
     const c = md.querySelector('#pkCnt');
     if (c) c.innerHTML = manual ? `チェックした試合 <b>${candidates().filter((m) => chk.has(m.id)).length}</b>試合（この一覧の外も含む）` : `条件に合う <b>${list.length}</b>試合すべて`;
     const sel = md.querySelector('#pkSel');
@@ -874,7 +875,7 @@ function summaryPage(ctx, perMatch = true) {
     const R = x.R, a = R.A, b = R.B; const sc = R.rangeScore;
     const per = x.M.periods.filter((p) => p.status !== 'none').map((p) => `${R.score.own[p.key]}−${R.score.opp[p.key]}`).join(' / ');
     const res = sc.own > sc.opp ? '<b class="w">勝</b>' : sc.own < sc.opp ? '<b class="o">負</b>' : '<b>分</b>';
-    return `<tr><td class="apl">${fmtShort(x.m.date)}</td><td class="apl">vs ${esc(x.m.opponent || '')}</td><td class="apl"><small>${esc(activityById(x.m.activityId)?.name || '')}</small></td><td>${res}</td><td><b>${sc.own}−${sc.opp}</b><small>（${per}）</small></td>
+    return `<tr><td class="apl">${fmtShort(x.m.date)}</td><td class="apl">vs ${flag(x.m.opponent)}${esc(x.m.opponent || '')}</td><td class="apl"><small>${esc(activityById(x.m.activityId)?.name || '')}</small></td><td>${res}</td><td><b>${sc.own}−${sc.opp}</b><small>（${per}）</small></td>
       <td class="w">${a.shots}<small>（${a.sz}）</small></td><td class="o">${b.shots}<small>（${b.sz}）</small></td><td class="w">${a.z4 + a.szE}</td><td class="o">${b.z4 + b.szE}</td><td class="w">${a.fsp}</td><td class="o">${b.fsp}</td><td>${R.rec}</td><td>${R.lost}</td><td class="w">${a.foul}</td><td class="o">${b.foul}</td>${x.todo ? '<td class="o"><small>未入力あり</small></td>' : '<td></td>'}</tr>`;
   }).join('');
   const T = ctx.team, a = T.A || {}, b = T.B || {};

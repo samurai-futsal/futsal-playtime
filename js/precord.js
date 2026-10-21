@@ -1,5 +1,6 @@
 // 選手の記録（2026-10-19）：選手ページ（・活動の招集メンバー・試合のメンバー）から開く、1人の選手のページ。
 // ① 見出しと絞り込み ② 通算のまとめ ④ 試合ごとの記録 ⑤ 招集歴（③グラフ・⑥一緒にプレーした選手・⑦傾向は次の回）
+import { flag } from './flags.js';
 import { S, playerById, activityById } from './store.js';
 import { matchCalcs, pieSvg, PIEC } from './analysis.js';
 import { pitchAt, isOGType } from './events.js';
@@ -124,7 +125,7 @@ export function vPlayerRecord(r) {
   const z = (v) => (v ? v : '<span class="z">0</span>');
   const PR_MAX = 14; const shown = r.print ? rows.slice().reverse().slice(0, PR_MAX) : rows.slice().reverse();
   const trs = shown.map((r0) => { const d = r0.d; const a = activityById(r0.m.activityId);
-    return `<tr data-go="#/m/${r0.m.id}/review" class="${d.time ? '' : 'zero'}"><td class="pd">${fmtDate(r0.m.date, false)}</td><td class="po">vs ${esc(r0.m.opponent || '')}<small>${esc(a?.name || '')}${r0.m.category ? '・' + esc(r0.m.category) : ''}</small></td>
+    return `<tr data-go="#/m/${r0.m.id}/review" class="${d.time ? '' : 'zero'}"><td class="pd">${fmtDate(r0.m.date, false)}</td><td class="po">vs ${flag(r0.m.opponent)}${esc(r0.m.opponent || '')}<small>${esc(a?.name || '')}${r0.m.category ? '・' + esc(r0.m.category) : ''}</small></td>
       <td><span class="prres ${resC(r0)}">${r0.res}</span> ${r0.own}−${r0.opp}${r0.pk && r0.res.startsWith('PK') ? `<small>（PK ${r0.pk.own}−${r0.pk.opp}）</small>` : ''}</td><td>${r0.start ? '◯' : ''}</td>
       <td><b>${d.time ? mmss(d.time) : '<span class="z">0:00</span>'}</b></td><td>${d.time ? pct(d.time, r0.len) : '—'}</td><td>${z(d.count)}</td>
       ${gk ? `<td>${z(r0.g.f)}</td><td>${z(r0.g.ot)}</td><td>${z(r0.g.ot - r0.g.ga)}</td><td><b>${r0.g.ot ? pct(r0.g.ot - r0.g.ga, r0.g.ot) : '—'}</b></td><td>${z(r0.g.ga)}</td>` : `<td>${z(d.goals)}</td><td>${z(d.assists)}</td><td>${z(d.shots)}<small>（${d.in}）</small></td><td>${z(d.ent.z4.inv)}</td><td>${z(d.ent.sz.inv)}</td>`}

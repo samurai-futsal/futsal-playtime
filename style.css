@@ -1506,3 +1506,20 @@ td .anres+small{display:block;font-size:11px;color:#7A8699}
 .ansubs .anlab{font-size:12px;color:#7A8699;align-self:center;margin-right:2px}
 .antb.antrt tfoot td{position:static}.antb.antrt tfoot tr+tr td{border-top:1px solid #C9D3E3}
 .antrsvg{margin:0 auto}
+/* ---------- 日本代表の見た目（A案：ユニフォーム。代表チームのモードのチームだけ。2026-10-22） ---------- */
+body.jpn{--navy:#1B2550;--navy2:#2A3670;--jred:#BC002D}
+body.jpn .bar{background:#1B2550;border-bottom:3px solid var(--jred)}
+.jhero{position:relative;display:flex;align-items:center;gap:22px;padding:22px max(16px,calc((100vw - 1048px)/2));min-height:170px;background:#232E5C url(img/wave.jpg) center/cover;color:#fff;overflow:hidden}
+.jhero .jem{height:118px;flex:none;filter:drop-shadow(0 4px 10px rgba(0,0,0,.25))}
+.jhero .jtx{min-width:0;flex:1}
+.jhero .jt1{font-size:15px;font-weight:800;letter-spacing:.08em;color:#E8C873;margin-bottom:10px}
+.jhero .jwm1{display:block;height:36px;width:auto;max-width:100%;object-fit:contain;object-position:left}
+.jhero .jwm2{display:none;height:56px;width:auto}
+.jhero .jflag{flex:none}
+.flg.big{width:60px!important;height:40px!important;border-radius:3px!important;margin:0!important;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+body.jpn h2.h{display:flex;align-items:center;gap:8px}body.jpn h2.h::before{content:"";width:4px;height:15px;background:var(--jred);border-radius:1px}
+body.jpn .tile{border-top:4px solid #1B2550}
+@media (max-width:900px){.jhero .jwm1{display:none}.jhero .jwm2{display:block}.jhero .jem{height:96px}.jhero{min-height:140px}}
+@media (max-width:560px){.jhero{gap:14px}.jhero .jem{height:72px}.jhero .jwm2{height:40px}.jhero .jflag{display:none}.jhero .jt1{font-size:13px;margin-bottom:6px}}
+/* 相手の国旗（名前の横） */
+.flg{display:inline-block;width:1.4em;height:1.05em;object-fit:cover;vertical-align:-.12em;margin:0 .35em 0 .1em;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.14)}

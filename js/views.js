@@ -1,4 +1,5 @@
 // Screens for ① 試合までの準備 (spec 12章) and the navigation frame (spec 14章).
+import { flag, vsName } from './flags.js';
 import {
   S, onChange, selectTeam, newId, put, del, now, teamPath, teamSettings, opts, playerById, activityById,
   matchById, playerName, sortPlayers, matchesOf, matchStatus, playedPlayerIds, inAnyMatch, today,
@@ -25,7 +26,7 @@ export { promptBackup }; // 試合が終わったときのバックアップの�
 
 let ctx = null; // { fb, user, appVersion, swReg }
 // アプリのファイル（sw.js の SHELL と同じ。更新の確認で、この端末のファイルが公開中のものと同じか比べる）
-const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js', 'js/guide.js', 'js/options.js', 'js/backup.js', 'js/restoreplan.js', 'js/pdfsave.js', 'js/bigview.js', 'js/rowtip.js', 'js/precord.js', 'js/advice.js', 'js/mpick.js', 'vendor/html2canvas.min.js'];
+const SHELL_FILES = ['index.html', 'style.css', 'app.js', 'js/store.js', 'js/ui.js', 'js/views.js', 'js/engine.js', 'js/matchplay.js', 'js/model.js', 'js/review.js', 'js/keypad.js', 'js/fix.js', 'js/events.js', 'js/evinput.js', 'js/viewer.js', 'js/teamstats.js', 'js/stats.js', 'js/review58.js', 'js/analysis.js', 'js/sportscode.js', 'js/scview.js', 'js/scimport.js', 'js/scimportview.js', 'js/xlsx.js', 'js/datasheet.js', 'js/dsview.js', 'js/report.js', 'js/guide.js', 'js/options.js', 'js/backup.js', 'js/restoreplan.js', 'js/pdfsave.js', 'js/bigview.js', 'js/rowtip.js', 'js/precord.js', 'js/advice.js', 'js/mpick.js', 'js/flags.js', 'vendor/html2canvas.min.js', 'img/jfa.webp', 'img/wave.jpg', 'img/jpn-wm1.png', 'img/jpn-wm2.png'];
 const FB_FILES = ['firebase-app.js', 'firebase-auth.js', 'firebase-firestore.js'].map((f) => 'https://www.gstatic.com/firebasejs/10.12.2/' + f);
 export function startApp(c) {
   ctx = c;
@@ -112,13 +113,15 @@ export function render() {
   const v = VIEWS[name] || vHome;
   const keep = captureInputs(main);
   const out = v(r);
+  // 代表チームのモードのチームは、日本代表の見た目（A案：ユニフォームのネイビーと波線、日の丸の赤。2026-10-22）。MATCH PLAY は今のまま
+  document.body.classList.toggle('jpn', !!S.team && isNational() && !out.full);
   if (out.full) { // MATCH PLAY: whole screen, no top bar (spec 14章)
     main.innerHTML = out.html;
     out.bind && out.bind(main.querySelector('.play') || main);
     return;
   }
   unmountPlay();
-  main.innerHTML = topbar(out.active ?? name) + `<div class="page">${out.html}</div>`;
+  main.innerHTML = topbar(out.active ?? name) + (out.hero || '') + `<div class="page">${out.html}</div>`;
   restoreInputs(main, keep);
   bindFrame();
   // bind to the freshly built page element so handlers never pile up across re-renders
@@ -159,14 +162,17 @@ function vHome() {
   const recent = ms.filter((m) => !tops.includes(m) && (m.status === 'done' || (m.date || '') < td))
     .sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 5);
   const nextCard = (next) => `<a class="card nextm" href="#/m/${next.id}">
-        <div class="nm-l"><div class="mu">${esc(actName(next))}</div><div class="vs">vs ${esc(next.opponent)}</div>
+        <div class="nm-l"><div class="mu">${esc(actName(next))}</div><div class="vs">${vsName(next.opponent)}</div>
         <div class="mu">${fmtDate(next.date)}${next.kickoff ? ' ' + esc(next.kickoff) + ' キックオフ' : ''}${next.venue ? '　' + esc(next.venue) : ''}</div></div>
         <div class="nm-r">${chip(matchStatus(next), next)}<span class="go">試合ページ ›</span></div></a>`;
   const actName = (m) => activityById(m.activityId)?.name || '';
   const tile = (href, t, sub) => `<a class="tile" href="${href}"><b>${t}</b><span>${sub}</span></a>`;
   const activePlayers = S.players.filter((p) => p.status !== 'former').length;
   const backupNote = backupOverdue() ? `<div class="note warn">しばらくバックアップをしていません。<a href="#/settings">設定</a>から書き出してください。</div>` : '';
+  // 代表チーム：一番上にエンブレム・ロゴ・国旗（2026-10-22）
+  const hero = isNational() ? `<div class="jhero"><img class="jem" src="img/jfa.webp" alt=""><div class="jtx"><div class="jt1">${esc(S.team?.name || 'フットサル日本代表')}</div><img class="jwm1" src="img/jpn-wm1.png" alt="JAPAN FUTSAL NATIONAL TEAM"><img class="jwm2" src="img/jpn-wm2.png" alt="JAPAN FUTSAL NATIONAL TEAM"></div><span class="jflag">${flag('日本', 'big')}</span></div>` : '';
   return {
+    hero,
     html: `${backupNote}
     <div class="tiles">
       ${tile('#/players', '選手', `在籍 ${activePlayers}人`)}
@@ -195,7 +201,7 @@ document.addEventListener('click', (e) => {
 }, true);
 function matchRow(m, withAct = false) {
   return `<a class="lrow" href="#/m/${m.id}"><span class="d">${fmtShort(m.date)}</span>
-    <span class="o">vs ${esc(m.opponent)}${withAct ? `<small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small>` : ''}</span>${chip(matchStatus(m), m)}<span class="go">›</span></a>`;
+    <span class="o">${vsName(m.opponent)}${withAct ? `<small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small>` : ''}</span>${chip(matchStatus(m), m)}<span class="go">›</span></a>`;
 }
 function backupOverdue() {
   // remind only once a match has been played (spec 5章: 試合が終わるたびにバックアップを促す)
@@ -474,7 +480,7 @@ function vActivity(r) {
 
     <div class="row between mt"><h2 class="h">試合（${ms.length}件）</h2><button class="btn pri" id="btnAddMatch">＋ 試合を作る</button></div>
     <div class="card list">${ms.length ? ms.map((m) => `<div class="lrow static"><span class="d">${fmtShort(m.date)}${m.kickoff ? `<small>${esc(m.kickoff)}</small>` : ''}</span>
-        <span class="o">vs ${esc(m.opponent)}<small>${esc(m.category || '')}</small></span>${chip(matchStatus(m), m)}
+        <span class="o">${vsName(m.opponent)}<small>${esc(m.category || '')}</small></span>${chip(matchStatus(m), m)}
         <a class="btn sm pri" href="#/m/${m.id}">開く</a><button class="btn sm" data-editm="${m.id}">編集</button><button class="btn sm dangerline" data-delm="${m.id}">削除</button></div>`).join('')
       : '<div class="empty">まだ試合がありません</div>'}</div>`,
     bind(root) {
@@ -599,7 +605,7 @@ function vMatch(r) {
     active: 'acts',
     bind: bindPostInputs(m),
     html: `<div class="crumb"><a href="#/acts">活動と試合</a> › <a href="#/a/${a?.id}">${esc(a?.name || '')}</a> › vs ${esc(m.opponent)}</div>
-    <div class="row between"><div><h1 class="inl">vs ${esc(m.opponent)}</h1> ${chip(st, m)}
+    <div class="row between"><div><h1 class="inl">${vsName(m.opponent)}</h1> ${chip(st, m)}
       <div class="mu">${fmtDate(m.date)}${m.kickoff ? ' ' + esc(m.kickoff) + ' キックオフ' : ''}${m.category ? '　' + esc(m.category) : ''}${m.venue ? '　' + esc(m.venue) : ''}　前後半 各${t.half}分・延長${t.extra ? `あり（各${t.extraHalf}分）` : 'なし'}・PK戦${m.pkGame ? 'あり' : 'なし'}</div></div></div>
     <h2 class="h">試合前</h2>
     <div class="acts acts2">
