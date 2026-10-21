@@ -3,6 +3,7 @@
 // 「試合全体／前半／後半」で範囲を切り替える。「PDFで保存」はPDFのファイルを作って保存する（js/pdfsave.js）。
 import { S, watchOps, watchEvents, opts, teamSettings, activityById } from './store.js';
 import { openComments } from './advice.js';
+import { pickBar, bindPickBar } from './mpick.js';
 import { periodLabel } from './engine.js';
 import { modelOf } from './model.js';
 import { todoCount } from './events.js';
@@ -136,7 +137,7 @@ export function vStats(m) {
   const segs = [['all', '試合全体'], ...shownP.map((p) => [p.key, p.label])].map(([k, l]) => `<button class="${range === k ? 'on' : ''}" data-range="${k}">${l}</button>`).join('');
   const status = !R.hasEvents ? '<span class="ststat none">イベントがまだ入力されていません（数字はすべて「—」）</span>'
     : todo ? `<button class="ststat todo" id="stTodo">イベント ${evs.length}件・未入力あり ${todo}件 ›</button>` : `<span class="ststat ok">イベント ${evs.length}件・未入力なし</span>`;
-  const head = `<div class="crumb noprint"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › マッチスタッツ</div>
+  const head = `<div class="crumb noprint"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › マッチスタッツ ${pickBar(m, 'stats')}</div>
     <div class="sthead noprint"><h1>マッチスタッツ</h1><span class="rvmode strange">${segs}</span><span class="stasof">${asOf}（${hm}に表示）</span>${status}<span class="sp"></span>
       <span class="stbtns"><button class="btn cmbtn" id="stAdv">💬 コメントを出す</button><button class="btn" id="stPdf">PDFで保存</button><span class="rvzoom">${bigOn() ? '' : `<button class="btn" id="stCompact">${isCompact() ? '通常の表示' : '縮小表示'}</button>`}${bigBtn()}</span><a class="btn pri" href="#/m/${m.id}/review">マッチレビュー ›</a></span></div>`;
 
@@ -148,7 +149,8 @@ export function vStats(m) {
       preloadPdf();
       const save = () => savePdf(statsItems(sheet, foot), statsFileName([m], range), { stageCls: 'stw' });
       root.querySelector('#stPdf').onclick = save;
-      root.querySelector('#stAdv').onclick = () => openComments(m); // 良い点・気になる点（2026-10-22）
+      root.querySelector('#stAdv').onclick = () => openComments(m);
+      bindPickBar(root, m); // 良い点・気になる点（2026-10-22）
       // 試合ページの「マッチスタッツ（PDF）」から来たときは、すぐ保存する
       if (location.hash.endsWith('/print')) { history.replaceState(null, '', `#/m/${m.id}/stats`); setTimeout(save, 300); }
       const t = root.querySelector('#stTodo'); if (t) t.onclick = () => { openTodo(m.id); location.hash = `#/m/${m.id}/events`; };

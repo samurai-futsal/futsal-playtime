@@ -11,6 +11,7 @@ import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger,
 import { ensureChecks } from './evinput.js';
 import { savePdf, safeName, preloadPdf } from './pdfsave.js';
 import { openComments } from './advice.js';
+import { pickBar, bindPickBar } from './mpick.js';
 
 const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -73,8 +74,8 @@ export function vReview(m) {
   else if (pDone('2H') && !st.matchOver) state = '<span class="rvst half">延長前</span>';
   else state = '<span class="rvst">開始前</span>';
 
-  const others = matchesOf(m.activityId).filter((x) => x.status === 'playing' || x.status === 'done' || x.id === m.id);
-  const sw = `<select id="rvMatch" class="rvsel" data-fresh="1">${others.map((x) => `<option value="${x.id}" ${x.id === m.id ? 'selected' : ''}>vs ${esc(x.opponent)}（${fmtShort(x.date)}）</option>`).join('')}</select>`;
+  // 試合の切り替え：前の試合・次の試合（同じ活動）と、どの活動の試合でも探して選ぶ（2026-10-22）
+  const sw = pickBar(m, 'review');
   // 項目の番号は固定（1〜8）。出ていない項目は番号が飛ぶので、上部にその理由を書く
   const jumps = [[1, '出場時間', 'rv1'], [2, '1回ごと', 'rv1b'], [3, 'タイムライン', 'rv2'], [4, 'セット', 'rv3'], [5, 'ペース', 'rv5'], [6, 'セット別', 'rv4b'], [7, 'スコア', 'rv7'], [8, 'スタッツ', 'rv8']].map(([n, t, id]) => `<a class="rvjp ${n >= 5 && !evs.length ? 'wait' : ''}" href="#${id}" data-jump="${id}"><b>${n}</b>${t}</a>`).join('');
   const head = `<div class="rvhead">
@@ -311,7 +312,7 @@ function bindReview(m) {
     const bar = document.querySelector('.bar'); if (bar) document.documentElement.style.setProperty('--barh', bar.offsetHeight + 'px');
     declutterTimeline(root);
     { const hd = root.querySelector('.rvhead'); if (hd) document.documentElement.style.setProperty('--rvhh', hd.offsetHeight + 'px'); }
-    const sel = root.querySelector('#rvMatch'); if (sel) sel.onchange = () => { location.hash = `#/m/${sel.value}/review`; };
+    bindPickBar(root, m);
     // 表の行を押すと強調（1・2・4・6・8。何行でも。もう一度押すと戻す）
     root.querySelectorAll('tr[data-hlk]').forEach((tr) => tr.onclick = () => { const k = tr.dataset.hlk; rvHl.has(k) ? rvHl.delete(k) : rvHl.add(k); tr.classList.toggle('hl', rvHl.has(k)); });
     bindPacePick(root);

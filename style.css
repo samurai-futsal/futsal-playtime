@@ -1472,3 +1472,15 @@ a.mtile.mtlink{color:var(--ink);text-decoration:none}.mtlink .go{margin-left:aut
 .cm b{font-size:15px;color:#18233A}.cmf{font-size:13px;color:#3A4558}.cmh{font-size:13.5px;font-weight:700;color:#0B2D6B}
 .cmseg{margin:4px 0 2px}.cmseg a{cursor:pointer}
 .cmr{font-size:12.5px;color:#3A4558;background:#F4F6FA;border-radius:6px;padding:4px 8px;line-height:1.55}.cmr em{font-style:normal;font-weight:800;color:#56607A;margin-right:6px;font-size:11.5px;background:#E1E6EF;border-radius:4px;padding:0 5px}
+/* 試合を選ぶ（マッチレビュー・マッチスタッツ）・相手の地域・対戦成績（2026-10-22） */
+.mpbar{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.mpnav.off{opacity:.35;pointer-events:none}
+.mppick{display:inline-flex;align-items:baseline;gap:6px;font-weight:700}.mppick small{font-size:12px;color:#56607A;font-weight:600}
+.crumb .mpbar{margin-left:10px}
+.mplist .mpg h4{margin:10px 4px 4px;font-size:14px;color:#0B2D6B}.mplist .mpg h4 small{font-size:12px;color:#6B7486;font-weight:500;margin-left:8px}
+.mprow{display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;font:inherit;background:#fff;border:0;border-top:1px solid #EEF1F6;padding:8px 10px;cursor:pointer}.mprow:hover{background:#F2F6FD}.mprow.cur{background:#FFF6D6}
+.mprow .d{width:44px;color:#56607A;font-variant-numeric:tabular-nums}.mprow small{color:#6B7486}.mprow em{margin-left:auto;font-style:normal;font-size:12px;color:#56607A}
+.rglist{max-height:55vh;overflow:auto;border:1px solid #E1E6EF;border-radius:8px}.rgrow{display:flex;align-items:center;gap:10px;padding:7px 10px;border-top:1px solid #EEF1F6}.rgrow:first-child{border-top:0}
+.rgrow span{flex:1;font-weight:700}.rgrow span small{font-weight:500;color:#6B7486;margin-left:8px}.rgrow select{font:inherit}.rgrow em{font-style:normal;font-size:11px;color:#1F5FBF;background:#E3EEFF;border-radius:4px;padding:1px 6px}
+.anrec{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;background:#FFF8E6;border:1px solid #F0D58A;border-radius:10px;padding:6px 12px;margin:6px 0 2px;font-size:14px}
+.anrec b{color:#0B2D6B}.anrec .w{color:#1F5FBF;font-weight:800}.anrec .l{color:#C8312B;font-weight:800}.anrec small{color:#6B7486;font-size:11px;margin-left:auto}
+.rgrow{flex-direction:row!important;margin:0!important}.rgrow span{min-width:0;white-space:normal}.rgrow select{width:200px!important;flex:0 0 200px;max-width:50%}

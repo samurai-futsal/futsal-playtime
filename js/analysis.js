@@ -15,6 +15,7 @@ import { printStats } from './stats.js';
 import { downloadDatasheet } from './dsview.js';
 import { printReport, printTime } from './report.js';
 import { bindRowHl } from './rowtip.js';
+import { REGIONS, regionOf, opponents, regionModal } from './mpick.js';
 import { bigBtn, bindBig, fitBox } from './bigview.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -24,7 +25,7 @@ const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セ�
 // 2026-10-16：この2つだけ。2026-10-17（決8）：「5×4/4×5を除く」→「数的同数だけ」（5×4・4×5と、両チームの退場の時間帯を除く）
 const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く']];
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
-const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
+const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '', opp: '', rg: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
 let fromHash = null;
 let paceSel = null;
@@ -40,7 +41,9 @@ function filtered() {
   return candidates().filter((m) => {
     const a = activityById(m.activityId);
     return (!f.act || m.activityId === f.act) && (!f.type || a?.type === f.type) && (!f.cat || m.category === f.cat)
-      && (!f.from || (m.date || '') >= f.from) && (!f.to || (m.date || '') <= f.to);
+      && (!f.from || (m.date || '') >= f.from) && (!f.to || (m.date || '') <= f.to)
+      // 相手・相手の地域（2026-10-22）：同じ相手との対戦の傾向、大陸ごとの傾向を見る
+      && (!f.opp || m.opponent === f.opp) && (!f.rg || regionOf(m.opponent) === f.rg);
   });
 }
 // 複数の試合（全試合・選んだ試合）は、試合中の試合を入れない（未7、2026-10-17 決定）。「この試合」は試合中でも見られる
@@ -98,6 +101,18 @@ function calcOne(m, per, st, M, evC) {
   return { m, st, M, Mw, T, R, D, keys, len, empty, hasEv: evs.length > 0, todo, ready: evC.ready, hasOpp: W.hasOpp, evs, gn, W, win, wins, lazy: {} };
 }
 
+// 対戦成績（複数の試合を選んだとき。2026-10-22）：勝ち・引き分け・負けと、得点・失点（試合全体。PK戦は勝ち負けだけ）
+function recLine(ok) {
+  if (ok.length < 2) return '';
+  let w = 0, d = 0, l = 0, gf = 0, ga = 0;
+  for (const x of ok) {
+    const ev = x.evs.filter((e) => !e.deleted); const a = ev.filter((e) => e.kind === 'goal').length, b = ev.filter((e) => e.kind === 'conc').length;
+    gf += a; ga += b; const pk = x.m.pk;
+    if (a > b) w++; else if (a < b) l++; else if (pk && pk.own != null && pk.opp != null && pk.own !== pk.opp) { if (pk.own > pk.opp) w++; else l++; } else d++;
+  }
+  return `<div class="anrec"><b>対戦成績</b><span>${ok.length}試合</span><span class="w">${w}勝</span><span>${d}分</span><span class="l">${l}敗</span><span>得点 <b>${gf}</b> − 失点 <b>${ga}</b></span><small>PK戦の勝ち負けは勝ち・負けに入れる。得点・失点は試合全体</small></div>`;
+}
+
 // 選手の記録（precord.js）用：試合ごとの計算（試合全体・パワープレーも含めたすべての時間）。読み込み中の試合があれば loading
 export function matchCalcs(ms) {
   const save = A.pp; A.pp = 'all';
@@ -148,7 +163,8 @@ export function vAnalysis(r, mFrom = null) {
   const cand = pre ? [mFrom, ...candidates()] : candidates();
   const seg = (key, list) => `<span class="anseg">${list.map(([v, l, t]) => `<button class="${A[key] === v ? 'on' : ''}" data-set="${key}" data-v="${v}"${t ? ` title="${t}"` : ''}>${l}</button>`).join('')}</span>`;
   const one = A.scope === 'match' ? `<select id="anMatch" class="ansel" data-fresh="1">${cand.map((m) => `<option value="${m.id}" ${m.id === A.matchId ? 'selected' : ''}>${fmtShort(m.date)} vs ${esc(m.opponent)}</option>`).join('')}</select>` : '';
-  const multi = A.scope !== 'match' ? `<button class="btn sm" id="anPick">${A.scope === 'pick' ? '試合を選ぶ' : '絞り込み'}（${ms.length}試合）</button>` : '';
+  const fl = [A.f.opp, A.f.rg && `${A.f.rg}の相手`].filter(Boolean).join('・');
+  const multi = A.scope !== 'match' ? `<button class="btn sm" id="anPick">${A.scope === 'pick' ? '試合を選ぶ' : '絞り込み'}${fl ? `：${esc(fl)}` : ''}（${ms.length}試合）</button>` : '';
   const todoN = ok.filter((x) => x.todo).length; const noOpp = ok.filter((x) => !x.hasOpp).length;
   const head = `<div class="anhead">
     <div class="anrow"><b class="antt">分析</b>${seg('scope', [['match', 'この試合'], ['all', '全試合'], ['pick', '選んだ試合']])}${one}${multi}
@@ -156,6 +172,7 @@ export function vAnalysis(r, mFrom = null) {
       <span class="anpp" title="数的同数だけ＝5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く">時間帯${seg('pp', PPM)}</span>
       ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4（こちらの4×5）の記録なし ${noOpp}試合</span>` : ''}
       ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${skippedLive ? `<span class="anlive" title="試合が終わると含めます。試合中の試合は「この試合」で見られます">試合中の ${skippedLive}試合は含めていません</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span>${pre ? '' : '<span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span>'}${pre ? '' : bigBtn()}</div>
+    ${recLine(ok)}
     <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} " data-tab="${v}">${l}</button>`).join('')}</div></div>`;
 
   let body;
@@ -451,7 +468,9 @@ function pickModal() {
     <div class="pkf"><label>活動<select data-f="act">${o(acts.map((a) => [a.id, a.name]), f.act)}</select></label>
       <label>活動の種類<select data-f="type">${o(opts('activityTypes', true).map((x) => [x.name, x.name]), f.type)}</select></label>
       <label>試合の区分<select data-f="cat">${o(opts('matchCategories', true).map((x) => [x.name, x.name]), f.cat)}</select></label>
-      <label>期間<span class="pkd"><input type="date" data-f="from" value="${f.from}">〜<input type="date" data-f="to" value="${f.to}"></span></label></div>
+      <label>期間<span class="pkd"><input type="date" data-f="from" value="${f.from}">〜<input type="date" data-f="to" value="${f.to}"></span></label>
+      <label>相手<select data-f="opp">${o(opponents().map(([n, k]) => [n, `${n}（${k}試合）`]), f.opp)}</select></label>
+      <label>相手の地域<span class="pkd"><select data-f="rg">${o(REGIONS.map((r) => [r, r]), f.rg)}</select><button class="btn sm" id="pkRg" type="button">地域を直す</button></span></label></div>
     ${A.scope === 'pick' ? '<div class="row"><button class="btn sm" id="pkAll">すべて選ぶ</button><button class="btn sm" id="pkNone">すべて外す</button></div>' : ''}
     <div id="pkList" class="pklist"></div><div class="row end"><button class="btn pri" id="pkOk">これで見る</button></div>`, { wide: true });
   draw(md);
@@ -462,6 +481,7 @@ function pickModal() {
   });
   const all = md.querySelector('#pkAll'); if (all) all.onclick = () => { A.picked = [...new Set([...(A.picked || []), ...filtered().map((m) => m.id)])]; draw(md); };
   const none = md.querySelector('#pkNone'); if (none) none.onclick = () => { const ids = new Set(filtered().map((m) => m.id)); A.picked = (A.picked || []).filter((x) => !ids.has(x)); draw(md); };
+  md.querySelector('#pkRg').onclick = () => { keep(); regionModal(pickModal); };
   md.querySelector('#pkOk').onclick = () => { keep(); closeModal(); render(); };
 }
 
