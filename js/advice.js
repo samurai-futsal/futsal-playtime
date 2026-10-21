@@ -21,8 +21,8 @@ export function matchComments(M, evs, gn, members, keys = null, nameOf = null) {
   const share = own.length + opp.length ? own.length / (own.length + opp.length) : null;
   // 1. シュートの数
   if (share != null && own.length + opp.length >= 8) {
-    if (share >= 0.55) add(good, 5 + (share - 0.55) * 20, 'シュートで相手を上回った', `シュート ${own.length} − 被シュート ${opp.length}（関与率 ${pc(own.length, own.length + opp.length)}%）`, 'この流れ（ボールを持つ時間・前への圧力）を続ける');
-    if (share <= 0.42) add(bad, 5 + (0.42 - share) * 20, 'シュートで相手に上回られている', `シュート ${own.length} − 被シュート ${opp.length}（関与率 ${pc(own.length, own.length + opp.length)}%）`, '相手の攻撃の起点（どこから運ばれているか）を確認し、守備の位置を見直す');
+    if (share >= 0.55) add(good, 5 + (share - 0.55) * 20, 'シュートで相手を上回った', `シュート ${own.length} − 被シュート ${opp.length}`, 'この流れ（ボールを持つ時間・前への圧力）を続ける');
+    if (share <= 0.42) add(bad, 5 + (0.42 - share) * 20, 'シュートで相手に上回られている', `シュート ${own.length} − 被シュート ${opp.length}`, '相手の攻撃の起点（どこから運ばれているか）を確認し、守備の位置を見直す');
   }
   // 2. シュートの質（SZ内・枠内）
   if (own.length >= 8) {
@@ -51,7 +51,7 @@ export function matchComments(M, evs, gn, members, keys = null, nameOf = null) {
     for (const [arr, k] of [[own, 'f'], [opp, 'a']]) for (const s of arr) { const el = elAt(s.e.period, s.e.at); if (el == null) continue; const i = bi(el); if (i >= 0) B[i][k]++; }
     const s0 = B[0].f + B[0].a ? B[0].f / (B[0].f + B[0].a) : null, s2 = B[1].f + B[1].a ? B[1].f / (B[1].f + B[1].a) : null;
     if (s0 != null && s2 != null && B[1].t >= 180000 && B[1].f + B[1].a >= 4 && s0 - s2 >= 0.15)
-      add(bad, 4 + (s0 - s2) * 10, '出てから2分を過ぎると押し込まれている', `関与率：出てから1分以内 ${Math.round(s0 * 100)}% → 2分以降 ${Math.round(s2 * 100)}%（2分以降の時間 ${mmss(B[1].t)}）`, '交代を早めに（90秒前後を目安に）');
+      add(bad, 4 + (s0 - s2) * 10, '出てから2分を過ぎると押し込まれている', `出てから1分以内：シュート ${B[0].f} − 被 ${B[0].a}（${mmss(B[0].t)}）／2分以降：シュート ${B[1].f} − 被 ${B[1].a}（${mmss(B[1].t)}）`, '交代を早めに（90秒前後を目安に）');
   }
   // 5. セット
   {
@@ -65,9 +65,9 @@ export function matchComments(M, evs, gn, members, keys = null, nameOf = null) {
     const nm = (st) => st.pids.map((p) => (nameOf ? nameOf(p) : members?.[p]?.no ?? '')).join('・');
     const by = (x) => x.f / (x.f + x.a);
     sets.sort((a, b) => by(b) - by(a));
-    if (sets.length && by(sets[0]) >= 0.6) add(good, 3 + by(sets[0]) * 3, `セット（${nm(sets[0].st)}）が良い`, `シュート ${sets[0].f} − 被 ${sets[0].a}（関与率 ${pc(sets[0].f, sets[0].f + sets[0].a)}%、${mmss(sets[0].st.time)}）`, 'このセットの時間を増やす');
+    if (sets.length && by(sets[0]) >= 0.6) add(good, 3 + by(sets[0]) * 3, `セット（${nm(sets[0].st)}）が良い`, `シュート ${sets[0].f} − 被 ${sets[0].a}（${mmss(sets[0].st.time)}）`, 'このセットの時間を増やす');
     const w = sets[sets.length - 1];
-    if (sets.length >= 2 && by(w) <= 0.35) add(bad, 3 + (0.35 - by(w)) * 10, `セット（${nm(w.st)}）が苦しい`, `シュート ${w.f} − 被 ${w.a}（関与率 ${pc(w.f, w.f + w.a)}%、${mmss(w.st.time)}）`, '組み合わせを変えるか、このセットの時間を短く');
+    if (sets.length >= 2 && by(w) <= 0.35) add(bad, 3 + (0.35 - by(w)) * 10, `セット（${nm(w.st)}）が苦しい`, `シュート ${w.f} − 被 ${w.a}（${mmss(w.st.time)}）`, '組み合わせを変えるか、このセットの時間を短く');
   }
   // 6. 進入からシュート
   {
