@@ -2,7 +2,7 @@
 // 1試合：試合情報・スコア → 出場時間 → タイムライン → マッチ・ペース → スタッツ → セット → パワープレー → 種類別 → 進入 → リカバリー・ロスト → FINISH SET PLAY → ファール・カード
 // 複数試合：試合ごとの結果と合計・1試合平均 → 合計のページ → 試合ごとのページ
 import { S, watchOps, watchEvents } from './store.js';
-import { reportPages, timePage } from './analysis.js';
+import { reportPages, timePage, sizeAn } from './analysis.js';
 import { savePdfPages, safeName, preloadPdf } from './pdfsave.js';
 import { esc, toast, openModal, closeModal } from './ui.js';
 
@@ -27,7 +27,7 @@ function go(ms, agg, perMatch) {
   const day = (m) => (m.date || '').replace(/-/g, '');
   const name = ms.length === 1 ? `マッチレポート_vs${ms[0].opponent || ''}_${day(ms[0])}` : `マッチレポート_${ms.length}試合_${[...ms.map(day)].sort()[0]}-${[...ms.map(day)].sort().pop()}`;
   // ページを組んで（分かれ目で切れないように振り分けて、用紙いっぱいに広げる）、1枚ずつPDFのページに
-  savePdfPages((stage) => { stage.innerHTML = reportHTML(pages); fitPages(stage); const els = [...stage.querySelectorAll('.rpw')]; els.forEach((e) => e.setAttribute('data-pdfpg', '')); return els; },
+  savePdfPages((stage) => { stage.innerHTML = reportHTML(pages); sizeAn(stage); fitPages(stage); const els = [...stage.querySelectorAll('.rpw')]; els.forEach((e) => e.setAttribute('data-pdfpg', '')); return els; },
     `${safeName(name)}.pdf`, { stageCls: 'prrep', quality: ms.length > 5 ? 0.8 : 0.88 });
 }
 
@@ -39,7 +39,7 @@ export function printTime(ms) {
   if (!pg) { toast('記録を読み込んでいます。少し待ってからもう一度押してください'); ms.forEach((m) => { watchOps(m.id); watchEvents(m.id); }); return; }
   const day = (m) => (m.date || '').replace(/-/g, ''); const ds = ms.map(day).sort();
   const name = ms.length === 1 ? `出場時間_vs${ms[0].opponent || ''}_${day(ms[0])}` : `出場時間_${ms.length}試合_${ds[0]}-${ds[ds.length - 1]}`;
-  savePdfPages((stage) => { stage.innerHTML = reportHTML([pg], '出場時間'); const el = stage.querySelector('.rpw'); el.classList.add('rpone'); fitOne(el, new Map(), null, 1.6); el.setAttribute('data-pdfpg', ''); return [el]; },
+  savePdfPages((stage) => { stage.innerHTML = reportHTML([pg], '出場時間'); sizeAn(stage); const el = stage.querySelector('.rpw'); el.classList.add('rpone'); fitOne(el, new Map(), null, 1.6); el.setAttribute('data-pdfpg', ''); return [el]; },
     `${safeName(name)}.pdf`, { stageCls: 'prrep', margin: 14 });
 }
 

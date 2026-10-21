@@ -805,7 +805,7 @@ function bandTable(c) {
 
 // 表の列幅（2026-10-18。マッチレビューと同じ考え方）：列ごとに中身（その時の一番長い数字・名前）と見出しの文字を測り、
 // その比で表の幅を分ける。選手の列は測った幅の1.33倍。列が多くて画面に入らないときは、表を横に動かして見る（最小の幅を守る）
-function sizeAn(root) {
+export function sizeAn(root) {
   const rng = document.createRange();
   const tw = (el) => { rng.selectNodeContents(el); return rng.getBoundingClientRect().width; };
   for (const t of root.querySelectorAll('table.antb.anauto')) {
