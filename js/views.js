@@ -85,13 +85,14 @@ function syncLabel() {
 }
 function topbar(active) {
   const t = S.team;
+  const jp = !!t && isNational(); // 代表チーム：帯にもエンブレム・ロゴ・国旗（2026-10-22）
   const nav = (key, label, href) => `<a class="nv ${active === key ? 'on' : ''}" href="${href}">${label}</a>`;
   return `<header class="bar">
     <button class="bk" id="btnBack">‹ 戻る</button>
-    <a class="tm" href="#/teams">${esc(t ? t.name : 'チームを選ぶ')} ▾</a>
+    ${jp ? '<a class="jbem" href="#/home" title="ホーム"><img src="img/jfa.webp" alt=""></a>' : ''}<a class="tm" href="#/teams">${esc(t ? t.name : 'チームを選ぶ')} ▾</a>
     ${t ? nav('home', 'ホーム', '#/home') + nav('players', '選手', '#/players') + nav('acts', '活動と試合', '#/acts') + nav('analysis', '分析', '#/analysis')
       + `<a class="nv srch ${active === 'search' ? 'on' : ''}" href="#/search">⌕ <span class="wide">試合を</span>探す</a>` : ''}
-    <span class="sp"></span>${syncLabel()}
+    <span class="sp"></span>${jp ? `<span class="jbwm"><img src="img/jpn-wm1.png" alt="JAPAN FUTSAL NATIONAL TEAM">${flag('日本', 'fbar')}</span>` : ''}${syncLabel()}
     <a class="nv ${active === 'settings' ? 'on' : ''}" href="#/settings">設定</a>
   </header>`;
 }

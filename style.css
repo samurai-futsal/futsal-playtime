@@ -1523,3 +1523,9 @@ body.jpn .tile{border-top:4px solid #1B2550}
 @media (max-width:560px){.jhero{gap:14px}.jhero .jem{height:72px}.jhero .jwm2{height:40px}.jhero .jflag{display:none}.jhero .jt1{font-size:13px;margin-bottom:6px}}
 /* 相手の国旗（名前の横） */
 .flg{display:inline-block;width:1.4em;height:1.05em;object-fit:cover;vertical-align:-.12em;margin:0 .35em 0 .1em;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.14)}
+/* 帯のエンブレム・ロゴ・国旗（代表チーム。2026-10-22） */
+.bar .jbem{display:flex;align-items:center;margin-right:4px}.bar .jbem img{height:36px;width:auto;display:block;filter:drop-shadow(0 1px 3px rgba(0,0,0,.35))}
+.bar .jbwm{display:flex;align-items:center;gap:10px;margin-right:14px}.bar .jbwm img:first-child{height:17px;width:auto;display:block}
+.flg.fbar{width:27px!important;height:18px!important;margin:0!important;vertical-align:middle}
+@media (max-width:1240px){.bar .jbwm img:first-child{display:none}}
+@media (max-width:900px){.bar .jbwm{display:none}.bar .jbem img{height:32px}}
