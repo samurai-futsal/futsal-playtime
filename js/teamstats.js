@@ -103,6 +103,7 @@ export function playerStats(Mp, events, goalName, pids, T, keys = null) {
     const t = keys ? (keys.reduce((a, k) => a + (T[pid]?.per?.[k]?.time || 0), 0)) : (T[pid]?.total || 0);
     const my = sh.filter((s) => s.pid === pid);
     const pm = goalsAll.filter((g) => onAt.get(g.id).has(pid)).reduce((a, g) => a + (g.kind === 'goal' ? 1 : -1), 0);
+    const gfOn = goalsAll.filter((g) => g.kind === 'goal' && onAt.get(g.id).has(pid)).length, gaOn = goalsAll.filter((g) => g.kind === 'conc' && onAt.get(g.id).has(pid)).length; // 得点関与・失点関与（±＝得点関与−失点関与）
     return {
       pid, time: t, shots: my.length, sz: my.filter((s) => s.sz === true).length, in: my.filter((s) => s.result === 'in').length,
       goals: ev.filter((e) => e.kind === 'goal' && e.pid === pid).length,
@@ -113,7 +114,7 @@ export function playerStats(Mp, events, goalName, pids, T, keys = null) {
       passFrom: ent.filter((e) => e.method === 'pass' && e.pid === pid).length,
       passTo: ent.filter((e) => e.method === 'pass' && e.pid2 === pid).length,
       rec: ev.filter((e) => e.kind === 'rec' && e.pid === pid).length, lost: ev.filter((e) => e.kind === 'lost' && e.pid === pid).length,
-      foul: ev.filter((e) => e.kind === 'foul' && e.pid === pid).length, pm,
+      foul: ev.filter((e) => e.kind === 'foul' && e.pid === pid).length, pm, gfOn, gaOn,
       shotOn: ownOn.filter((x) => x.has(pid)).length, oshotOn: oppOn.filter((x) => x.has(pid)).length,
       entOn: entOn.filter((x) => x.has(pid)).length, oentOn: oentOn.filter((x) => x.has(pid)).length,
     };
