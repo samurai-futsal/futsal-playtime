@@ -1463,3 +1463,11 @@ a.mtile.mtlink{color:var(--ink);text-decoration:none}.mtlink .go{margin-left:aut
 .antb td.rel b{color:#3B2A7A}
 .antb td.rel.ref b,.antb td.ref b{color:#AAB2C0}
 .antb th.srt{cursor:pointer;user-select:none}.antb th.srt i{font-size:11px;opacity:.75;margin-left:3px;white-space:nowrap}
+/* 良い点・気になる点（2026-10-22） */
+.cmbtn{border-color:#1F9E5B!important;color:#14703F!important;font-weight:700}
+.cmw{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:8px 0}@media (max-width:700px){.cmw{grid-template-columns:1fr}}
+.cmw h3{margin:0 0 6px;font-size:15px;padding:4px 10px;border-radius:6px;color:#fff}.cmw h3.cmg{background:#1F9E5B}.cmw h3.cmb{background:#C8312B}
+.cmw ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.cm{border:1.5px solid #D5DDEA;border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:3px;background:#fff}.cm.g{border-left:5px solid #1F9E5B}.cm.b{border-left:5px solid #C8312B}
+.cm b{font-size:15px;color:#18233A}.cmf{font-size:13px;color:#3A4558}.cmh{font-size:13.5px;font-weight:700;color:#0B2D6B}
+.cmseg{margin:4px 0 2px}.cmseg a{cursor:pointer}

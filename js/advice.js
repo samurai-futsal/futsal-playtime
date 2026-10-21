@@ -1,85 +1,14 @@
-// 試合ごとの評価（10点満点）と、良い点・気になる点のコメント（2026-10-22）
-// ルールで記録から計算する（AIが書くのではない）。同じ記録なら、いつも同じ結果。理由（もとの数字）を一緒に出す。
-// 6.0＝その試合の平均的な出来。項目ごとに足し引きし、1.0〜10.0 に収める。
-import { playerTable, setTable } from './model.js';
-import { playerDetail, shotsOf, teamStats, bandsOf, bandIndex, CLS_KEYS } from './teamstats.js';
-import { pitchAt, isOGType } from './events.js';
+// 良い点・気になる点のコメント（2026-10-22）。マッチレビューとマッチスタッツの「コメントを出す」ボタンから。
+// 決めたルールで記録の事実から出す（AIが書くのではない）。同じ記録なら、いつも同じ結果。もとの数字と「次への一言」を一緒に出す。
+// （選手・セットの10点評価は、見た人に偏った見方が生まれるおそれがあるので入れないことにした。2026-10-22）
+import { setTable, modelOf } from './model.js';
+import { shotsOf, bandsOf, bandIndex } from './teamstats.js';
+import { S, watchOps, watchEvents, opts, teamSettings, playerById } from './store.js';
+import { esc, openModal, closeModal } from './ui.js';
 
-const r1 = (v) => Math.round(v * 10) / 10;
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const sg = (v) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v).toFixed(1)}`;
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const pc = (a, b) => (b ? Math.round(a / b * 100) : 0);
 const bl = (l) => `${l.replace('~', '〜')}${/:/.test(l) ? '' : '分'}`; // 時間帯の名前（0〜10分）
-export const MIN_PLAYER = 180000; // 3分未満は評価しない
-export const MIN_SET = 60000; // セットは1分未満は評価しない
-
-// シュート関与率のチームとの差（ポイント）→ 点。1ポイント＝0.1点、±1.5まで。本数が5本未満は半分
-function sharePart(sf, sa, teamShare, label = 'シュート関与率') {
-  const n = sf + sa; if (!n) return null;
-  const rel = Math.round((sf / n - teamShare) * 100);
-  let d = clamp(rel * 0.1, -1.5, 1.5); if (n < 5) d /= 2;
-  return { d, t: `${label} ${pc(sf, n)}%（チーム全体 ${Math.round(teamShare * 100)}%、${rel > 0 ? '+' : ''}${rel}）${n < 5 ? '・本数が少ないので半分' : ''}` };
-}
-function finish(base, parts) {
-  const ps = parts.filter((p) => p && Math.abs(p.d) >= 0.05);
-  const score = r1(clamp(base + ps.reduce((a, p) => a + p.d, 0), 1, 10));
-  return { score, reasons: ps.sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).map((p) => ({ d: r1(p.d), text: p.t, label: sg(r1(p.d)) })) };
-}
-
-// 1試合の評価。M＝試合の形（プレーイングタイム）、evs＝イベント、gn＝得点の種類の名前、members＝試合メンバー
-export function rateMatch(M, evs, gn, members) {
-  const ev = evs.filter((e) => !e.deleted);
-  const isGK = (pid) => members?.[pid]?.pos === 'GK';
-  const R = teamStats(M, ev, gn);
-  const teamShare = R.A.shots + R.B.shots ? R.A.shots / (R.A.shots + R.B.shots) : 0.5;
-  const T = playerTable(M);
-  const pids = Object.keys(members || {});
-  const D = playerDetail(M, ev, gn, pids, T);
-  const onAt = (e) => pitchAt(M, e.period, e.at, e.side || 'before');
-  const oppSh = shotsOf(ev, gn, false);
-  const players = pids.map((pid) => {
-    const d = D[pid]; const t = d?.time || 0;
-    if (t < MIN_PLAYER) return { pid, time: t, gk: isGK(pid), none: t ? '出場が3分未満' : '出場なし' };
-    const parts = [];
-    const pmv = d.on.gf - d.on.ga;
-    if (isGK(pid)) {
-      // GK：セーブ率（枠内の被シュートが3本以上のとき）、失点、得失点±、カード
-      let ot = 0, ga = 0; for (const s of oppSh) { if (!onAt(s.e).includes(pid)) continue; if (s.result === 'in') ot++; if (s.goal) ga++; }
-      if (ot >= 3) { const sv = (ot - ga) / ot; parts.push({ d: clamp((sv - 0.7) * 5, -1.5, 1.5), t: `セーブ率 ${Math.round(sv * 100)}%（セーブ ${ot - ga} ÷ 被枠内 ${ot}。70%を基準）` }); }
-      if (ga) parts.push({ d: clamp(-0.3 * ga, -1.5, 0), t: `失点 ${ga}（OGを除く）` });
-      else if (ot) parts.push({ d: 0.3, t: '無失点' });
-      if (pmv) parts.push({ d: clamp(pmv * 0.25, -0.5, 0.5), t: `得失点± ${pmv > 0 ? '+' : ''}${pmv}` });
-    } else {
-      parts.push(sharePart(d.on.shot, d.on.oshot, teamShare));
-      if (d.goals) parts.push({ d: Math.min(2, d.goals * 0.8), t: `得点 ${d.goals}` });
-      if (d.assists) parts.push({ d: Math.min(1.5, d.assists * 0.5), t: `アシスト ${d.assists}` });
-      if (d.in) parts.push({ d: Math.min(0.5, d.in * 0.1), t: `枠内シュート ${d.in}（シュート ${d.shots}）` });
-      const ent = d.ent.z4.inv + d.ent.sz.inv; if (ent) parts.push({ d: Math.min(0.5, ent * 0.1), t: `Z4・SZ進入 ${ent}` });
-      const rl = d.rec - d.lost; if (rl) parts.push({ d: clamp(rl * 0.1, -0.5, 0.5), t: `リカバリー ${d.rec} − ロスト ${d.lost}` });
-      if (pmv) parts.push({ d: clamp(pmv * 0.25, -0.5, 0.5), t: `得失点± ${pmv > 0 ? '+' : ''}${pmv}（得点関与 ${d.on.gf}・失点関与 ${d.on.ga}）` });
-    }
-    if (d.cY) parts.push({ d: -0.5 * d.cY, t: `イエロー ${d.cY}` });
-    if (d.cR) parts.push({ d: -1.5 * d.cR, t: `レッド ${d.cR}` });
-    return { pid, time: t, gk: isGK(pid), ...finish(6, parts) };
-  });
-
-  // セット（GK1人・FP4人がそろった時間）
-  const ownSh = shotsOf(ev, gn, true);
-  const sets = setTable(M).filter((st) => st.time >= MIN_SET).map((st) => {
-    const inS = (e) => st.spans.some((sp) => sp.period === e.period && sp.from < e.at && e.at <= sp.to);
-    const sf = ownSh.filter((s) => inS(s.e)).length, sa = oppSh.filter((s) => inS(s.e)).length;
-    const ef = ev.filter((e) => (e.kind === 'z4' || e.kind === 'sz') && inS(e)).length, ea = ev.filter((e) => (e.kind === 'oz4' || e.kind === 'osz') && inS(e)).length;
-    const gf = ev.filter((e) => e.kind === 'goal' && inS(e)).length, ga = ev.filter((e) => e.kind === 'conc' && inS(e)).length;
-    const parts = [sharePart(sf, sa, teamShare)];
-    if (ef || ea) parts.push({ d: clamp((ef - ea) * 0.1, -0.5, 0.5), t: `Z4・SZ進入 ${ef} − 被 ${ea}` });
-    if (gf) parts.push({ d: Math.min(1.5, gf * 0.5), t: `得点 ${gf}` });
-    if (ga) parts.push({ d: Math.max(-1.5, -ga * 0.5), t: `失点 ${ga}` });
-    return { key: st.key, pids: st.pids, time: st.time, count: st.count, sf, sa, ...finish(6, parts) };
-  });
-  return { players, sets, teamShare };
-}
-
 // ---------- 良い点・気になる点（コメント）----------
 // keys：数える範囲のピリオド（ハーフタイムなら前半だけ）。null＝試合全体。返り値：{ good:[], bad:[] }（それぞれ強い順に3つまで）
 export function matchComments(M, evs, gn, members, keys = null, nameOf = null) {
@@ -127,10 +56,12 @@ export function matchComments(M, evs, gn, members, keys = null, nameOf = null) {
   // 5. セット
   {
     const ownS = own, oppS = opp;
-    const sets = setTable(M).filter((st) => st.spans.some((sp) => !keys || keys.includes(sp.period)) && st.time >= 120000).map((st) => {
-      const inS = (e) => st.spans.some((sp) => sp.period === e.period && sp.from < e.at && e.at <= sp.to);
-      return { st, f: ownS.filter((s) => inS(s.e)).length, a: oppS.filter((s) => inS(s.e)).length };
-    }).filter((x) => x.f + x.a >= 4);
+    // 範囲（前半だけなど）の中の時間だけで数える
+    const sets = setTable(M).map((st0) => { const spans = st0.spans.filter((sp) => !keys || keys.includes(sp.period)); return { ...st0, spans, time: spans.reduce((t, sp) => t + sp.to - sp.from, 0) }; })
+      .filter((st) => st.time >= 120000).map((st) => {
+        const inS = (e) => st.spans.some((sp) => sp.period === e.period && sp.from < e.at && e.at <= sp.to);
+        return { st, f: ownS.filter((s) => inS(s.e)).length, a: oppS.filter((s) => inS(s.e)).length };
+      }).filter((x) => x.f + x.a >= 4);
     const nm = (st) => st.pids.map((p) => (nameOf ? nameOf(p) : members?.[p]?.no ?? '')).join('・');
     const by = (x) => x.f / (x.f + x.a);
     sets.sort((a, b) => by(b) - by(a));
@@ -182,7 +113,42 @@ export function matchComments(M, evs, gn, members, keys = null, nameOf = null) {
     if (ga) add(bad, 4 + ga, '自チームの5×4で失点（PP返し）', `5×4の間の得点 ${gf}・失点 ${ga}`, '5×4のボールの失い方・GKへの戻りを確認');
     else if (gf) add(good, 3 + gf, '5×4で得点', `5×4の間の得点 ${gf}`, 'この5×4の形を続ける');
   }
-  void isOGType; void CLS_KEYS;
   const top = (arr) => arr.sort((a, b) => b.w - a.w).slice(0, 3);
   return { good: top(good), bad: top(bad), n: { own: own.length, opp: opp.length } };
+}
+
+// ---------- 画面：コメントを出す ----------
+// 範囲：試合全体（その時点まで）／前半／後半。試合中（ハーフタイムなど）は、その時点までの記録で出す
+let scope = 'all';
+export function openComments(m) {
+  scope = 'all';
+  const draw = () => {
+    const opsC = watchOps(m.id), evC = watchEvents(m.id);
+    if (!opsC.ready && !opsC.list.length) return '<h2>良い点・気になる点</h2><p class="mu">記録を読み込んでいます。少し待ってから「最新の記録で出し直す」を押してください。</p>';
+    const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
+    const { M } = modelOf(opsC.list, cfg, m.fix);
+    const gn = (id) => opts('goalTypes', true).find((o) => o.id === id)?.name || '';
+    const played = M.periods.filter((p) => p.status !== 'none');
+    const keys = scope === 'all' ? null : [scope];
+    const c = matchComments(M, evC.list, gn, m.members || {}, keys, (pid) => playerById(pid)?.last || '');
+    const now = new Date(); const at = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const where = m.status === 'done' ? '試合終了' : played.length ? `${played[played.length - 1].label}${played[played.length - 1].status === 'done' ? '終了' : 'の途中'}` : '試合前';
+    const seg = played.length > 1 ? `<div class="seg cmseg">${[['all', '試合全体'], ...played.map((p) => [p.key, p.label])].map(([k, l]) => `<a class="${scope === k ? 'on' : ''}" data-cs="${k}">${l}</a>`).join('')}</div>` : '';
+    const card = (x, g) => `<li class="cm ${g ? 'g' : 'b'}"><b>${g ? '◎' : '△'} ${esc(x.title)}</b><span class="cmf">${esc(x.fact)}</span><span class="cmh">→ ${esc(x.hint)}</span></li>`;
+    const none = '<li class="mu">この範囲では、目立った傾向はありません</li>';
+    return `<h2>良い点・気になる点 <small class="mu">vs ${esc(m.opponent || '')}</small></h2>
+      <p class="mu">${where}・${at} の記録から、決めたルールで事実を拾っています（シュート ${c.n.own} − 被シュート ${c.n.opp}）。記録が増えたら「最新の記録で出し直す」を押してください。</p>${seg}
+      <div class="cmw"><div><h3 class="cmg">良い点</h3><ul>${c.good.map((x) => card(x, true)).join('') || none}</ul></div>
+      <div><h3 class="cmb">気になる点</h3><ul>${c.bad.map((x) => card(x, false)).join('') || none}</ul></div></div>
+      ${c.n.own + c.n.opp < 6 ? '<p class="mu">まだ記録が少ないので、傾向ははっきりしません。</p>' : ''}
+      <div class="mfoot"><button class="btn" data-c>閉じる</button><button class="btn pri" data-r>最新の記録で出し直す</button></div>`;
+  };
+  const md = openModal(draw(), { wide: true });
+  const bind = () => {
+    const box = md.querySelector('.modal');
+    box.querySelector('[data-c]').onclick = closeModal;
+    box.querySelector('[data-r]').onclick = () => { box.innerHTML = draw(); bind(); };
+    box.querySelectorAll('[data-cs]').forEach((a) => { a.onclick = () => { scope = a.dataset.cs; box.innerHTML = draw(); bind(); }; });
+  };
+  bind();
 }

@@ -10,6 +10,7 @@ import { render } from './views.js';
 import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge, rvHl, hlc, bindPacePick, bandTip, sizeCols, tSort, tSortNext, tsh, tSorted, tRank, tRankHead } from './review58.js';
 import { ensureChecks } from './evinput.js';
 import { savePdf, safeName, preloadPdf } from './pdfsave.js';
+import { openComments } from './advice.js';
 
 const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -79,7 +80,7 @@ export function vReview(m) {
   const head = `<div class="rvhead">
       <div class="rvrow"><a class="btn mpback" href="#/m/${m.id}">‹ 試合ページ</a><a class="btn ${started ? 'pri' : ''}" href="#/m/${m.id}/play">MATCH PLAY ›</a><a class="btn" href="#/m/${m.id}/stats">マッチスタッツ ›</a><span class="rvstate">${state}</span><span class="rvctl">${sw}
         <span class="rvmode" role="group" aria-label="時間の数え方"><button class="${runMode ? '' : 'on'}" data-mode="play">プレーイングタイム</button><button class="${runMode ? 'on' : ''}" data-mode="run">ランニングタイム</button></span>
-        <button class="btn" id="rvPdf">PDFで保存</button><span class="rvzoom"><button class="btn" id="rvCompact">${isCompact() ? '通常の表示' : '縮小表示'}</button><button class="btn ${fullAll ? 'pri' : ''}" id="rvFull">${fullAll ? '× 閉じる' : '⛶ 拡大表示'}</button></span></span></div>
+        <button class="btn cmbtn" id="rvAdv">💬 コメントを出す</button><button class="btn" id="rvPdf">PDFで保存</button><span class="rvzoom"><button class="btn" id="rvCompact">${isCompact() ? '通常の表示' : '縮小表示'}</button><button class="btn ${fullAll ? 'pri' : ''}" id="rvFull">${fullAll ? '× 閉じる' : '⛶ 拡大表示'}</button></span></span></div>
       <div class="rvjumps">${jumps}${evs.length ? '' : '<span class="rvnote">5〜8 はイベントを入力すると表示されます</span>'}
         ${M.stale?.length ? `<a class="rvfix warn" href="#/m/${m.id}/fix">${M.stale.map((k) => periodLabel(k)).join('・')}はMATCH PLAYの記録が変わったため、保存した修正を使っていません</a>` : ''}</div></div>`;
 
@@ -332,6 +333,7 @@ function bindReview(m) {
     root.querySelectorAll('[data-tsort]').forEach((th) => th.onclick = () => { const [t, col] = th.dataset.tsort.split(':'); tSortNext(t, col); render(); });
     root.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => { runPref = b.dataset.mode === 'run'; try { localStorage.setItem(modeKey, b.dataset.mode); } catch {} render(); });
     const pdf = root.querySelector('#rvPdf'); if (pdf) pdf.onclick = () => pdfChoice(m);
+    const adv = root.querySelector('#rvAdv'); if (adv) adv.onclick = () => openComments(m); // 良い点・気になる点（2026-10-22）
     if (location.hash.endsWith('/pdf')) { history.replaceState(null, '', `#/m/${m.id}/review`); setTimeout(() => pdfChoice(m), 200); } // 印刷の画面で「PDFとして保存」（iPadは共有→「ファイルに保存」）
     const c = root.querySelector('#rvCompact'); if (c) c.onclick = () => { try { localStorage.setItem(compactKey, isCompact() ? '0' : '1'); } catch {} render(); };
     root.addEventListener('click', (e) => {
