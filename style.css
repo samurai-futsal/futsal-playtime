@@ -1457,3 +1457,8 @@ a.mtile.mtlink{color:var(--ink);text-decoration:none}.mtlink .go{margin-left:aut
 .anbody table.antb td.xbar,.prrep table.antb td.xbar{text-align:left!important}
 .anteamv .ancmpw .anband td.apl,.anteamv .ancmpw .anband th.apl{padding-left:3px}
 .anbody .anscroll .antb{width:100%}
+/* 選手の記録：出場した場面・チームとの差（2026-10-22） */
+.prpair tr.short td{opacity:.45}.prgrid2.two{grid-template-columns:1fr 1fr}@media (max-width:999px){.prgrid2.two{grid-template-columns:1fr}}
+.prdr em .prsub{display:block;font-size:11px;font-weight:600;color:#6B7486}
+.antb td.rel b{color:#3B2A7A}
+.antb td.rel.ref b,.antb td.ref b{color:#AAB2C0}

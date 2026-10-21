@@ -184,7 +184,7 @@ export function datasheetSheets(ms, teamName) {
   // ---------- 選手スタッツ（イベント一覧から数式で） ----------
   const pitch = ['ピッチ1', 'ピッチ2', 'ピッチ3', 'ピッチ4', 'ピッチ5'];
   const onSum = (a, extra) => pitch.map((c) => cnt([[c, a], ...extra])).join('+');
-  const spHead = ['背番号', '選手', '出場試合数', '出場時間', 'シュート', 'うちSZ内', 'シュート関与', '被シュート関与', '枠内', '得点', 'アシスト', 'Z4進入', 'SZ進入', 'パス出し手', 'パス受け手', 'リカバリー', 'ロスト', 'ファール', '受けたファール', '得失点±', 'シュート関与／分', '被シュート関与／分'];
+  const spHead = ['背番号', '選手', '出場試合数', '出場時間', 'シュート', 'うちSZ内', 'シュート関与', '被シュート関与', '枠内', '得点', 'アシスト', 'Z4進入', 'SZ進入', 'パス出し手', 'パス受け手', 'リカバリー', 'ロスト', 'ファール', '受けたファール', '得失点±', 'シュート関与／40分', '被シュート関与／40分'];
   const pRows = [spHead.map(H)];
   const tsum = new Map(); for (const x of ms) { const T = playerTable(x.M); for (const pid of Object.keys(x.m.members || {})) tsum.set(pid, (tsum.get(pid) || 0) + (T[pid]?.total || 0)); }
   names.forEach(([n, r], i) => {
@@ -201,7 +201,7 @@ export function datasheetSheets(ms, teamName) {
       { f: cnt([['選手', a], ['イベント', '"ボールリカバリー"']]) }, { f: cnt([['選手', a], ['イベント', '"ボールロスト"']]) },
       { f: cnt([['選手', a], ['イベント', '"ファール"']]) }, { f: cnt([['選手', a], ['イベント', '"被ファール"']]) },
       { f: `${onSum(a, [['得点・失点', '"得点"']])}-(${onSum(a, [['得点・失点', '"失点"']])})` },
-      { f: `IF($D${row}>0,G${row}/($D${row}*1440),"")`, s: 'dec2' }, { f: `IF($D${row}>0,H${row}/($D${row}*1440),"")`, s: 'dec2' }]);
+      { f: `IF($D${row}>0,G${row}/($D${row}*1440)*40,"")`, s: 'dec2' }, { f: `IF($D${row}>0,H${row}/($D${row}*1440)*40,"")`, s: 'dec2' }]);
   });
   const pr = pRows.length;
   if (pr > 1) pRows.push([{ v: '', s: 'bold' }, { v: 'チーム合計', s: 'bold' }, '', { f: `SUM(D2:D${pr})/5`, s: 'timeb' },

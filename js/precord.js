@@ -42,7 +42,23 @@ function oneRow(x, pid) {
     for (const sh of shotsOf(evs, x.gn, false)) { if (!on(sh.e)) continue; g.f++; if (sh.sz === true) g.sz++; if (sh.result === 'in') g.ot++; const i = CLS_KEYS.indexOf(sh.cls); g.cls[i >= 0 ? i : 6]++; if (sh.goal) { g.ga++; g.gcls[i >= 0 ? i : 6]++; } }
     g.og = evs.filter((e) => e.kind === 'conc' && isOGType(e.gtype, x.gn) && on(e)).length;
   }
-  return { x, m: x.m, d, len: x.len, start, rests, own, opp, res, pk, g };
+  // チームとの差（2026-10-22）：この試合のチーム全体のシュート関与率
+  const share = x.R.A.shots + x.R.B.shots ? x.R.A.shots / (x.R.A.shots + x.R.B.shots) : 0.5;
+  // 出場した場面（2026-10-22）：点差（リード・同点・ビハインド）と、出てからの時間（0〜60秒・60〜120秒・120秒〜）ごとの時間とシュート
+  const sc = { st: [0, 1, 2].map(() => ({ t: 0, sf: 0, sa: 0 })), sh: [0, 1, 2].map(() => ({ t: 0, sf: 0, sa: 0 })) };
+  if (d && d.time) {
+    const pi = (k) => M.periods.findIndex((q) => q.key === k);
+    const gl = x.evs.filter((e) => !e.deleted && (e.kind === 'goal' || e.kind === 'conc')).map((e) => ({ o: e.kind === 'goal', pi: pi(e.period), at: e.at }));
+    const stAt = (k, at) => { let v = 0; for (const q of gl) if (q.pi < pi(k) || (q.pi === pi(k) && q.at < at)) v += q.o ? 1 : -1; return v > 0 ? 0 : v === 0 ? 1 : 2; };
+    const bk = (el) => (el < 60000 ? 0 : el < 120000 ? 1 : 2);
+    for (const q of mine) for (let t = q.from; t < q.to; t += 1000) { const w = Math.min(1000, q.to - t); sc.st[stAt(q.period, t + w / 2)].t += w; sc.sh[bk(t - q.from)].t += w; }
+    const evs = x.evs.filter((e) => !e.deleted);
+    for (const [k, own2] of [['sf', true], ['sa', false]]) for (const q of shotsOf(evs, x.gn, own2)) {
+      const e = q.e; const s0 = mine.find((z) => z.period === e.period && z.from < e.at && e.at <= z.to); if (!s0) continue;
+      sc.st[stAt(e.period, e.at)][k]++; sc.sh[bk(e.at - s0.from)][k]++;
+    }
+  }
+  return { x, m: x.m, d, len: x.len, start, rests, own, opp, res, pk, g, share, sc };
 }
 
 export function vPlayerRecord(r) {
@@ -92,7 +108,10 @@ export function vPlayerRecord(r) {
   const res = gk ? [big('失点関与', D((d) => d.on.ga), `${played.length ? (D((d) => d.on.ga) / Math.max(1, T / 2400000)).toFixed(1) + '／40分' : ''}`, 'o'), big('被シュート関与', D((d) => d.on.oshot), '', 'o')]
     : [big('得点', D((d) => d.goals), '', D((d) => d.goals) ? 'g' : ''), big('アシスト', D((d) => d.assists), '', D((d) => d.assists) ? 'g' : '')];
   // 評価の指標：差（プラスは緑・マイナスは赤、真ん中から左右に伸びる棒）
-  const difs = [['シュート関与の差', D((d) => d.on.shot - d.on.oshot), `関与 ${D((d) => d.on.shot)} − 被 ${D((d) => d.on.oshot)}`],
+  const nOnAll = D((d) => d.on.shot + d.on.oshot); const expAll = sum((r0) => (r0.d.on.shot + r0.d.on.oshot) * r0.share);
+  const relAll = nOnAll ? Math.round((D((d) => d.on.shot) - expAll) / nOnAll * 100) : 0;
+  const difs = [['シュート関与率<br><small class="prsub">チームとの差</small>', relAll, nOnAll ? `関与率 ${Math.round(D((d) => d.on.shot) / nOnAll * 100)}%（同じ試合のチーム全体 ${Math.round(expAll / nOnAll * 100)}%）` : ''],
+    ['シュート関与の差', D((d) => d.on.shot - d.on.oshot), `関与 ${D((d) => d.on.shot)} − 被 ${D((d) => d.on.oshot)}`],
     ['進入関与の差', D((d) => d.on.z4 + d.on.sz - d.on.oz4 - d.on.osz), `関与 ${D((d) => d.on.z4 + d.on.sz)} − 被 ${D((d) => d.on.oz4 + d.on.osz)}`],
     ['得失点±', D((d) => d.on.gf - d.on.ga), `得点関与 ${D((d) => d.on.gf)} − 失点関与 ${D((d) => d.on.ga)}`],
     ['リカバリー−ロスト', D((d) => d.rec - d.lost), `リカバリー ${D((d) => d.rec)} − ロスト ${D((d) => d.lost)}`]];
@@ -114,8 +133,8 @@ export function vPlayerRecord(r) {
       <td><span class="prres ${resC(r0)}">${r0.res}</span> ${r0.own}−${r0.opp}${r0.pk && r0.res.startsWith('PK') ? `<small>（PK ${r0.pk.own}−${r0.pk.opp}）</small>` : ''}</td><td>${r0.start ? '◯' : ''}</td>
       <td><b>${d.time ? mmss(d.time) : '<span class="z">0:00</span>'}</b></td><td>${d.time ? pct(d.time, r0.len) : '—'}</td><td>${z(d.count)}</td>
       ${gk ? `<td>${z(r0.g.f)}</td><td>${z(r0.g.ot)}</td><td>${z(r0.g.ot - r0.g.ga)}</td><td><b>${r0.g.ot ? pct(r0.g.ot - r0.g.ga, r0.g.ot) : '—'}</b></td><td>${z(r0.g.ga)}</td>` : `<td>${z(d.goals)}</td><td>${z(d.assists)}</td><td>${z(d.shots)}<small>（${d.in}）</small></td><td>${z(d.ent.z4.inv)}</td><td>${z(d.ent.sz.inv)}</td>`}
-      <td class="df">${d.time ? sg(d.on.shot - d.on.oshot) : '—'}</td><td class="df">${d.time ? sg(d.on.gf - d.on.ga) : '—'}</td><td class="gt">›</td></tr>`; }).join('');
-  const th = `<tr><th>日付</th><th>相手</th><th>結果</th><th>先発</th><th>出場時間</th><th>出場率</th><th>回数</th>${gk ? '<th>被シュート</th><th>被枠内</th><th>セーブ</th><th>セーブ率</th><th>失点</th>' : '<th>得点</th><th>アシスト</th><th>シュート<br><small>（枠内）</small></th><th>Z4進入</th><th>SZ進入</th>'}<th class="df">シュート<br>関与の差</th><th class="df">得失点±</th><th></th></tr>`;
+      <td class="df">${d.time ? sg(d.on.shot - d.on.oshot) : '—'}</td><td class="df">${d.time && d.on.shot + d.on.oshot ? sg(Math.round((d.on.shot / (d.on.shot + d.on.oshot) - r0.share) * 100)) : '—'}</td><td class="df">${d.time ? sg(d.on.gf - d.on.ga) : '—'}</td><td class="gt">›</td></tr>`; }).join('');
+  const th = `<tr><th>日付</th><th>相手</th><th>結果</th><th>先発</th><th>出場時間</th><th>出場率</th><th>回数</th>${gk ? '<th>被シュート</th><th>被枠内</th><th>セーブ</th><th>セーブ率</th><th>失点</th>' : '<th>得点</th><th>アシスト</th><th>シュート<br><small>（枠内）</small></th><th>Z4進入</th><th>SZ進入</th>'}<th class="df">シュート<br>関与の差</th><th class="df">チーム<br>との差</th><th class="df">得失点±</th><th></th></tr>`;
   const matchH = `<h2 class="h">試合ごとの記録<small>新しい順。行を押すとその試合のマッチレビュー</small></h2>
     ${rows.length ? `<div class="card prtbw"><table class="prtb">${th}${trs}</table></div>` : '<div class="card empty">対象の試合はありません</div>'}
     ${live ? `<p class="mu">試合中の ${live}試合は、試合が終わると入ります</p>` : ''}`;
@@ -153,30 +172,35 @@ export function vPlayerRecord(r) {
   for (const r0 of rows) {
     const x = r0.x; const M = x.M;
     const mine = M.stints.filter((q) => q.pid === pid);
+    const before = new Map([...pair].map(([k, v]) => [k, v.sf + v.sa]));
     for (const q of M.stints) { if (q.pid === pid) continue; for (const a of mine) { if (a.period !== q.period) continue; const ov = Math.min(a.to, q.to) - Math.max(a.from, q.from); if (ov > 0) P(q.pid).t += ov; } }
     const evs = x.evs.filter((e) => !e.deleted);
     const on = (e, side) => pitchAt(M, e.period, e.at, e.side || side);
     for (const sh of shotsOf(evs, x.gn, true)) { const o = on(sh.e, 'before'); if (o.includes(pid)) o.forEach((q) => q !== pid && P(q).sf++); }
     for (const sh of shotsOf(evs, x.gn, false)) { const o = on(sh.e, 'before'); if (o.includes(pid)) o.forEach((q) => q !== pid && P(q).sa++); }
     for (const e of evs) if (e.kind === 'goal' || e.kind === 'conc') { const o = on(e, 'before'); if (o.includes(pid)) o.forEach((q) => q !== pid && P(q)[e.kind === 'goal' ? 'gf' : 'ga']++); }
+    for (const [k, v] of pair) v.exp = (v.exp || 0) + (v.sf + v.sa - (before.get(k) || 0)) * r0.share;
     if (!gk) for (const st of setTable(M)) {
       if (!st.pids.includes(pid)) continue;
       const inSpan = (e) => st.spans.some((sp) => sp.period === e.period && sp.from < e.at && e.at <= sp.to);
       const c = sets.get(st.key) || { pids: st.pids, time: 0, count: 0, sf: 0, sa: 0 };
       c.time += st.time; c.count += st.count;
-      c.sf += shotsOf(evs, x.gn, true).filter((q) => inSpan(q.e)).length; c.sa += shotsOf(evs, x.gn, false).filter((q) => inSpan(q.e)).length;
+      const a1 = shotsOf(evs, x.gn, true).filter((q) => inSpan(q.e)).length, b1 = shotsOf(evs, x.gn, false).filter((q) => inSpan(q.e)).length;
+      c.sf += a1; c.sa += b1; c.exp = (c.exp || 0) + (a1 + b1) * r0.share;
       sets.set(st.key, c);
     }
   }
+  const SHORT = 120000; // 一緒にいた時間が2分未満は薄く（数字がぶれやすい）
+  const relTd = (a, b, ex) => { if (!(a + b)) return '<td class="df">—</td>'; const v = Math.round((a - (ex || 0)) / (a + b) * 100); return `<td class="df ${v > 0 ? 'p' : v < 0 ? 'm' : ''}">${sg(v)}</td>`; };
   const nm = (q) => { const pp = playerById(q); return pp ? `${pp.last || ''}` : '—'; };
   const pos = (q) => (playerById(q)?.pos === 'GK' ? 'gk' : 'fp');
   const prs = [...pair.entries()].filter(([q, v]) => v.t > 0 && playerById(q)?.pos !== 'GK').sort((a, b) => b[1].t - a[1].t).slice(0, 10);
   const pmax = Math.max(1, ...prs.map(([, v]) => v.t));
-  const pairH = `<div class="prpair"><h3>一緒にピッチにいた時間<small>FPだけ、長い順に10人。差・±は2人が一緒にいた間の数</small></h3><table><tr><th>選手</th><th></th><th>時間</th><th>割合</th><th class="df">シュート<br>関与の差</th><th class="df">得失点±</th></tr>
-    ${prs.map(([q, v]) => `<tr><td><span class="pos ${pos(q)}">${pos(q) === 'gk' ? 'GK' : 'FP'}</span> ${esc(nm(q))}</td><td class="pb"><i style="width:${Math.round(v.t / pmax * 100)}%"></i></td><td><b>${mmss(v.t)}</b></td><td>${pct(v.t, T)}</td><td class="df ${v.sf - v.sa > 0 ? 'p' : v.sf - v.sa < 0 ? 'm' : ''}">${sg(v.sf - v.sa)}</td><td class="df ${v.gf - v.ga > 0 ? 'p' : v.gf - v.ga < 0 ? 'm' : ''}">${sg(v.gf - v.ga)}</td></tr>`).join('') || '<tr><td colspan="6" class="mu">ありません</td></tr>'}</table></div>`;
+  const pairH = `<div class="prpair"><h3>一緒にピッチにいた時間<small>FPだけ、長い順に10人。差・±は2人が一緒にいた間の数。チームとの差＝2人が一緒の時の関与率 − 同じ試合のチーム全体。2分未満は薄く</small></h3><table><tr><th>選手</th><th></th><th>時間</th><th>割合</th><th class="df">シュート<br>関与の差</th><th class="df">チーム<br>との差</th><th class="df">得失点±</th></tr>
+    ${prs.map(([q, v]) => `<tr class="${v.t < SHORT ? 'short' : ''}"><td><span class="pos ${pos(q)}">${pos(q) === 'gk' ? 'GK' : 'FP'}</span> ${esc(nm(q))}</td><td class="pb"><i style="width:${Math.round(v.t / pmax * 100)}%"></i></td><td><b>${mmss(v.t)}</b></td><td>${pct(v.t, T)}</td><td class="df ${v.sf - v.sa > 0 ? 'p' : v.sf - v.sa < 0 ? 'm' : ''}">${sg(v.sf - v.sa)}</td>${relTd(v.sf, v.sa, v.exp)}<td class="df ${v.gf - v.ga > 0 ? 'p' : v.gf - v.ga < 0 ? 'm' : ''}">${sg(v.gf - v.ga)}</td></tr>`).join('') || '<tr><td colspan="7" class="mu">ありません</td></tr>'}</table></div>`;
   const st5 = [...sets.values()].sort((a, b) => b.time - a.time).slice(0, 5);
-  const setH = gk ? '' : `<div class="prpair"><h3>この選手が入った4人のセット<small>長い順に5つ（GK1人・FP4人がそろった時間）</small></h3><table><tr><th>FP4人</th><th>時間</th><th>回数</th><th class="df">シュート<br>の差</th></tr>
-    ${st5.map((c) => `<tr><td class="sn">${c.pids.map((q) => `<span class="${q === pid ? 'me' : ''}">${esc(nm(q))}</span>`).join('')}</td><td><b>${mmss(c.time)}</b></td><td>${c.count}</td><td class="df ${c.sf - c.sa > 0 ? 'p' : c.sf - c.sa < 0 ? 'm' : ''}">${sg(c.sf - c.sa)}</td></tr>`).join('') || '<tr><td colspan="4" class="mu">ありません</td></tr>'}</table></div>`;
+  const setH = gk ? '' : `<div class="prpair"><h3>この選手が入った4人のセット<small>長い順に5つ（GK1人・FP4人がそろった時間）</small></h3><table><tr><th>FP4人</th><th>時間</th><th>回数</th><th class="df">シュート<br>の差</th><th class="df">関与率</th><th class="df">チーム<br>との差</th></tr>
+    ${st5.map((c) => `<tr class="${c.time < SHORT ? 'short' : ''}"><td class="sn">${c.pids.map((q) => `<span class="${q === pid ? 'me' : ''}">${esc(nm(q))}</span>`).join('')}</td><td><b>${mmss(c.time)}</b></td><td>${c.count}</td><td class="df ${c.sf - c.sa > 0 ? 'p' : c.sf - c.sa < 0 ? 'm' : ''}">${sg(c.sf - c.sa)}</td><td class="df">${pct(c.sf, c.sf + c.sa)}</td>${relTd(c.sf, c.sa, c.exp)}</tr>`).join('') || '<tr><td colspan="6" class="mu">ありません</td></tr>'}</table></div>`;
   const G = rows.reduce((a, r0) => { for (const k of ['f', 'sz', 'ot', 'ga', 'og']) a[k] += r0.g[k]; r0.g.cls.forEach((v, i) => { a.cls[i] += v; }); r0.g.gcls.forEach((v, i) => { a.gcls[i] += v; }); return a; }, { f: 0, sz: 0, ot: 0, ga: 0, og: 0, cls: [0, 0, 0, 0, 0, 0, 0], gcls: [0, 0, 0, 0, 0, 0, 0] });
   const per40 = (v) => (T ? (v / (T / 2400000)).toFixed(1) : '—');
   const sav = G.ot - G.ga;
@@ -189,6 +213,12 @@ export function vPlayerRecord(r) {
       <tr><th>失点</th><td><b>${G.ga}</b><small>${G.og ? `ほかにOG ${G.og}` : 'OGは除く'}</small></td></tr>
       <tr><th>40分あたり</th><td><b>${per40(G.f)}</b><small>被シュート・失点 ${per40(G.ga)}</small></td></tr></table></div></div>
     <p class="mu">枠内＝結果が「枠内」の相手のシュート（失点を含む）。セーブ＝被枠内シュート − 失点。相手のシュートの結果が入っていないものは、枠内に数えません。</p>`;
+  // ---------- 出場した場面（2026-10-22） ----------
+  const SC = rows.reduce((a, r0) => { r0.sc.st.forEach((v, i) => { a.st[i].t += v.t; a.st[i].sf += v.sf; a.st[i].sa += v.sa; }); r0.sc.sh.forEach((v, i) => { a.sh[i].t += v.t; a.sh[i].sf += v.sf; a.sh[i].sa += v.sa; }); return a; }, { st: [0, 1, 2].map(() => ({ t: 0, sf: 0, sa: 0 })), sh: [0, 1, 2].map(() => ({ t: 0, sf: 0, sa: 0 })) });
+  const scT = (title, lab, arr) => { const tt = arr.reduce((a, v) => a + v.t, 0); return `<div class="prpair"><h3>${title}</h3><table><tr><th></th><th></th><th>出場時間</th><th>割合</th><th>シュート関与<br><small>自 − 相手</small></th><th class="df">関与率</th></tr>
+    ${arr.map((v, i) => `<tr class="${v.t < SHORT ? 'short' : ''}"><td>${lab[i]}</td><td class="pb"><i style="width:${tt ? Math.round(v.t / tt * 100) : 0}%"></i></td><td><b>${mmss(v.t)}</b></td><td>${pct(v.t, tt)}</td><td>${v.sf} − ${v.sa}</td><td class="df ${v.sf + v.sa && v.sf / (v.sf + v.sa) >= 0.5 ? 'p' : v.sf + v.sa ? 'm' : ''}">${pct(v.sf, v.sf + v.sa)}</td></tr>`).join('')}</table></div>`; };
+  const sceneH = rows.length && T ? `<h2 class="h">出場した場面<small>どんな場面で使われ、そのときどうだったか。関与率＝ピッチにいる間のシュートのうち自チームの割合（50%が五分）。試合ごとの「チームとの差」は上の表</small></h2>
+    <div class="prgrid2 ${gk ? '' : 'two'}">${scT('点差', ['リード', '同点', 'ビハインド'], SC.st)}${gk ? '' : scT('出てからの時間（1回の出場の中で）', ['0〜60秒', '60〜120秒', '120秒〜'], SC.sh)}</div>` : '';
   const withH = !rows.length ? '' : gk ? gkH : `<h2 class="h">一緒にプレーした選手</h2><div class="prgrid2">${pairH}${setH}</div>`;
 
   // ---------- ⑦ プレーの傾向 ----------
@@ -205,11 +235,11 @@ export function vPlayerRecord(r) {
   if (r.print) { // PDF（1ページ）用：選ぶ画面やボタンのない形
     const who = `${esc(`${p.last || ''} ${p.first || ''}`.trim())}（${gk ? 'GK' : 'FP'}）<small>${allOn ? 'すべての活動・試合' : `${acts.length}活動・${ms.length}試合`}（${rows.length}試合）</small>`;
     const more = rows.length > PR_MAX ? `<p class="mu">試合ごとの記録は新しい ${PR_MAX}試合（ほか ${rows.length - PR_MAX}試合）</p>` : '';
-    return { loading, who, name: `${p.last || ''}${p.first || ''}`, html: `<div class="prw prprint">${sumH}${graphH}<div class="prpc"><div>${gk ? withH : ''}${trendH}</div><div>${matchH}${more}${gk ? '' : withH}${actH}</div></div></div>` }; // 左右2列にして縦を短く
+    return { loading, who, name: `${p.last || ''}${p.first || ''}`, html: `<div class="prw prprint">${sumH}${graphH}<div class="prpc"><div>${gk ? withH : ''}${trendH}</div><div>${matchH}${more}${sceneH}${gk ? '' : withH}${actH}</div></div></div>` }; // 左右2列にして縦を短く
   }
   return {
     active: 'players',
-    html: `<div class="prw">${head}${sumH}${gk ? withH : ""}${graphH}${matchH}${gk ? "" : withH}${trendH}${actH}</div>`, // GKはパフォーマンスをまとめのすぐ下に
+    html: `<div class="prw">${head}${sumH}${gk ? withH : ""}${graphH}${matchH}${sceneH}${gk ? "" : withH}${trendH}${actH}</div>`, // GKはパフォーマンスをまとめのすぐ下に
     bind(root) {
       preloadPdf();
       const pdf = root.querySelector('#prPdf'); if (pdf) pdf.onclick = () => printPlayer(pid);
