@@ -1493,3 +1493,15 @@ label.chk{display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer
 .pkhow{font-size:12.5px;margin:2px 0 4px}.pkbar .mu b{font-size:15px}
 .pksel{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0}.pkchip{display:inline-flex;align-items:center;gap:4px;background:#E3EEFF;color:#0B2D6B;border-radius:14px;padding:2px 4px 2px 10px;font-size:13px;font-weight:700}
 .pkchip button{border:0;background:#0B2D6B;color:#fff;border-radius:50%;width:20px;height:20px;line-height:20px;padding:0;cursor:pointer;font-size:12px}
+/* 試合ごと・相手ごと（2026-10-22） */
+.anres{display:inline-block;min-width:24px;padding:1px 6px;border-radius:6px;background:#EEF1F6;color:#3A4558}.anres.w{background:#1F5FBF;color:#fff}.anres.l{background:#C8312B;color:#fff}
+td .anres+small{display:block;font-size:11px;color:#7A8699}
+.antb td.anoff{color:#B8C1CF}.antb td.anzero{color:#A9B3C2}
+.angap{color:#F6C64A;font-weight:700}
+.anbym tbody td{font-variant-numeric:tabular-nums}
+.antrend{background:#fff;border:1px solid #E3E8F0;border-radius:12px;padding:10px 14px;margin:8px 0 12px}
+.antrend .anlg{display:flex;gap:16px;align-items:center;font-size:13px;font-weight:700;color:#3A4558}.antrend .anlg i{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}.antrend .anlg b{margin-left:auto;color:#0B2D6B;font-size:15px}
+.antrsvg{width:100%;height:auto;display:block}
+.anopps{display:block;font-size:11px;color:#7A8699;font-weight:400;white-space:normal;line-height:1.35;margin-top:2px}
+.ansubs .anlab{font-size:12px;color:#7A8699;align-self:center;margin-right:2px}
+.antb.antrt tfoot td{position:static}.antb.antrt tfoot tr+tr td{border-top:1px solid #C9D3E3}

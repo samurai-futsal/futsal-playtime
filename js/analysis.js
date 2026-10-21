@@ -21,17 +21,17 @@ import { bigBtn, bindBig, fitBox } from './bigview.js';
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const PCOL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const MCOL = ['#1F5FBF', '#E0832B', '#2E8B57', '#8A5AC8', '#C8312B', '#0E8A9E', '#B5600F', '#5F6B80'];
-const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '局面別'], ['pace', 'マッチ・ペース']];
+const TABS = [['time', '出場時間'], ['bym', '試合ごと'], ['byo', '相手ごと'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '局面別'], ['pace', 'マッチ・ペース']];
 // 2026-10-16：この2つだけ。2026-10-17（決8）：「5×4/4×5を除く」→「数的同数だけ」（5×4・4×5と、両チームの退場の時間帯を除く）
 const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く']];
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
-const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '', opp: '', rg: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
+const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '', opp: '', rg: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', msub: 'time', tmet: 'shot', osub: 'rg', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
 let fromHash = null;
 let paceSel = null;
 const anHl = new Set(); // 表の強調している行（開いている間だけ）
 if (!['all', 'ex'].includes(A.pp)) A.pp = 'all';
-const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub, tview, bin, rows } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub, tview, bin, rows })); } catch {} };
+const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, bin, rows } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, bin, rows })); } catch {} };
 
 // 分析できる試合（試合中・終わった試合）
 const candidates = () => S.matches.filter((m) => !m.deleted && (m.status === 'playing' || m.status === 'done'))
@@ -103,14 +103,17 @@ function calcOne(m, per, st, M, evC) {
 }
 
 // 対戦成績（複数の試合を選んだとき。2026-10-22）：勝ち・引き分け・負けと、得点・失点（試合全体。PK戦は勝ち負けだけ）
+// 1試合の勝ち・引き分け・負け（試合全体の得点・失点。PK戦は勝ち負けに入れる）
+function resOf(x) {
+  const ev = x.evs.filter((e) => !e.deleted); const a = ev.filter((e) => e.kind === 'goal').length, b = ev.filter((e) => e.kind === 'conc').length; const pk = x.m.pk;
+  const pkd = pk && pk.own != null && pk.opp != null && pk.own !== pk.opp;
+  const r = a > b ? 'w' : a < b ? 'l' : pkd ? (pk.own > pk.opp ? 'w' : 'l') : 'd';
+  return { r, gf: a, ga: b, pk: a === b && pkd ? `PK ${pk.own}−${pk.opp}` : '' };
+}
 function recLine(ok) {
   if (ok.length < 2) return '';
   let w = 0, d = 0, l = 0, gf = 0, ga = 0;
-  for (const x of ok) {
-    const ev = x.evs.filter((e) => !e.deleted); const a = ev.filter((e) => e.kind === 'goal').length, b = ev.filter((e) => e.kind === 'conc').length;
-    gf += a; ga += b; const pk = x.m.pk;
-    if (a > b) w++; else if (a < b) l++; else if (pk && pk.own != null && pk.opp != null && pk.own !== pk.opp) { if (pk.own > pk.opp) w++; else l++; } else d++;
-  }
+  for (const x of ok) { const o = resOf(x); gf += o.gf; ga += o.ga; if (o.r === 'w') w++; else if (o.r === 'l') l++; else d++; }
   return `<div class="anrec"><b>対戦成績</b><span>${ok.length}試合</span><span class="w">${w}勝</span><span>${d}分</span><span class="l">${l}敗</span><span>得点 <b>${gf}</b> − 失点 <b>${ga}</b></span><small>PK戦の勝ち負けは勝ち・負けに入れる。得点・失点は試合全体</small></div>`;
 }
 
@@ -180,12 +183,104 @@ export function vAnalysis(r, mFrom = null) {
   if (pre) body = `<div class="card empty">この試合はまだ記録がありません。MATCH PLAYで試合を始めると、ここに出ます<div class="mt"><a class="btn" href="#/m/${mFrom.id}">‹ 試合ページ</a></div></div>`;
   else if (!ms.length) body = skippedLive ? `<div class="card empty">対象の試合は試合中の ${skippedLive}試合だけです。試合が終わると含めます（試合中の試合は「この試合」で見られます）</div>` : '<div class="card empty">対象の試合がありません（試合が始まると分析できます）</div>';
   else if (A.tab === 'time') body = timeTab(ctx);
+  else if (A.tab === 'bym') body = byMatchTab(ctx);
+  else if (A.tab === 'byo') body = byOppTab(ctx);
   else if (A.tab === 'stats') body = statsTab(ctx);
   else if (A.tab === 'set') body = setTab(ctx);
   else if (A.tab === 'pp') body = ppTab(ctx);
   else if (A.tab === 'type') body = typeTab(ctx);
   else body = paceTab(ctx);
   return { active: 'analysis', html: `<div class="anw">${head}<div class="anbody">${body}</div></div>`, bind: bindAnalysis };
+}
+
+// ---------- 試合ごと（2026-10-22）：選手×試合の出場時間、チームの試合ごとの推移 ----------
+const byDate = (ok) => [...ok].sort((a, b) => (a.m.date || '').localeCompare(b.m.date || '') || (a.m.kickoff || '').localeCompare(b.m.kickoff || ''));
+const dayN = (d) => (d ? Math.round(Date.parse(d + 'T00:00:00Z') / 86400000) : null);
+const subBtns = (key, list) => `<div class="ansubs">${list.map(([v, l]) => `<button class="${A[key] === v ? 'on' : ''}" data-aset="${key}" data-v="${v}">${l}</button>`).join('')}</div>`;
+const condTxt = () => [A.per !== 'all' ? periodLabel(A.per) + 'だけ' : '', A.pp !== 'all' ? '数的同数だけ' : ''].filter(Boolean).join('・');
+const need2 = (what) => `<div class="card empty">${what}は、2試合以上を見るときに出ます。上の「全試合」か「選んだ試合」に切り替えてください</div>`;
+const resMark = (o) => `<b class="anres ${o.r}">${o.r === 'w' ? '勝' : o.r === 'l' ? '負' : '分'}</b>${o.pk ? `<small>${o.pk}</small>` : ''}`;
+function mHead(x, prev) {
+  let gap = '';
+  if (prev) { const a = dayN(prev.m.date), b = dayN(x.m.date); if (a != null && b != null) gap = b === a ? '同じ日' : b - a === 1 ? '連日' : `中${b - a - 1}日`; }
+  return `<small>${fmtShort(x.m.date)}</small><br>vs ${esc(x.m.opponent || '')}${gap ? `<br><small class="angap">${gap}</small>` : ''}`;
+}
+function byMatchTab(ctx) {
+  if (ctx.ok.length < 2) return need2('試合ごとの表');
+  const subs = A.print ? '' : subBtns('msub', [['time', '選手×試合の出場時間'], ['team', 'チームの推移']]);
+  return subs + (A.msub === 'team' ? teamTrend(ctx) : playerByMatch(ctx));
+}
+export function playerByMatch(ctx) {
+  const xs = byDate(ctx.ok); const { P } = ctx;
+  const cell = (x, pid) => (x.m.members?.[pid] ? (x.D[pid]?.time || 0) : null);
+  const tot = (pid) => xs.reduce((s, x) => s + (cell(x, pid) || 0), 0);
+  const gp = (pid) => xs.filter((x) => (cell(x, pid) || 0) > 0).length;
+  const key = A.sort.col; const val = (pid) => (key === 'tot' ? tot(pid) : key === 'gp' ? gp(pid) : key === 'avg' ? (gp(pid) ? tot(pid) / gp(pid) : -1) : key.startsWith('m:') ? cell(xs.find((x) => x.m.id === key.slice(2)), pid) ?? -1 : 0);
+  let list = ctx.pids.slice();
+  if (key) list.sort((a, b) => (val(b) - val(a)) * (A.sort.dir === 'asc' ? -1 : 1));
+  list = [...list.filter((p) => ctx.pos[p] !== 'GK'), ...list.filter((p) => ctx.pos[p] === 'GK')];
+  const mx = Math.max(1, ...xs.map((x) => x.len));
+  const ic = (k) => `<i>${A.sort.col === k ? (A.sort.dir === 'asc' ? '▲' : '▼') : A.print ? '' : '⇅'}</i>`;
+  const th = xs.map((x, i) => `<th class="srt ${key === 'm:' + x.m.id ? 'on' : ''}" data-sort="m:${x.m.id}">${mHead(x, xs[i - 1])}${ic('m:' + x.m.id)}</th>`).join('');
+  const rows = list.map((pid) => {
+    const tds = xs.map((x) => { const v = cell(x, pid); if (v == null) return '<td class="anoff">—</td>'; if (!v) return '<td class="anzero">0:00</td>';
+      const a = Math.min(1, v / mx); return `<td style="background:rgba(31,95,191,${(0.06 + a * 0.42).toFixed(2)})${a > 0.62 ? ';color:#fff' : ''}"><b>${mmss(v)}</b></td>`; }).join('');
+    const g = gp(pid), t = tot(pid);
+    return `<tr class="${t ? '' : 'zero'}"><td class="apl"><span class="pnm">${badge(ctx, pid)}<span>${name(pid)}</span></span></td>${tds}<td class="sum"><b>${mmss(t)}</b></td><td>${g}</td><td>${g ? mmss(t / g) : '—'}</td></tr>`;
+  }).join('');
+  const foot = `<tr class="tot"><td class="apl">試合の時間</td>${xs.map((x) => `<td>${mmss(x.len)}</td>`).join('')}<td><b>${mmss(xs.reduce((s, x) => s + x.len, 0))}</b></td><td></td><td></td></tr>`;
+  const c = condTxt();
+  return `<div class="antbl"><table class="antb anauto anbym" data-nmx="1.33"><thead><tr><th class="srt apl ${key ? '' : 'on'}" data-sort="">選手<i>${A.print ? '' : key ? '⇅' : '背番号順'}</i></th>${th}<th class="srt ${key === 'tot' ? 'on' : ''}" data-sort="tot">合計${ic('tot')}</th><th class="srt ${key === 'gp' ? 'on' : ''}" data-sort="gp">出場<br>試合数${ic('gp')}</th><th class="srt ${key === 'avg' ? 'on' : ''}" data-sort="avg">出場した試合の<br>平均${ic('avg')}</th></tr></thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>
+    <p class="anhint">試合は日付の古い順。${c ? c + 'の時間。' : ''}色が濃いほど、その試合で長く出た（試合の時間に対して）。「—」＝その試合のメンバー外、薄い「0:00」＝メンバーだが出ていない。連日＝前の日にも試合、中n日＝前の試合との間に空いた日数。出場した試合の平均＝合計÷出場試合数。${A.print ? 'GKは一番下。' : '見出しを押すと並べ替え、GKはいつも一番下。'}</p>`;
+}
+const TMET = [['goal', '得点・失点', (a, b, x) => [x.R.rangeScore.own, x.R.rangeScore.opp]], ['shot', 'シュート', (a, b) => [a.shots, b.shots]], ['in', '枠内', (a, b) => [a.in, b.in]], ['ent', 'Z4・SZ進入', (a, b) => [a.z4 + a.szE, b.z4 + b.szE]],
+  ['fsp', 'FINISH SET PLAY', (a, b) => [a.fsp, b.fsp]], ['rl', 'リカバリー・ロスト', (a, b, x) => [x.R.rec, x.R.lost]], ['foul', 'ファール', (a, b) => [a.foul, b.foul]]];
+function trendSvg(xs, met) {
+  const [, label, f] = TMET.find((t) => t[0] === met) || TMET[1];
+  const vals = xs.map((x) => f(x.R.A, x.R.B, x));
+  const W = 1000, H = 250, L = 90, R = 70, T = 18, B = 46; const n = xs.length;
+  const max = Math.max(1, ...vals.flat()); const step = max <= 5 ? 1 : max <= 12 ? 2 : max <= 30 ? 5 : max <= 60 ? 10 : 20; const top = Math.ceil(max / step) * step;
+  const X = (i) => L + (n === 1 ? (W - L - R) / 2 : i * (W - L - R) / (n - 1)); const Y = (v) => T + (H - T - B) * (1 - v / top);
+  let g = ''; for (let v = 0; v <= top; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#E3E8F0"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="12" fill="#7A8699">${v}</text>`;
+  const rl = met === 'rl';
+  const line = (k, col) => `<polyline fill="none" stroke="${col}" stroke-width="3" points="${vals.map((v, i) => `${X(i)},${Y(v[k])}`).join(' ')}"/>` + vals.map((v, i) => `<circle cx="${X(i)}" cy="${Y(v[k])}" r="5" fill="${col}"/><text x="${X(i)}" y="${Y(v[k]) + (k ? 18 : -10)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v[k]}</text>`).join('');
+  const xl = xs.map((x, i) => `<text x="${X(i)}" y="${H - B + 20}" text-anchor="middle" font-size="12" fill="#3A4558">${fmtShort(x.m.date)}</text><text x="${X(i)}" y="${H - B + 36}" text-anchor="middle" font-size="12" fill="#3A4558">vs ${esc((x.m.opponent || '').slice(0, 8))}</text>`).join('');
+  const own = esc(S.team?.name || '自チーム');
+  return `<div class="antrend"><div class="anlg"><span><i style="background:#1F5FBF"></i>${rl ? 'リカバリー' : own}</span><span><i style="background:#C8312B"></i>${rl ? 'ロスト' : '相手'}</span><b>${label}</b></div><svg viewBox="0 0 ${W} ${H}" class="antrsvg">${g}${line(1, '#C8312B')}${line(0, '#1F5FBF')}${xl}</svg></div>`;
+}
+function teamTrend(ctx) {
+  const xs = byDate(ctx.ok); const n = xs.length;
+  const met = A.print ? '' : `<div class="ansubs"><span class="anlab">グラフ</span>${TMET.map(([k, l]) => `<button class="${A.tmet === k ? 'on' : ''}" data-aset="tmet" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const pair = (a, b, sa, sb) => `<td class="w">${a}${sa != null ? `<small>（${sa}）</small>` : ''}</td><td class="o">${b}${sb != null ? `<small>（${sb}）</small>` : ''}</td>`;
+  const rows = xs.map((x) => { const a = x.R.A, b = x.R.B, o = resOf(x); const sc = x.R.rangeScore;
+    return `<tr><td class="apl">${fmtShort(x.m.date)}</td><td class="apl">vs ${esc(x.m.opponent || '')}</td><td>${resMark(o)}</td><td><b>${sc.own}−${sc.opp}</b></td>${pair(a.shots, b.shots, a.sz, b.sz)}${pair(a.in, b.in)}${pair(a.z4 + a.szE, b.z4 + b.szE)}${pair(a.fsp, b.fsp)}<td>${x.R.rec}</td><td>${x.R.lost}</td>${pair(a.foul, b.foul)}</tr>`; }).join('');
+  const T = ctx.team, a = T.A || {}, b = T.B || {}; const av = (v) => (n ? (v / n).toFixed(1) : '—');
+  const tl = (lab, f) => `<tr class="tot"><td class="apl" colspan="3">${lab}</td><td><b>${f(T.score.own)}−${f(T.score.opp)}</b></td>${pair(f(a.shots), f(b.shots), f(a.sz), f(b.sz))}${pair(f(a.in), f(b.in))}${pair(f(a.z4 + a.szE), f(b.z4 + b.szE))}${pair(f(a.fsp), f(b.fsp))}<td>${f(T.rec)}</td><td>${f(T.lost)}</td>${pair(f(a.foul), f(b.foul))}</tr>`;
+  const c = condTxt();
+  return `${met}<div class="antime">${trendSvg(xs, A.tmet)}<div class="antbl"><table class="antb anauto antrt"><thead><tr><th class="apl">日付</th><th class="apl">相手</th><th>結果</th><th>スコア${c ? `<br><small>${c}</small>` : ''}</th><th class="w">シュート<br><small>（SZ内）</small></th><th class="o">被シュート<br><small>（SZ内）</small></th><th class="w">枠内</th><th class="o">被枠内</th><th class="w">Z4・SZ<br>進入</th><th class="o">被Z4・SZ<br>進入</th><th class="w">FSP<br>AT</th><th class="o">FSP<br>DF</th><th>リカバ<br>リー</th><th>ロスト</th><th class="w">ファール</th><th class="o">被ファール</th></tr></thead><tbody>${rows}</tbody><tfoot>${tl('合計', String)}${tl('1試合平均', av)}</tfoot></table></div>
+    <p class="anhint">試合は日付の古い順。結果は試合全体（PK戦は勝ち・負けに入れる）。${c ? `スコアとほかの数は${c}。` : ''}シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。FSP＝FINISH SET PLAY。</p></div>`;
+}
+// ---------- 相手ごと（2026-10-22）：相手の地域ごと・相手チームごとの成績 ----------
+function byOppTab(ctx) {
+  const nat = isNational(); const mode = nat && A.osub !== 'opp' ? 'rg' : 'opp';
+  return (A.print || !nat ? '' : subBtns('osub', [['rg', '相手の地域ごと'], ['opp', '相手チームごと']])) + oppTable(ctx, mode);
+}
+export function oppTable(ctx, mode) {
+  const groups = new Map();
+  for (const x of byDate(ctx.ok)) { const k = mode === 'rg' ? (regionOf(x.m.opponent) || '地域が未設定') : (x.m.opponent || '（名前なし）'); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
+  let keys = [...groups.keys()];
+  keys = mode === 'rg' ? REGIONS.filter((r) => groups.has(r)).concat(keys.filter((k) => !REGIONS.includes(k))) : keys.sort((p, q) => groups.get(q).length - groups.get(p).length || p.localeCompare(q, 'ja'));
+  const row = (lab, list, sub, cls = '') => {
+    let w = 0, d = 0, l = 0, gf = 0, ga = 0, sh = 0, osh = 0, en = 0, oen = 0, sgf = 0, sga = 0;
+    for (const x of list) { const o = resOf(x); gf += o.gf; ga += o.ga; o.r === 'w' ? w++ : o.r === 'l' ? l++ : d++; const a = x.R.A, b = x.R.B; sh += a.shots; osh += b.shots; en += a.z4 + a.szE; oen += b.z4 + b.szE; sgf += x.R.rangeScore.own; sga += x.R.rangeScore.opp; }
+    const n = list.length; const av = (v) => (v / n).toFixed(1);
+    return `<tr class="${cls}"><td class="apl"><b>${lab}</b>${sub ? `<small class="anopps">${sub}</small>` : ''}</td><td><b>${n}</b></td><td class="w">${w}</td><td>${d}</td><td class="o">${l}</td><td><b>${gf}−${ga}</b></td><td class="w">${av(sgf)}</td><td class="o">${av(sga)}</td><td class="w">${av(sh)}</td><td class="o">${av(osh)}</td><td class="w">${av(en)}</td><td class="o">${av(oen)}</td></tr>`;
+  };
+  const oppsOf = (list) => { const m = new Map(); list.forEach((x) => m.set(x.m.opponent, (m.get(x.m.opponent) || 0) + 1)); return [...m].map(([nm, k]) => esc(nm) + (k > 1 ? `×${k}` : '')).join('・'); };
+  const body = keys.map((k) => row(esc(k), groups.get(k), mode === 'rg' ? oppsOf(groups.get(k)) : '')).join('');
+  const c = condTxt();
+  return `<div class="antbl"><table class="antb anauto anopp"><thead><tr class="grp"><th></th><th colspan="5" class="g">対戦成績（試合全体）</th><th colspan="6" class="g">1試合平均${c ? `（${c}）` : ''}</th></tr><tr><th class="apl">${mode === 'rg' ? '相手の地域' : '相手チーム'}</th><th>試合</th><th class="w">勝</th><th>分</th><th class="o">負</th><th>得点−失点</th><th class="w">得点</th><th class="o">失点</th><th class="w">シュート</th><th class="o">被シュート</th><th class="w">Z4・SZ<br>進入</th><th class="o">被Z4・SZ<br>進入</th></tr></thead><tbody>${body}</tbody><tfoot>${row('合計', ctx.ok, '', 'tot')}</tfoot></table></div>
+    <p class="anhint">${mode === 'rg' ? '地域は相手の名前から自動で決めたもの（試合の選び方の画面の「地域を直す」で直せます）。地域の下は、その地域の相手と試合数。' : ''}勝・分・負と得点−失点は試合全体（PK戦は勝ち・負けに入れる）。1試合平均は、上の切り替え（前半・後半・数的同数だけ）に合わせた数。シュートは得点を含む（OGは除く）。進入＝Z4進入とSZ進入の合計。</p>`;
 }
 
 // ---------- 数字の見せ方 ----------
@@ -445,6 +540,7 @@ function bindAnalysis(root) {
   const rv = root.querySelector('#anExpRv'); if (rv) rv.onclick = () => { const ms = selected(); if (ms.length) printReviews(ms); };
   const tp = root.querySelector('#anTimePdf'); if (tp) tp.onclick = () => { const ms = selected(); if (ms.length) printTime(ms); };
   const np = root.querySelector('#anNoPP'); if (np) np.onchange = () => { A.pp = np.checked ? 'ex' : 'all'; keep(); render(); };
+  root.querySelectorAll('[data-aset]').forEach((b) => b.onclick = () => { A[b.dataset.aset] = b.dataset.v; A.sort = { col: '', dir: 'desc' }; keep(); render(); });
   root.querySelectorAll('[data-tview]').forEach((b) => b.onclick = () => { A.tview = b.dataset.tview; keep(); render(); });
   root.querySelectorAll('[data-bin-set]').forEach((b) => b.onclick = () => { A.bin = +b.dataset.binSet; keep(); render(); });
   root.querySelectorAll('[data-prow-set]').forEach((b) => b.onclick = () => { const k = b.dataset.prowSet; const r = new Set(A.rows); r.has(k) ? r.delete(k) : r.add(k); A.rows = Object.keys(PACE_ROWS).filter((x) => r.has(x)); keep(); render(); });
@@ -716,6 +812,8 @@ export function reportPages(ms, agg = 'sum', { perMatch = true } = {}) {
     if (multi) {
       const who = `${ms.length}試合の${agg === 'avg' ? '1試合平均' : '合計'}`;
       pages.push({ title: '試合ごとの結果と合計・1試合平均', who: `${ms.length}試合`, html: summaryPage(all.ctx, perMatch) });
+      pages.push({ title: '選手×試合の出場時間', who: `${ms.length}試合`, html: playerByMatch(all.ctx) });
+      { const mode = isNational() ? 'rg' : 'opp'; const ks = new Set(ms.map((m) => (mode === 'rg' ? regionOf(m.opponent) : m.opponent))); if (ks.size > 1) pages.push({ title: mode === 'rg' ? '相手の地域ごとの成績' : '相手チームごとの成績', who: `${ms.length}試合`, html: oppTable(all.ctx, mode) }); }
       pushCommon(pages, all.ctx, who);
       if (!perMatch) return pages;
     }
