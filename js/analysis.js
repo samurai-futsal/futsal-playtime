@@ -197,14 +197,14 @@ function table(ctx, cols, { note = '' } = {}) {
   list = [...list.filter((p) => ctx.pos[p] !== 'GK'), ...list.filter((p) => ctx.pos[p] === 'GK')];
   const groups = []; for (const c of cols) { const g = c.grp || ''; if (groups.length && groups[groups.length - 1].g === g) groups[groups.length - 1].n++; else groups.push({ g, n: 1 }); }
   const hasGrp = groups.some((g) => g.g);
-  const th = cols.map((c) => `<th class="srt ${A.sort.col === c.k ? 'on' : ''} ${c.cls || ''}" data-sort="${c.k}">${c.h}<i>${A.sort.col === c.k ? (A.sort.dir === 'asc' ? '▲' : '▼') : ''}</i></th>`).join('');
+  const th = cols.map((c) => `<th class="srt ${A.sort.col === c.k ? 'on' : ''} ${c.cls || ''}" data-sort="${c.k}">${c.h}<i>${A.sort.col === c.k ? (A.sort.dir === 'asc' ? '▲' : '▼') : A.print ? '' : '⇅'}</i></th>`).join('');
   const rows = list.map((pid) => {
     const d = P[pid]; const low = d.time < ref();
     return `<tr class="${d.time ? '' : 'zero'} ${low && d.time ? 'low' : ''}"><td class="apl"><span class="pnm">${badge(ctx, pid)}<span>${name(pid)}</span></span></td>${cols.map((c) => `<td class="${c.cls || ''} ${c.pm && low ? 'ref' : ''}">${c.f(c.v(d, pid), d)}</td>`).join('')}</tr>`;
   }).join('');
   const tot = `<tr class="tot"><td class="apl">チーム合計</td>${cols.map((c) => `<td class="${c.cls || ''}">${c.tot ? c.tot(ctx.team) : ''}</td>`).join('')}</tr>`;
   const nmw = Math.max(2, ...list.map((pid) => (playerById(pid)?.last || '').length + (playerById(pid)?.status === 'former' ? 3 : 0)));
-  return `<div class="antbl"><table class="antb anauto" data-nmx="1.33" style="--nmw:${nmw}"><thead>${hasGrp ? `<tr class="grp"><th></th>${groups.map((g) => `<th colspan="${g.n}" class="${g.g ? 'g' : ''}">${g.g}</th>`).join('')}</tr>` : ''}<tr><th class="srt apl ${A.sort.col ? '' : 'on'}" data-sort="">選手</th>${th}</tr></thead><tbody>${rows}</tbody><tfoot>${tot}</tfoot></table></div>
+  return `<div class="antbl"><table class="antb anauto" data-nmx="1.33" style="--nmw:${nmw}"><thead>${hasGrp ? `<tr class="grp"><th></th>${groups.map((g) => `<th colspan="${g.n}" class="${g.g ? 'g' : ''}">${g.g}</th>`).join('')}</tr>` : ''}<tr><th class="srt apl ${A.sort.col ? '' : 'on'}" data-sort="">選手<i>${A.print ? '' : A.sort.col ? '⇅' : '背番号順'}</i></th>${th}</tr></thead><tbody>${rows}</tbody><tfoot>${tot}</tfoot></table></div>
     <p class="anhint">${note}${note ? '　' : ''}薄い数字＝出場時間が${mmss(ref())}未満で、40分あたり・関与率・チームとの差は参考値。${A.print ? 'GKは一番下。' : '見出しを押すと並べ替え（多い順 → 少ない順）、GKはいつも一番下。'}</p>`;
 }
 
@@ -546,7 +546,8 @@ function setTab(ctx) {
     <td class="w">${r.sh}</td><td class="o">${r.osh}</td><td class="w">${r.gf}</td><td class="o">${r.ga}</td><td><b>${sgn(r.gf - r.ga)}</b></td><td class="w">${r.en}</td><td class="o">${r.oen}</td>
     <td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.sh - r.osh, r.time)}</td><td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${label ? '—' : pm(r.en - r.oen, r.time)}</td>
     <td class="pmc ${!label && r.time < ref ? 'ref' : ''}">${r.sh + r.osh ? Math.round(r.sh / (r.sh + r.osh) * 100) + '%' : '—'}</td><td class="pmc rel ${!label && r.time < ref ? 'ref' : ''}">${label || !(r.sh + r.osh) ? '—' : `<b>${sgn(Math.round((r.sh - r.exp) / (r.sh + r.osh) * 100))}</b>`}</td></tr>`;
-  const th = (k, h, cls = '') => `<th class="srt ${A.sort.col === k ? 'on' : ''} ${cls}" data-sort="${k}">${h}</th>`;
+  // 並べ替えられる見出しには ⇅（並べ替え中は ▼ 多い順・▲ 少ない順）。2026-10-22
+  const th = (k, h, cls = '') => `<th class="srt ${A.sort.col === k ? 'on' : ''} ${cls}" data-sort="${k}">${h}<i>${A.sort.col === k ? (A.sort.dir === 'asc' ? '▲' : '▼') : A.print ? '' : '⇅'}</i></th>`;
   const head = `<tr><th>順位</th><th>FP4人のセット</th>${th('time', '出場時間')}<th>回数</th>${ctx.ok.length > 1 ? '<th>試合数</th>' : ''}${th('sh', 'シュート', 'w')}${th('osh', '被シュート', 'o')}${th('gf', '得点', 'w')}${th('ga', '失点', 'o')}${th('pm', '±')}${th('en', 'Z4・SZ<br>進入', 'w')}${th('oen', '被Z4・SZ<br>進入', 'o')}${th('dsh', 'シュート差<br>／40分')}${th('den', '進入差<br>／40分')}${th('srate', 'シュート<br>関与率')}${th('srel', 'チーム<br>との差')}</tr>`;
   const has = (r) => r.time > 0 || r.sh || r.osh || r.gf || r.ga || r.en || r.oen;
   // 組が多いとき（シーズン全体など）：画面は上から50組と「もっと見る」、複数試合のマッチレポートは上から30組と
