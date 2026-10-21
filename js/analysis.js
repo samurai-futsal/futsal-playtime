@@ -51,7 +51,8 @@ let skippedLive = 0;
 function selected() {
   skippedLive = 0;
   if (A.scope === 'match') { const m = candidates().find((x) => x.id === A.matchId) || candidates()[0]; if (m) A.matchId = m.id; return m ? [m] : []; }
-  const list = A.scope === 'pick' ? (() => { const set = new Set(A.picked || []); return filtered().filter((m) => set.has(m.id)); })() : filtered();
+  // 選んだ試合：チェックした試合そのまま（絞り込みの条件は、探すためだけに使う。条件を変えて足したものも残す。2026-10-22）
+  const list = A.scope === 'pick' ? (() => { const set = new Set(A.picked || []); return candidates().filter((m) => set.has(m.id)); })() : filtered();
   const done = list.filter((m) => m.status !== 'playing'); skippedLive = list.length - done.length;
   return done;
 }
@@ -163,7 +164,7 @@ export function vAnalysis(r, mFrom = null) {
   const cand = pre ? [mFrom, ...candidates()] : candidates();
   const seg = (key, list) => `<span class="anseg">${list.map(([v, l, t]) => `<button class="${A[key] === v ? 'on' : ''}" data-set="${key}" data-v="${v}"${t ? ` title="${t}"` : ''}>${l}</button>`).join('')}</span>`;
   const one = A.scope === 'match' ? `<select id="anMatch" class="ansel" data-fresh="1">${cand.map((m) => `<option value="${m.id}" ${m.id === A.matchId ? 'selected' : ''}>${fmtShort(m.date)} vs ${esc(m.opponent)}</option>`).join('')}</select>` : '';
-  const fl = [A.f.opp, A.f.rg && isNational() && `${A.f.rg}の相手`].filter(Boolean).join('・');
+  const fl = A.scope === 'pick' ? '' : [A.f.opp, A.f.rg && isNational() && `${A.f.rg}の相手`].filter(Boolean).join('・');
   const multi = A.scope !== 'match' ? `<button class="btn sm" id="anPick">${A.scope === 'pick' ? '試合を選ぶ' : '絞り込み'}${fl ? `：${esc(fl)}` : ''}（${ms.length}試合）</button>` : '';
   const todoN = ok.filter((x) => x.todo).length; const noOpp = ok.filter((x) => !x.hasOpp).length;
   const head = `<div class="anhead">
@@ -458,15 +459,24 @@ function bindAnalysis(root) {
   });
 }
 function pickModal() {
-  // 2026-10-22：絞り込み（全試合）でも選んだ試合でも、チェックで1試合ずつ選べる。全部にチェックなら「全試合」、外したものがあれば「選んだ試合」になる
+  // 2026-10-22：条件で絞り込むだけ（全試合）か、チェックで選ぶ（選んだ試合）。チェックは条件を変えても残り、足し合わせられる
   const f = A.f; const acts = S.activities.filter((a) => !a.deleted).sort((a, b) => (b.start || '').localeCompare(a.start || ''));
   const o = (list, v) => `<option value="">すべて</option>${list.map(([k, l]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
-  const chk = new Set(A.scope === 'pick' ? (A.picked || []) : candidates().map((m) => m.id));
+  // 2つの選び方：
+  //  ・条件だけ（チェックを触っていない）→ 条件に合う試合すべて＝「全試合」（絞り込み）
+  //  ・チェックで選ぶ → チェックした試合＝「選んだ試合」。条件は探すためだけで、条件を変えても、前にチェックした試合は残る
+  let manual = A.scope === 'pick';
+  const chk = new Set(manual ? (A.picked || []) : []);
   const nat = isNational();
+  const isOn = (id) => (manual ? chk.has(id) : true);
+  const toManual = () => { if (!manual) { manual = true; filtered().forEach((m) => chk.add(m.id)); } };
   const draw = (md) => {
     const list = filtered();
-    md.querySelector('#pkList').innerHTML = list.map((m) => `<label class="pkrow"><input type="checkbox" data-pk="${m.id}" ${chk.has(m.id) ? 'checked' : ''}><span class="d">${fmtShort(m.date)}</span><span class="nm"><b>vs ${esc(m.opponent)}</b><small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small></span><em>${esc(matchStatus(m))}</em></label>`).join('') || '<p class="mu">条件に合う試合はありません</p>';
-    const n = list.filter((m) => chk.has(m.id)).length; const c = md.querySelector('#pkCnt'); if (c) c.textContent = `${n} / ${list.length}試合を選んでいます`;
+    md.querySelector('#pkList').innerHTML = list.map((m) => `<label class="pkrow"><input type="checkbox" data-pk="${m.id}" ${isOn(m.id) ? 'checked' : ''}><span class="d">${fmtShort(m.date)}</span><span class="nm"><b>vs ${esc(m.opponent)}</b><small>${esc(activityById(m.activityId)?.name || '')}${m.category ? '・' + esc(m.category) : ''}</small></span><em>${esc(matchStatus(m))}</em></label>`).join('') || '<p class="mu">条件に合う試合はありません</p>';
+    const c = md.querySelector('#pkCnt');
+    if (c) c.innerHTML = manual ? `チェックした試合 <b>${candidates().filter((m) => chk.has(m.id)).length}</b>試合（この一覧の外も含む）` : `条件に合う <b>${list.length}</b>試合すべて`;
+    const sel = md.querySelector('#pkSel');
+    if (sel) sel.innerHTML = manual && chk.size ? candidates().filter((m) => chk.has(m.id)).map((m) => `<span class="pkchip">${fmtShort(m.date)} vs ${esc(m.opponent)}<button data-unpk="${m.id}" title="外す">×</button></span>`).join('') : '';
   };
   const md = openModal(`<h2>試合を絞り込む・選ぶ</h2>
     <div class="pkf"><label>活動<select data-f="act">${o(acts.map((a) => [a.id, `${a.name}（${fmtShort(a.start)}）`]), f.act)}</select></label>
@@ -475,22 +485,24 @@ function pickModal() {
       <label>期間<span class="pkd"><input type="date" data-f="from" value="${f.from}">〜<input type="date" data-f="to" value="${f.to}"></span></label>
       <label>相手チーム名<select data-f="opp">${o(opponents().map(([n, k]) => [n, `${n}（${k}試合）`]), f.opp)}</select></label>
       ${nat ? `<label>相手の地域<span class="pkd"><select data-f="rg">${o(REGIONS.map((r) => [r, r]), f.rg)}</select><button class="btn sm" id="pkRg" type="button">地域を直す</button></span></label>` : ''}</div>
-    <div class="row pkbar"><button class="btn sm" id="pkAll">すべて選ぶ</button><button class="btn sm" id="pkNone">すべて外す</button><span class="mu" id="pkCnt"></span></div>
+    <p class="mu pkhow">条件で絞り込むだけなら、そのまま「これで見る」。決まった試合だけ見たいときはチェックを付けてください（条件を変えながら、何試合でも足せます）。</p>
+    <div class="row pkbar"><button class="btn sm" id="pkAll">この一覧をすべて選ぶ</button><button class="btn sm" id="pkNone">この一覧をすべて外す</button><span class="mu" id="pkCnt"></span></div>
+    <div id="pkSel" class="pksel"></div>
     <div id="pkList" class="pklist"></div><div class="row end"><button class="btn" id="pkX">やめる</button><button class="btn pri" id="pkOk">これで見る</button></div>`, { wide: true });
   draw(md);
   md.addEventListener('change', (e) => {
     const t = e.target;
     if (t.dataset.f) { A.f[t.dataset.f] = t.value; draw(md); }
-    if (t.dataset.pk) { t.checked ? chk.add(t.dataset.pk) : chk.delete(t.dataset.pk); draw(md); }
+    if (t.dataset.pk) { toManual(); t.checked ? chk.add(t.dataset.pk) : chk.delete(t.dataset.pk); draw(md); }
   });
-  md.querySelector('#pkAll').onclick = () => { filtered().forEach((m) => chk.add(m.id)); draw(md); };
-  md.querySelector('#pkNone').onclick = () => { filtered().forEach((m) => chk.delete(m.id)); draw(md); };
+  md.addEventListener('click', (e) => { const u = e.target.closest('[data-unpk]'); if (u) { e.preventDefault(); chk.delete(u.dataset.unpk); draw(md); } });
+  md.querySelector('#pkAll').onclick = () => { toManual(); filtered().forEach((m) => chk.add(m.id)); draw(md); };
+  md.querySelector('#pkNone').onclick = () => { toManual(); filtered().forEach((m) => chk.delete(m.id)); draw(md); };
   const rg = md.querySelector('#pkRg'); if (rg) rg.onclick = () => { keep(); regionModal(pickModal); };
   md.querySelector('#pkX').onclick = closeModal;
   md.querySelector('#pkOk').onclick = () => {
-    const ids = filtered().map((m) => m.id); const sel = ids.filter((id) => chk.has(id));
-    if (!sel.length) return toast('試合を1つ以上選んでください');
-    if (sel.length === ids.length) A.scope = 'all'; else { A.scope = 'pick'; A.picked = sel; }
+    if (!manual) { if (!filtered().length) return toast('条件に合う試合がありません'); A.scope = 'all'; }
+    else { const sel = candidates().filter((m) => chk.has(m.id)).map((m) => m.id); if (!sel.length) return toast('試合を1つ以上選んでください'); A.scope = 'pick'; A.picked = sel; }
     keep(); closeModal(); render();
   };
 }

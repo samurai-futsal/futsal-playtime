@@ -1490,3 +1490,6 @@ a.mtile.mtlink{color:var(--ink);text-decoration:none}.mtlink .go{margin-left:aut
 .pkrow .nm{display:flex;flex-direction:column;min-width:0}.pkrow .nm b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pkrow .nm small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pkrow .d{color:#56607A;font-variant-numeric:tabular-nums}
 .pkbar{align-items:center;gap:8px}.pkbar .mu{margin-left:auto;font-size:13px;font-weight:700;color:#0B2D6B}
 label.chk{display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer}label.chk input{width:20px;height:20px}
+.pkhow{font-size:12.5px;margin:2px 0 4px}.pkbar .mu b{font-size:15px}
+.pksel{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0}.pkchip{display:inline-flex;align-items:center;gap:4px;background:#E3EEFF;color:#0B2D6B;border-radius:14px;padding:2px 4px 2px 10px;font-size:13px;font-weight:700}
+.pkchip button{border:0;background:#0B2D6B;color:#fff;border-radius:50%;width:20px;height:20px;line-height:20px;padding:0;cursor:pointer;font-size:12px}
