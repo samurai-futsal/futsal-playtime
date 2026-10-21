@@ -1530,3 +1530,5 @@ body.jpn .tile{border-top:4px solid #1B2550}
 @media (max-width:1240px){.bar .jbwm img:first-child{display:none}}
 @media (max-width:900px){.bar .jbwm{display:none}.bar .jbem img{height:32px}}
 .antrend .fsplg{flex-wrap:wrap;gap:6px 14px;margin-top:6px;font-weight:600}.antrend .fsplg .fspk i{width:10px;height:12px;border-radius:2px;margin-right:0}.antrend .fsplg .fspk i+i{margin-right:5px}.antrend .fsplg small{color:#7A8699;font-weight:400}
+.antr2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.antr2 .antrend{margin:8px 0 4px}.antr2h{margin:0 0 10px}
+@media (max-width:900px){.antr2{grid-template-columns:1fr}}

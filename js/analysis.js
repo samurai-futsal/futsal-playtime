@@ -28,7 +28,7 @@ const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と�
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
 const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '', opp: '', rg: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', msub: 'time', tmet: 'shot', osub: 'rg', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
-if (A.tmet === 'ent') A.tmet = 'z4'; // 2026-10-22：Z4進入とSZ進入を分けた
+if (A.tmet === 'z4' || A.tmet === 'sz') A.tmet = 'ent'; // 2026-10-22：Z4進入とSZ進入は1つのボタンで、グラフを横に並べる
 let fromHash = null;
 let paceSel = null;
 const anHl = new Set(); // 表の強調している行（開いている間だけ）
@@ -234,7 +234,7 @@ export function playerByMatch(ctx) {
   return `<div class="antbl"><table class="antb anauto anbym" data-nmx="1.33"><thead><tr><th class="srt apl ${key ? '' : 'on'}" data-sort="">選手<i>${A.print ? '' : key ? '⇅' : '背番号順'}</i></th>${th}<th class="srt ${key === 'tot' ? 'on' : ''}" data-sort="tot">合計${ic('tot')}</th><th class="srt ${key === 'gp' ? 'on' : ''}" data-sort="gp">出場<br>試合数${ic('gp')}</th><th class="srt ${key === 'avg' ? 'on' : ''}" data-sort="avg">出場した試合の<br>平均${ic('avg')}</th></tr></thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>
     <p class="anhint">試合は日付の古い順。${c ? c + 'の時間。' : ''}色が濃いほど、その試合で長く出た（試合の時間に対して）。「—」＝その試合のメンバー外、薄い「0:00」＝メンバーだが出ていない。連日＝前の日にも試合、中n日＝前の試合との間に空いた日数。出場した試合の平均＝合計÷出場試合数。${A.print ? 'GKは一番下。' : '見出しを押すと並べ替え、GKはいつも一番下。'}</p>`;
 }
-const TMET = [['goal', '得点・失点', (a, b, x) => [x.R.rangeScore.own, x.R.rangeScore.opp]], ['shot', 'シュート', (a, b) => [a.shots, b.shots]], ['in', '枠内', (a, b) => [a.in, b.in]], ['z4', 'Z4進入', (a, b) => [a.z4, b.z4]], ['sz', 'SZ進入', (a, b) => [a.szE, b.szE]],
+const TMET = [['goal', '得点・失点', (a, b, x) => [x.R.rangeScore.own, x.R.rangeScore.opp]], ['shot', 'シュート', (a, b) => [a.shots, b.shots]], ['in', '枠内', (a, b) => [a.in, b.in]], ['ent', 'Z4・SZ進入', (a, b) => [a.z4, b.z4]],
   ['fsp', 'FINISH SET PLAY', (a, b) => [a.fsp, b.fsp]], ['rl', 'リカバリー・ロスト', (a, b, x) => [x.R.rec, x.R.lost]], ['foul', 'ファール', (a, b) => [a.foul, b.foul]]];
 // 試合ごとの棒グラフ（2026-10-22：線から棒へ。試合ごとに、自チーム＝青と相手＝赤を並べる）
 // FINISH SET PLAY の種類（積み上げの順。下から）。FK は PK・第2PK を含む
@@ -243,17 +243,25 @@ const FSPC = { w: ['#0E3A8A', '#2F6FD0', '#6E9EE3', '#AFC9F0', '#E3EAF5'], o: ['
 function fspParts(s) { const t = s.fspT || [0, 0, 0, 0]; return [...t, Math.max(0, (s.fsp || 0) - t.reduce((a, b) => a + b, 0))]; }
 function trendSvg(xs, met) {
   if (met === 'fsp') return fspSvg(xs);
+  // Z4進入とSZ進入：2つのグラフを横に並べる。目盛りをそろえて、高さで見比べられるように（2026-10-22）
+  if (met === 'ent') {
+    const z4 = xs.map((x) => [x.R.A.z4, x.R.B.z4]), sz = xs.map((x) => [x.R.A.szE, x.R.B.szE]);
+    const top = Math.max(1, ...z4.flat(), ...sz.flat());
+    return `<div class="antr2">${barsSvg(xs, z4, 'Z4進入', top)}${barsSvg(xs, sz, 'SZ進入', top)}</div><p class="anhint antr2h">2つのグラフは目盛りをそろえています（高さでZ4進入とSZ進入を見比べられます）</p>`;
+  }
   const [, label, f] = TMET.find((t) => t[0] === met) || TMET[1];
-  const vals = xs.map((x) => f(x.R.A, x.R.B, x));
+  return barsSvg(xs, xs.map((x) => f(x.R.A, x.R.B, x)), label, 0, met === 'rl');
+}
+function barsSvg(xs, vals, label, maxV = 0, rl = false) {
   const n = xs.length; const L = 46, R = 16, T = 22, B = 46; const slot = Math.max(70, Math.min(150, 940 / n)); const W = L + R + slot * n, H = 260;
-  const max = Math.max(1, ...vals.flat()); const step = max <= 5 ? 1 : max <= 12 ? 2 : max <= 30 ? 5 : max <= 60 ? 10 : 20; const top = Math.ceil(max / step) * step;
+  const max = Math.max(1, maxV, ...vals.flat()); const step = max <= 5 ? 1 : max <= 12 ? 2 : max <= 30 ? 5 : max <= 60 ? 10 : 20; const top = Math.ceil(max / step) * step;
   const Y = (v) => T + (H - T - B) * (1 - v / top);
   let g = ''; for (let v = 0; v <= top; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#E3E8F0"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="12" fill="#7A8699">${v}</text>`;
   const bw = Math.min(34, slot * 0.32);
   const bars = vals.map((v, i) => { const cx = L + slot * (i + 0.5);
     return [[0, '#1F5FBF', cx - bw - 1], [1, '#C8312B', cx + 1]].map(([k, col, x]) => `<rect x="${x}" y="${Y(v[k])}" width="${bw}" height="${Math.max(0, Y(0) - Y(v[k]))}" rx="3" fill="${col}"/><text x="${x + bw / 2}" y="${Y(v[k]) - 5}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v[k]}</text>`).join('')
       + `<text x="${cx}" y="${H - B + 18}" text-anchor="middle" font-size="12" fill="#3A4558">${fmtShort(xs[i].m.date)}</text><text x="${cx}" y="${H - B + 34}" text-anchor="middle" font-size="12" fill="#3A4558">vs ${esc((xs[i].m.opponent || '').slice(0, Math.max(4, Math.floor(slot / 13))))}</text>`; }).join('');
-  const rl = met === 'rl'; const own = esc(S.team?.name || '自チーム');
+  const own = esc(S.team?.name || '自チーム');
   return `<div class="antrend"><div class="anlg"><span><i style="background:#1F5FBF"></i>${rl ? 'リカバリー' : own}</span><span><i style="background:#C8312B"></i>${rl ? 'ロスト' : '相手'}</span><b>${label}</b></div><svg viewBox="0 0 ${W} ${H}" class="antrsvg" style="max-width:${Math.max(560, W)}px">${g}${bars}</svg></div>`;
 }
 // FINISH SET PLAY：試合ごとに、自チーム（青）と相手（赤）の棒を種類で積み上げ、それぞれの数を入れる（2026-10-22）
