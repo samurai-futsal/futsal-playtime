@@ -1532,3 +1532,6 @@ body.jpn .tile{border-top:4px solid #1B2550}
 .antrend .fsplg{flex-wrap:wrap;gap:6px 14px;margin-top:6px;font-weight:600}.antrend .fsplg .fspk i{width:10px;height:12px;border-radius:2px;margin-right:0}.antrend .fsplg .fspk i+i{margin-right:5px}.antrend .fsplg small{color:#7A8699;font-weight:400}
 .antr2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.antr2 .antrend{margin:8px 0 4px}.antr2h{margin:0 0 10px}
 @media (max-width:900px){.antr2{grid-template-columns:1fr}}
+.opn{display:inline-block;text-align:left;white-space:nowrap}.opn .ofl{display:inline-block;width:1.9em}.opn .ofl .flg{margin-left:0}
+.antrend .fseg{cursor:pointer}.antrend .fseg:hover{opacity:.85}
+.antrend svg text{pointer-events:none}
