@@ -21,7 +21,7 @@ import { bigBtn, bindBig, fitBox } from './bigview.js';
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const PCOL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const MCOL = ['#1F5FBF', '#E0832B', '#2E8B57', '#8A5AC8', '#C8312B', '#0E8A9E', '#B5600F', '#5F6B80'];
-const TABS = [['time', '出場時間'], ['bym', '試合ごと'], ['byo', '相手ごと'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '局面別'], ['pace', 'マッチ・ペース']];
+const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '局面別'], ['pace', 'マッチ・ペース'], ['bym', '試合ごと'], ['byo', '相手ごと']]; // 試合ごと・相手ごとは2026-10-22 追加（何試合かを並べて見るものなので右に）
 // 2026-10-16：この2つだけ。2026-10-17（決8）：「5×4/4×5を除く」→「数的同数だけ」（5×4・4×5と、両チームの退場の時間帯を除く）
 const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く']];
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
@@ -207,8 +207,7 @@ function mHead(x, prev) {
 }
 function byMatchTab(ctx) {
   if (ctx.ok.length < 2) return need2('試合ごとの表');
-  const subs = A.print ? '' : subBtns('msub', [['time', '選手×試合の出場時間'], ['team', 'チームの推移']]);
-  return subs + (A.msub === 'team' ? teamTrend(ctx) : playerByMatch(ctx));
+  return teamTrend(ctx); // 選手×試合の出場時間は「出場時間」タブへ（2026-10-22）
 }
 export function playerByMatch(ctx) {
   const xs = byDate(ctx.ok); const { P } = ctx;
@@ -235,22 +234,24 @@ export function playerByMatch(ctx) {
 }
 const TMET = [['goal', '得点・失点', (a, b, x) => [x.R.rangeScore.own, x.R.rangeScore.opp]], ['shot', 'シュート', (a, b) => [a.shots, b.shots]], ['in', '枠内', (a, b) => [a.in, b.in]], ['ent', 'Z4・SZ進入', (a, b) => [a.z4 + a.szE, b.z4 + b.szE]],
   ['fsp', 'FINISH SET PLAY', (a, b) => [a.fsp, b.fsp]], ['rl', 'リカバリー・ロスト', (a, b, x) => [x.R.rec, x.R.lost]], ['foul', 'ファール', (a, b) => [a.foul, b.foul]]];
+// 試合ごとの棒グラフ（2026-10-22：線から棒へ。試合ごとに、自チーム＝青と相手＝赤を並べる）
 function trendSvg(xs, met) {
   const [, label, f] = TMET.find((t) => t[0] === met) || TMET[1];
   const vals = xs.map((x) => f(x.R.A, x.R.B, x));
-  const W = 1000, H = 250, L = 90, R = 70, T = 18, B = 46; const n = xs.length;
+  const n = xs.length; const L = 46, R = 16, T = 22, B = 46; const slot = Math.max(70, Math.min(150, 940 / n)); const W = L + R + slot * n, H = 260;
   const max = Math.max(1, ...vals.flat()); const step = max <= 5 ? 1 : max <= 12 ? 2 : max <= 30 ? 5 : max <= 60 ? 10 : 20; const top = Math.ceil(max / step) * step;
-  const X = (i) => L + (n === 1 ? (W - L - R) / 2 : i * (W - L - R) / (n - 1)); const Y = (v) => T + (H - T - B) * (1 - v / top);
+  const Y = (v) => T + (H - T - B) * (1 - v / top);
   let g = ''; for (let v = 0; v <= top; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#E3E8F0"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="12" fill="#7A8699">${v}</text>`;
-  const rl = met === 'rl';
-  const line = (k, col) => `<polyline fill="none" stroke="${col}" stroke-width="3" points="${vals.map((v, i) => `${X(i)},${Y(v[k])}`).join(' ')}"/>` + vals.map((v, i) => `<circle cx="${X(i)}" cy="${Y(v[k])}" r="5" fill="${col}"/><text x="${X(i)}" y="${Y(v[k]) + (k ? 18 : -10)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v[k]}</text>`).join('');
-  const xl = xs.map((x, i) => `<text x="${X(i)}" y="${H - B + 20}" text-anchor="middle" font-size="12" fill="#3A4558">${fmtShort(x.m.date)}</text><text x="${X(i)}" y="${H - B + 36}" text-anchor="middle" font-size="12" fill="#3A4558">vs ${esc((x.m.opponent || '').slice(0, 8))}</text>`).join('');
-  const own = esc(S.team?.name || '自チーム');
-  return `<div class="antrend"><div class="anlg"><span><i style="background:#1F5FBF"></i>${rl ? 'リカバリー' : own}</span><span><i style="background:#C8312B"></i>${rl ? 'ロスト' : '相手'}</span><b>${label}</b></div><svg viewBox="0 0 ${W} ${H}" class="antrsvg">${g}${line(1, '#C8312B')}${line(0, '#1F5FBF')}${xl}</svg></div>`;
+  const bw = Math.min(34, slot * 0.32);
+  const bars = vals.map((v, i) => { const cx = L + slot * (i + 0.5);
+    return [[0, '#1F5FBF', cx - bw - 1], [1, '#C8312B', cx + 1]].map(([k, col, x]) => `<rect x="${x}" y="${Y(v[k])}" width="${bw}" height="${Math.max(0, Y(0) - Y(v[k]))}" rx="3" fill="${col}"/><text x="${x + bw / 2}" y="${Y(v[k]) - 5}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v[k]}</text>`).join('')
+      + `<text x="${cx}" y="${H - B + 18}" text-anchor="middle" font-size="12" fill="#3A4558">${fmtShort(xs[i].m.date)}</text><text x="${cx}" y="${H - B + 34}" text-anchor="middle" font-size="12" fill="#3A4558">vs ${esc((xs[i].m.opponent || '').slice(0, Math.max(4, Math.floor(slot / 13))))}</text>`; }).join('');
+  const rl = met === 'rl'; const own = esc(S.team?.name || '自チーム');
+  return `<div class="antrend"><div class="anlg"><span><i style="background:#1F5FBF"></i>${rl ? 'リカバリー' : own}</span><span><i style="background:#C8312B"></i>${rl ? 'ロスト' : '相手'}</span><b>${label}</b></div><svg viewBox="0 0 ${W} ${H}" class="antrsvg" style="max-width:${Math.max(560, W)}px">${g}${bars}</svg></div>`;
 }
 function teamTrend(ctx) {
   const xs = byDate(ctx.ok); const n = xs.length;
-  const met = A.print ? '' : `<div class="ansubs"><span class="anlab">グラフ</span>${TMET.map(([k, l]) => `<button class="${A.tmet === k ? 'on' : ''}" data-aset="tmet" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const met = A.print ? '' : `<div class="ansubs"><span class="anlab">棒グラフ</span>${TMET.map(([k, l]) => `<button class="${A.tmet === k ? 'on' : ''}" data-aset="tmet" data-v="${k}">${l}</button>`).join('')}</div>`;
   const pair = (a, b, sa, sb) => `<td class="w">${a}${sa != null ? `<small>（${sa}）</small>` : ''}</td><td class="o">${b}${sb != null ? `<small>（${sb}）</small>` : ''}</td>`;
   const rows = xs.map((x) => { const a = x.R.A, b = x.R.B, o = resOf(x); const sc = x.R.rangeScore;
     return `<tr><td class="apl">${fmtShort(x.m.date)}</td><td class="apl">vs ${esc(x.m.opponent || '')}</td><td>${resMark(o)}</td><td><b>${sc.own}−${sc.opp}</b></td>${pair(a.shots, b.shots, a.sz, b.sz)}${pair(a.in, b.in)}${pair(a.z4 + a.szE, b.z4 + b.szE)}${pair(a.fsp, b.fsp)}<td>${x.R.rec}</td><td>${x.R.lost}</td>${pair(a.foul, b.foul)}</tr>`; }).join('');
@@ -371,8 +372,10 @@ function timeTab(ctx) {
   const chk = `<span class="${Math.abs(sum - expect) < 1000 * ok.length * 5 ? 'anok' : 'anng'}">全員の合計 ${mmss(sum)} ＝ 試合時間 ${mmss(team.len)} × 5人${team.empty ? ` − 退場による空席 ${mmss(team.empty)}` : ''}${Math.abs(sum - expect) < 1000 * ok.length * 5 ? ' ✓' : `（${mmss(expect)} と合いません）`}</span>`;
   // 2026-10-19：チェックでパワープレー（5×4・4×5と退場の時間帯）を除く。上の「時間帯：数的同数だけ」と同じ切り替え
   const nopp = `<label class="annopp" title="5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除いて、グラフ・各試合・合計・出場率を出します"><input type="checkbox" id="anNoPP"${A.pp === 'ex' ? ' checked' : ''}>パワープレーの時間を除く</label>`;
-  const tv = `<div class="ansubs"><button class="${A.tview !== 'tl' ? 'on' : ''}" data-tview="list">一覧</button><button class="${A.tview === 'tl' ? 'on' : ''}" data-tview="tl">タイムライン</button>${A.tview === 'tl' ? '' : nopp + '<span class="sp"></span><button class="btn sm" id="anTimePdf" title="いま出ているグラフと表を、A4横の1ページのPDFにします">PDF（1ページ）</button>'}</div>`;
+  const pmv = A.tview === 'pm' && multi; // 選手×試合（2試合以上。2026-10-22 試合ごとタブから移す）
+  const tv = `<div class="ansubs"><button class="${A.tview !== 'tl' && !pmv ? 'on' : ''}" data-tview="list">一覧</button>${multi ? `<button class="${pmv ? 'on' : ''}" data-tview="pm">選手×試合</button>` : ''}<button class="${A.tview === 'tl' ? 'on' : ''}" data-tview="tl">タイムライン</button>${A.tview === 'tl' || pmv ? '' : nopp + '<span class="sp"></span><button class="btn sm" id="anTimePdf" title="いま出ているグラフと表を、A4横の1ページのPDFにします">PDF（1ページ）</button>'}</div>`;
   if (A.tview === 'tl' && !A.print) return tv + tlView(ctx);
+  if (pmv && !A.print) return tv + playerByMatch(ctx);
   return `${A.print ? '' : tv}<div class="antime"><div class="anchart"><div class="anlg">${lg}<span class="sp"></span>${chk}</div>${sv}</div>${table(ctx, cols, { note: `グラフはFPだけ（${avg ? '1試合平均、' : ''}${multi ? '試合ごとに積み上げ' + (A.print ? '' : '。棒に触れると試合ごとの時間') : 'ピリオドを積み上げ' + (A.print ? '' : '。棒に触れると前半・後半の時間')}）。出場率は${A.per === 'all' ? '' : periodLabel(A.per) + 'の'}試合時間${A.pp === 'ex' ? '（パワープレーの時間を除いた' + mmss(team.len) + '）' : '（' + mmss(team.len) + '）'}に対して。試合ごと・ピリオドごとの出場率は、その試合・そのピリオドの時間に対して${A.print ? '' : '。「タイムライン」は1試合を選んだときに見られます'}` })}</div>`;
 }
 
