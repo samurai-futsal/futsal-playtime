@@ -5,7 +5,7 @@ import { S, matchById, playerById, matchesOf, teamSettings, watchOps, watchEvent
 import { replay, periodLabel, periodLen, perLen, nowElapsed } from './engine.js';
 import { matchModel, toRunning, playerTable, playedTime, periodSig, entryOrder } from './model.js';
 import { ppWindows, setSplit, setCountTable, asOfLabel } from './teamstats.js';
-import { esc, fmtShort, fmtDate, openModal, closeModal } from './ui.js';
+import { esc, fmtShort, fmtDate, openModal, closeModal, toast } from './ui.js';
 import { render } from './views.js';
 import { teamStats, paceSection, teamSection, playerSection, goalMarks, stagger, scoreBadge, rvHl, hlc, bindPacePick, bandTip, sizeCols, tSort, tSortNext, tsh, tSorted, tRank, tRankHead } from './review58.js';
 import { ensureChecks } from './evinput.js';
@@ -355,43 +355,85 @@ function waitSections(m) {
     + box(8, 'rv8', 'スタッツまとめ', '選手ごとのシュート・得点・アシスト・Z4進入・SZ進入・リカバリー・ロスト・ファール・得失点±');
 }
 // PDFで保存：出場時間（1〜4）だけ／すべて（1〜8）。1項目＝1ページ（2026-10-17）
-function pdfChoice(m) {
+// 項目の選び方の画面（1試合でも、分析画面から何試合でも同じ）。go(only14) で保存
+function pdfAsk(n, has, go) {
   preloadPdf();
-  const has = watchEvents(m.id).list.some((e) => !e.deleted);
-  const md = openModal(`<h2>マッチレビューをPDFで保存</h2><p class="mu">保存する項目を選んでください。1項目を1ページに大きく入れます。${navigator.maxTouchPoints > 1 ? 'できたら「ファイルに保存」を選びます。' : 'できたらダウンロードします。'}</p>
-    <div class="pdfch"><button class="card" data-pdf="14"><b>出場時間だけ（1〜4）</b><span>出場時間・1回ごと・タイムライン・セット</span></button>
-    <button class="card" data-pdf="all" ${has ? '' : 'disabled'}><b>すべて（1〜8）</b><span>${has ? '1〜4に、ペース・セット別・スコア・スタッツを加える' : 'イベントを入力すると選べます'}</span></button></div>
+  const md = openModal(`<h2>マッチレビューをPDFで保存${n > 1 ? `（${n}試合）` : ''}</h2><p class="mu">保存する項目を選んでください。1項目を1ページに大きく入れます${n > 1 ? '（1試合ずつ続けて、1つのPDFに）' : ''}。${navigator.maxTouchPoints > 1 ? 'できたら「ファイルに保存」を選びます。' : 'できたらダウンロードします。'}</p>
+    <div class="pdfch"><button class="card" data-pdf="14"><b>出場時間だけ（1〜4）</b><span>出場時間・1回ごと・タイムライン・セット${n > 1 ? `<br>約${n * 4}ページ` : ''}</span></button>
+    <button class="card" data-pdf="all" ${has ? '' : 'disabled'}><b>すべて（1〜8）</b><span>${has ? `1〜4に、ペース・セット別・スコア・スタッツを加える${n > 1 ? `<br>約${n * 8}ページ（イベントを入力していない試合は1〜4だけ）` : ''}` : 'イベントを入力すると選べます'}</span></button></div>
     <div class="row end"><button class="btn" id="pdfX">やめる</button></div>`);
   md.querySelector('#pdfX').onclick = closeModal;
-  md.querySelectorAll('[data-pdf]').forEach((b) => b.onclick = () => {
-    const only14 = b.dataset.pdf === '14';
-    const head = document.querySelector('.rvw .rvprint')?.outerHTML || '';
-    const secs = [...document.querySelectorAll('.rvw .rvbody > .rvsec')].filter((x) => !x.classList.contains('rvwait') && (!only14 || ['rv1', 'rv1b', 'rv2', 'rv3'].includes(x.id)));
-    const items = secs.map((sec) => {
-      const c = sec.cloneNode(true); c.classList.remove('rvfull');
-      c.querySelectorAll('.rvmax,.rvfsbar').forEach((x) => x.remove());
-      c.querySelectorAll('.hl').forEach((x) => x.classList.remove('hl'));
-      c.querySelectorAll('svg.pace .prl.on').forEach((x) => x.classList.remove('on'));
-      c.querySelectorAll('svg.pace .pmk').forEach((x) => x.remove());
-      c.querySelectorAll('.rvtt span').forEach((x) => { x.textContent = x.textContent.replace(/[。、]?(見出しを押すと並べ替え|行を押すと強調・下のグラフを押すと●|行を押すと強調)/g, ''); });
-      c.querySelectorAll('th.srt i').forEach((x) => { if (x.textContent === '⇅') x.remove(); });
-      const it = { html: head + c.outerHTML };
-      if (sec.id === 'rv5') it.widths = [850, 1000, 1150];
-      if (sec.id === 'rv5') it.fix = (el, W, aw, ah) => { // ページの縦横に合わせて描き直す
-        for (let k = 0; k < 2; k++) { // 描き直すと周りの高さも変わるので2回
-          const svg = el.querySelector('svg.pace'); if (!svg) return;
-          const r = svg.getBoundingClientRect(); const other = el.offsetHeight - r.height;
-          const want = r.width / Math.max(200, W * ah / aw - other);
-          const nv = paceSvgFor(want); if (!nv) return;
-          svg.outerHTML = nv;
-          el.querySelectorAll('svg.pace .pmk').forEach((x) => x.remove());
-        }
-      };
-      return it;
+  md.querySelectorAll('[data-pdf]').forEach((b) => b.onclick = () => { closeModal(); go(b.dataset.pdf === '14'); });
+}
+// 描いてあるマッチレビュー（root の中）から、PDFのページを作る
+function reviewItems(root, only14) {
+  const C = paceC; // マッチ・ペースの描き直しは、この試合の数で（何試合も続けて作るときのため）
+  const svgFor = (ratio) => { const keep = paceC; paceC = C; try { return paceSvgFor(ratio); } finally { paceC = keep; } };
+  const head = root.querySelector('.rvw .rvprint')?.outerHTML || '';
+  const secs = [...root.querySelectorAll('.rvw .rvbody > .rvsec')].filter((x) => !x.classList.contains('rvwait') && (!only14 || ['rv1', 'rv1b', 'rv2', 'rv3'].includes(x.id)));
+  return secs.map((sec) => {
+    const c = sec.cloneNode(true); c.classList.remove('rvfull');
+    c.querySelectorAll('.rvmax,.rvfsbar').forEach((x) => x.remove());
+    c.querySelectorAll('.hl').forEach((x) => x.classList.remove('hl'));
+    c.querySelectorAll('svg.pace .prl.on').forEach((x) => x.classList.remove('on'));
+    c.querySelectorAll('svg.pace .pmk').forEach((x) => x.remove());
+    c.querySelectorAll('.rvtt span').forEach((x) => { x.textContent = x.textContent.replace(/[。、]?(見出しを押すと並べ替え|行を押すと強調・下のグラフを押すと●|行を押すと強調)/g, ''); });
+    c.querySelectorAll('th.srt i').forEach((x) => { if (x.textContent === '⇅') x.remove(); });
+    let need = 0;
+    // 列の幅：画面の幅で決めた割合ではなく、中身の幅の比で組み直し、その合計より狭くしない（PDFのページの幅は画面と違うため。2026-10-22）
+    let grid = 0; // 2：前半・後半の表が横に並ぶので、2つの合計
+    c.querySelectorAll('table[data-ws]').forEach((t) => {
+      const ws = t.dataset.ws.split(',').map(Number); const sum = ws.reduce((x, y) => x + y, 0); const cg = t.querySelector('colgroup');
+      if (cg && sum) { cg.innerHTML = ws.map((x) => `<col style="width:${(x / sum * 100).toFixed(2)}%">`).join(''); t.style.minWidth = ''; if (t.parentElement) t.parentElement.style.overflowX = ''; if (t.closest('.rvpgrid')) grid += sum + 40; else need = Math.max(need, sum); }
     });
+    need = Math.max(need, grid);
+    const it = { html: head + c.outerHTML };
+    // ページの幅（組む幅）は、表の中身の幅の合計より広いものだけ（左右の余白の分を足す）
+    if (need) { const n2 = need + 110; const ws = [1000, 1150, 1300, 1500, 1700].filter((w) => w >= n2); it.widths = ws.length ? ws : [Math.ceil(n2)]; }
+    if (sec.id === 'rv5') it.widths = [850, 1000, 1150];
+    if (sec.id === 'rv5') it.fix = (el, W, aw, ah) => { // ページの縦横に合わせて描き直す
+      for (let k = 0; k < 2; k++) { // 描き直すと周りの高さも変わるので2回
+        const svg = el.querySelector('svg.pace'); if (!svg) return;
+        const r = svg.getBoundingClientRect(); const other = el.offsetHeight - r.height;
+        const want = r.width / Math.max(200, W * ah / aw - other);
+        const nv = svgFor(want); if (!nv) return;
+        svg.outerHTML = nv;
+        el.querySelectorAll('svg.pace .pmk').forEach((x) => x.remove());
+      }
+    };
+    return it;
+  });
+}
+function pdfChoice(m) {
+  const has = watchEvents(m.id).list.some((e) => !e.deleted);
+  pdfAsk(1, has, (only14) => {
+    const items = reviewItems(document, only14);
     const day = (m.date || '').replace(/-/g, '');
-    closeModal();
     savePdf(items, `${safeName(`マッチレビュー_vs${m.opponent || ''}_${day}`)}.pdf`, { stageCls: 'rvw' });
+  });
+}
+// 分析画面から：選んだ試合のマッチレビューを、1試合ずつ続けて1つのPDFに（2026-10-22）。
+// 試合ごとに、見えないところにマッチレビューを描いて（画面と同じ表示の切り替えのまま）、そこからページを作る
+export function printReviews(ms) {
+  if (!ms.length) return;
+  const notReady = ms.filter((m) => { const o = watchOps(m.id), e = watchEvents(m.id); return !(o.ready || o.list.length) || !e.ready; });
+  if (notReady.length) { toast('記録を読み込んでいます。少し待ってからもう一度押してください'); return; }
+  const has = ms.some((m) => watchEvents(m.id).list.some((e) => !e.deleted));
+  pdfAsk(ms.length, has, (only14) => {
+    const host = document.createElement('div');
+    host.className = 'rvhost'; host.style.cssText = 'position:fixed;left:-30000px;top:0;width:1280px;pointer-events:none';
+    document.body.appendChild(host);
+    const items = [];
+    try {
+      for (const m of [...ms].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.kickoff || '').localeCompare(b.kickoff || ''))) {
+        const v = vReview(m); stopReviewTick();
+        host.innerHTML = v.html;
+        sizeCols(host); declutterTimeline(host);
+        items.push(...reviewItems(host, only14));
+      }
+    } finally { host.remove(); }
+    const day = (m) => (m.date || '').replace(/-/g, ''); const ds = ms.map(day).sort();
+    savePdf(items, `${safeName(`マッチレビュー_${ms.length}試合_${ds[0]}-${ds[ds.length - 1]}`)}.pdf`, { stageCls: 'rvw' });
   });
 }
 

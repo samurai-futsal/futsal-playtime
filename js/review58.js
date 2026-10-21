@@ -352,6 +352,7 @@ export function sizeCols(root) {
     const sum = d.ws.reduce((a, b) => a + b, 0); const pct = d.pct || d.ws.map((x) => x / sum * 100);
     let cg = d.t.querySelector('colgroup'); if (!cg) { cg = document.createElement('colgroup'); d.t.prepend(cg); }
     cg.innerHTML = pct.map((x) => `<col style="width:${x.toFixed(2)}%">`).join('');
+    d.t.dataset.ws = d.ws.map((x) => Math.round(x)).join(','); // PDFでは、この幅をもとに列を組み直す（画面の幅に頼らない）
     // 中身が枠に入りきらないときは、縮めて重ねずに横に動かして見る（2026-10-19）
     const W = d.t.parentElement?.clientWidth || 0; const sum2 = d.ws.reduce((x, y) => x + y, 0);
     if (d.t.classList.contains('rvs8')) { d.t.style.minWidth = W && sum2 > W ? Math.ceil(sum2) + 'px' : ''; if (d.t.parentElement) d.t.parentElement.style.overflowX = W && sum2 > W ? 'auto' : ''; }

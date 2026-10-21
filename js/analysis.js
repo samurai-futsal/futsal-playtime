@@ -8,7 +8,7 @@ import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppW
 import { missing, pitchAt, isFsp, OPP_OG, isOG } from './events.js';
 import { shotsOf, CLS_KEYS } from './teamstats.js';
 import { paceSection, goalMarks, PACE_ROWS, teamSection, bandTip } from './review58.js';
-import { timelineHTML, declutterTimeline } from './review.js';
+import { timelineHTML, declutterTimeline, printReviews } from './review.js';
 import { esc, fmtShort, openModal, closeModal, toast } from './ui.js';
 import { render } from './views.js';
 import { printStats } from './stats.js';
@@ -172,7 +172,7 @@ export function vAnalysis(r, mFrom = null) {
       ${A.scope === 'match' ? '' : seg('agg', [['sum', '合計'], ['avg', '1試合平均']])}${seg('per', [['all', '全体'], ['1H', '前半'], ['2H', '後半']])}
       <span class="anpp" title="数的同数だけ＝5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く">時間帯${seg('pp', PPM)}</span>
       ${A.pp !== 'all' && noOpp ? `<span class="antodo" title="相手の5×4はMATCH PLAYのパワープレー（相手）か記録の修正で入れたときだけ分けられます">相手の5×4（こちらの4×5）の記録なし ${noOpp}試合</span>` : ''}
-      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${skippedLive ? `<span class="anlive" title="試合が終わると含めます。試合中の試合は「この試合」で見られます">試合中の ${skippedLive}試合は含めていません</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span>${pre ? '' : '<span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span>'}${pre ? '' : bigBtn()}</div>
+      ${todoN ? `<span class="antodo" title="未入力の項目か要確認が残っている試合">未入力あり ${todoN}試合</span>` : ''}${skippedLive ? `<span class="anlive" title="試合が終わると含めます。試合中の試合は「この試合」で見られます">試合中の ${skippedLive}試合は含めていません</span>` : ''}${loading ? '<span class="mu">読み込み中…</span>' : ''}<span class="sp"></span>${pre ? '' : '<span class="anexp">書き出し<button class="btn sm" id="anExpStats">マッチスタッツ（PDF）</button><button class="btn sm" id="anExpRv">マッチレビュー（PDF）</button><button class="btn sm" id="anExpRep">マッチレポート（PDF）</button><button class="btn sm" id="anExpDs">データシート（Excel）</button></span>'}${pre ? '' : bigBtn()}</div>
     ${recLine(ok)}
     <div class="antabs">${TABS.map(([v, l]) => `<button class="${A.tab === v ? 'on' : ''} " data-tab="${v}">${l}</button>`).join('')}</div></div>`;
 
@@ -442,6 +442,7 @@ function bindAnalysis(root) {
   const ds = root.querySelector('#anExpDs'); if (ds) ds.onclick = () => { const ms = selected(); if (ms.length) downloadDatasheet(ms); };
   const rp = root.querySelector('#anExpRep'); if (rp) rp.onclick = () => { const ms = selected(); if (ms.length) printReport(ms, A.scope === 'match' ? 'sum' : A.agg); };
   const ex = root.querySelector('#anExpStats'); if (ex) ex.onclick = () => { const ms = selected(); if (ms.length) printStats(ms); };
+  const rv = root.querySelector('#anExpRv'); if (rv) rv.onclick = () => { const ms = selected(); if (ms.length) printReviews(ms); };
   const tp = root.querySelector('#anTimePdf'); if (tp) tp.onclick = () => { const ms = selected(); if (ms.length) printTime(ms); };
   const np = root.querySelector('#anNoPP'); if (np) np.onchange = () => { A.pp = np.checked ? 'ex' : 'all'; keep(); render(); };
   root.querySelectorAll('[data-tview]').forEach((b) => b.onclick = () => { A.tview = b.dataset.tview; keep(); render(); });
