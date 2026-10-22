@@ -28,8 +28,14 @@ const FIELDS = EV_FIELDS;
 // 一時停止すると、止めた場面の試合の時計が①の時刻に入る（ピリオドごとにキックオフの場面を1回合わせておく）
 const VID = { el: null, url: null, name: '', open: false, ctx: null, skip: false };
 const syncKey = (mid) => `fpt.vsync.${mid}`;
-const syncOf = (mid) => { try { return JSON.parse(localStorage.getItem(syncKey(mid)) || '{}'); } catch { return {}; } };
-const saveSync = (mid, s) => { try { localStorage.setItem(syncKey(mid), JSON.stringify(s)); } catch {} };
+const syncOf0 = (mid) => { try { return JSON.parse(localStorage.getItem(syncKey(mid)) || '{}'); } catch { return {}; } };
+// 自分で合わせたもの ＋ 記録の時刻が動画の時刻でできている試合（Sportscode の XML から作った・あとから記録）は、はじめから合っている
+function syncOf(mid) {
+  const s = syncOf0(mid); const c = VID.ctx; if (!c || c.m.id !== mid || !c.m.vclock) return s;
+  for (const [k, v] of Object.entries(c.m.vclock)) { const kt = c.st.periods[k]?.kickT; if (s[k] || kt == null || !Number.isFinite(+v.base)) continue; s[k] = { v: (kt - v.base) / 1000, name: v.name ?? null, auto: true }; }
+  return s;
+}
+const saveSync = (mid, s) => { try { localStorage.setItem(syncKey(mid), JSON.stringify(Object.fromEntries(Object.entries(s).filter(([, v]) => !v.auto)))); } catch {} };
 const hms = (v) => { v = Math.max(0, Math.floor(v || 0)); const h = Math.floor(v / 3600), mm = Math.floor(v / 60) % 60, ss = v % 60; return `${h ? h + ':' + String(mm).padStart(2, '0') : mm}:${String(ss).padStart(2, '0')}`; };
 function runOf(c) { if (!c.R) c.R = toRunning(c.M, c.st, Date.now()); return c.R; }
 function vidClock(c) {
@@ -61,7 +67,7 @@ function vidPanel(m, M) {
   const sync = syncOf(m.id);
   const pers = M.periods.filter((p) => p.status !== 'none');
   const syncRows = pers.map((p) => { const s = sync[p.key]; const here = s && s.name === VID.name;
-    return `<div class="vsr"><span class="vsl">${p.label}</span>${here ? `<span class="vok">✓ 動画 ${hms(s.v)} がキックオフ</span>` : s ? `<span class="mu">別の動画（${esc(s.name)}）で合わせています</span>` : '<span class="mu">まだ合わせていません</span>'}${VID.url ? `<button class="btn sm" data-vk="${p.key}">今の場面を${p.label}のキックオフにする</button>` : ''}</div>`; }).join('');
+    return `<div class="vsr"><span class="vsl">${p.label}</span>${s?.auto && s.name == null ? `<span class="vok">✓ 記録が動画の時刻でできているので合っています（動画 ${hms(s.v)} がキックオフ）</span>` : here ? `<span class="vok">✓ 動画 ${hms(s.v)} がキックオフ</span>` : s ? `<span class="mu">別の動画（${esc(s.name)}）で合わせています</span>` : '<span class="mu">まだ合わせていません</span>'}${VID.url ? `<button class="btn sm" data-vk="${p.key}">今の場面を${p.label}のキックオフにする</button>` : ''}</div>`; }).join('');
   return `<div class="card evvid"><div class="vh"><b>動画</b><span class="mu vnm">${VID.url ? esc(VID.name) : ''}</span><span class="sp"></span><label class="btn sm">${VID.url ? '別の動画を開く' : '動画を開く'}<input type="file" accept="video/*,.mp4,.mov,.m4v" id="evVidFile" hidden></label><button class="btn sm" id="evVidClose">閉じる</button></div>
     <div class="vslot" id="evVidSlot">${VID.url ? '' : '<div class="vnone">PC・iPadの中にある試合の動画を開いてください。<br>動画はどこにも送らず、この端末で再生するだけです。</div>'}</div>
     ${VID.url ? `<div class="vctl"><button class="btn sm" data-vs="-5">−5秒</button><button class="btn sm" data-vs="-1">−1秒</button><button class="btn sm pri" data-vs="0">${VID.el && !VID.el.paused ? '❚❚ 止める' : '▶ 再生'}</button><button class="btn sm" data-vs="1">＋1秒</button><button class="btn sm" data-vs="5">＋5秒</button></div><div class="vnow"></div>` : ''}
@@ -318,6 +324,7 @@ export function vEvents(m, { rt = false } = {}) {
     ? `${keepBtn}<div class="foot"><button class="btn dangerline" id="evDel">このイベントを削除</button><span class="sp"></span><button class="btn" id="evCancel">やめる</button><button class="btn pri" id="evSave" ${ui.kind ? '' : 'disabled'}>直す</button></div>`
     : `<div class="foot">${undoBtn}<span class="mu">時刻とイベントだけで記録できます。空けた分は資料で「—」や「未入力 n」になり、あとで埋められます</span><button class="btn" id="evCancel" ${ui.kind ? '' : 'disabled'}>やめる</button><button class="btn pri" id="evSave" ${ui.kind ? '' : 'disabled'}>記録する（時刻はそのまま）</button></div>`;
   const ctx = { m, cfg, M, st, events, per, nm, all, sp, role };
+  VID.ctx = ctx;
   const form = `<div class="card evform">${ui.edit ? '<div class="evediting">入力したイベントを直しています</div>' : ''}${step1}${step2}<div id="evDyn">${dynHTML(ctx)}</div>${foot}</div>`;
 
   return {

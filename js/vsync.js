@@ -7,7 +7,7 @@
 export function clockAtVideo(R, periods, sync, name, v) {
   let hit = null;
   for (const p of periods) {
-    const s = sync?.[p.key]; if (!s || s.name !== name || p.status === 'none') continue;
+    const s = sync?.[p.key]; if (!s || (s.name != null && s.name !== name) || p.status === 'none') continue; // name が null＝どの動画でも（Sportscode・あとから記録で作った試合）
     if (v + 0.05 >= s.v && (!hit || s.v >= hit.s.v)) hit = { p, s };
   }
   if (!hit) return null;
@@ -18,6 +18,6 @@ export function clockAtVideo(R, periods, sync, name, v) {
 }
 // 試合の時計（ピリオド・経過 ms）→ 動画の秒（そのピリオドをこの動画で合わせていないときは null）
 export function videoAtClock(R, sync, name, period, at) {
-  const s = sync?.[period]; if (!s || s.name !== name) return null;
+  const s = sync?.[period]; if (!s || (s.name != null && s.name !== name)) return null;
   return s.v + R.relOf(period, at) / 1000;
 }

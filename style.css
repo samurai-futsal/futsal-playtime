@@ -1571,3 +1571,6 @@ body.jpn .tile{border-top:4px solid #1B2550}
 .page:has(.evw.vid){max-width:1640px}
 .evw.vid .evper{flex-direction:row}.evw.vid .evkp .adjpad{grid-template-columns:repeat(5,38px) 66px;gap:5px}.evw.vid .evkp .adjdisp .dg,.evw.vid .evkp .adjdisp .col{font-size:34px}.evw.vid .evkp .adjpad .btn{min-height:38px}
 @media (max-width:1320px){.evw.vid{grid-template-columns:minmax(0,1fr) minmax(0,1.08fr)}.evw.vid .evkp .adjpad{grid-template-columns:repeat(5,36px) 60px}.evw.vid .evkp .adjpad .btn.s{font-size:10.5px}}
+/* Sportscode から試合の記録を作る（2026-10-22） */
+.sibpers{display:flex;flex-direction:column;gap:8px;margin:8px 0}.sibper{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center}
+.sibper>b{font-size:16px;color:var(--navy);min-width:48px}.sibper .siwarn,.sibper .sigk{flex-basis:100%}.sigk select{margin:0 6px}

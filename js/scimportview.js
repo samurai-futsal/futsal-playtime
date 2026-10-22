@@ -6,6 +6,9 @@ import { matchModel, toRunning, periodSig } from './model.js';
 import { KIND, checkOf, cardIssues, OPP_OG, UNKNOWN } from './events.js';
 import { ppWindows } from './teamstats.js';
 import { parseSC, buildImportFiles, kickOffs, periodFromName, DEFAULT_LEAD, LEAD_LABEL } from './scimport.js';
+import { playOpsFromSC } from './scplay.js';
+import { addOp } from './store.js';
+import { PERIODS } from './engine.js';
 import { esc, toast, confirmBox } from './ui.js';
 import { render } from './views.js';
 
@@ -28,6 +31,97 @@ function importedByPeriod(list, M) {
   for (const e of list) if (!e.deleted && isImp(e)) { const g = by.get(e.period) || { n: 0, files: new Map(), t: 0, edited: 0 }; g.n++; if (e.impFile) g.files.set(e.impFile, (g.files.get(e.impFile) || 0) + 1); g.t = Math.max(g.t, +e.imp || 0); if (isEdited(e)) g.edited++; by.set(e.period, g); }
   return M.periods.filter((p) => by.has(p.key)).map((p) => { const g = by.get(p.key); return { key: p.key, label: p.label, ...g, name: [...g.files.keys()].join('・') || '' }; });
 }
+// ファイルを選ぶ・ドラッグ＆ドロップ・一覧から消す（イベントの取り込みと、記録を作る画面の両方）
+function bindFiles(root) {
+  const f = root.querySelector('#siFile');
+  // 読み込んだファイルは一覧に足す（同じ名前のファイルは新しいほうに置き換える）。XML・CSV 以外は読まずに知らせる
+  const loadAll = (list) => {
+    const ok = [...list].filter((x) => /\.(xml|csv)$/i.test(x.name)), ng = list.length - ok.length;
+    if (ng) toast(ok.length ? `XML・CSV 以外の ${ng}つのファイルは読み込みませんでした` : 'XML か CSV のファイルを選んでください');
+    if (!ok.length) return;
+    Promise.all(ok.map((file) => file.text().then((text) => ({ id: 'f' + (++fileSeq), name: file.name, parsed: parseSC(text), assign: [], guess: null })))).then((add) => {
+      st8.files = [...st8.files.filter((x) => !add.some((a) => a.name === x.name)), ...add];
+      render();
+    });
+  };
+  f.onchange = () => { if (f.files?.length) loadAll(f.files); f.value = ''; };
+  // ドラッグ＆ドロップ（PC）：枠の中に落とす。上に持ってくると枠が光る。枠の外に落としたときは、ブラウザがファイルを開かないように止めて知らせる
+  if (!guarded) { guarded = true; for (const t of ['dragover', 'drop']) document.addEventListener(t, (e) => { if (location.hash.includes('/scimport') && [...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); if (t === 'drop' && !e.target.closest?.('#siDrop')) toast('点線の枠の中に落としてください'); } }); }
+  const dz = root.querySelector('#siDrop');
+  if (dz) {
+    let depth = 0;
+    const hasFile = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+    dz.addEventListener('dragenter', (e) => { if (!hasFile(e)) return; e.preventDefault(); depth++; dz.classList.add('over'); });
+    dz.addEventListener('dragover', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    dz.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) dz.classList.remove('over'); });
+    dz.addEventListener('drop', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.stopPropagation(); depth = 0; dz.classList.remove('over'); if (e.dataTransfer.files?.length) loadAll(e.dataTransfer.files); });
+  }
+  root.querySelectorAll('[data-fdel]').forEach((b) => b.onclick = () => { st8.files = st8.files.filter((x) => x.id !== b.dataset.fdel); render(); });
+}
+// MATCH PLAY の記録がない試合：Sportscode の「#背番号」の行から、出場・交代・時計の記録を作る（2026-10-22）
+// 作ったあとは、そのままいつもの「イベントの取り込み」に進む（同じファイルを使う）
+function buildPlay(m, st) {
+  const files = st8.files.filter((f) => kickOffs(f.parsed.instances).length);
+  const keys = PERIODS.filter((p) => !p.extra || m.times?.extra).map((p) => p.key);
+  const head = `<div class="card sibuild"><h3>2. 出場・交代・時計の記録を作る</h3><p class="mu sm">この試合は MATCH PLAY の記録がありません。Sportscode の「#背番号」の行（その選手がピッチにいて時計が動いている間）から、交代・時計の止まり・出場時間の記録を作ります。作ったあとは、続けてイベントを取り込めます。</p>`;
+  if (!st8.files.length) return { html: `${head}<p class="mu">上でファイルを読み込んでください（前半・後半のファイルを一緒に読み込めます）。</p></div>`, bind: () => {} };
+  if (!files.length) return { html: `${head}<div class="siwarn">⚠ 読み込んだファイルに Kick Off の印がありません。</div></div>`, bind: () => {} };
+  const hasPl = (f, a, b) => f.parsed.instances.some((i) => /^#\s*\d+$/.test(i.code) && i.start >= a - 1 && i.start < b);
+  for (const f of files) {
+    const kos = kickOffs(f.parsed.instances);
+    if (f.assign.length === kos.length && f.mode === 'build') continue;
+    f.mode = 'build'; let n = 0;
+    f.assign = kos.map((k, i) => { if (!hasPl(f, k.start, kos[i + 1] ? kos[i + 1].start : 1e9)) return '-'; if (kos.length === 1) return periodFromName(f.name) || keys[0]; return keys[n++] || '-'; });
+  }
+  const many = files.length > 1;
+  const rows = files.flatMap((f) => kickOffs(f.parsed.instances).map((k, i) => ({ f, i, k, key: f.assign[i] })));
+  const sel = (r) => `<select data-bsg="${r.f.id}:${r.i}">${keys.map((k) => `<option value="${k}" ${k === r.key ? 'selected' : ''}>${periodLabel(k)}</option>`).join('')}<option value="-" ${r.key === '-' ? 'selected' : ''}>使わない</option></select>`;
+  const asg = rows.map((r) => `<div class="sirow"><span class="sikick"><b>${many ? `${esc(r.f.name)}：` : ''}Kick Off ${r.i + 1}（動画 ${mmss(r.k.start * 1000)}）</b><span class="siar">→</span>${sel(r)}</span></div>`).join('');
+  const used = rows.map((r) => r.key).filter((k) => k && k !== '-');
+  const dup = [...new Set(used.filter((k, i) => used.indexOf(k) !== i))];
+  if (dup.length) return { html: `${head}${asg}<div class="siwarn">⚠ ${dup.map(periodLabel).join('・')}が2つ以上の Kick Off で選ばれています。</div></div>`, bind: bindAsg };
+  // 背番号 → 試合メンバー
+  const byNo = Object.fromEntries(Object.entries(m.members || {}).filter(([, v]) => v.no != null && v.no !== '').map(([pid, v]) => [String(v.no), pid]));
+  const order = (k) => keys.indexOf(k);
+  const fl = files.map((f) => { const kos = kickOffs(f.parsed.instances); return { name: f.name, instances: f.parsed.instances, periods: kos.map((k, i) => ({ key: f.assign[i], ko: k.start, to: kos[i + 1] ? kos[i + 1].start : 1e9 })).filter((x) => x.key && x.key !== '-').sort((a, b) => order(a.key) - order(b.key)) }; })
+    .filter((x) => x.periods.length).sort((a, b) => order(a.periods[0].key) - order(b.periods[0].key));
+  const lenOf = (k) => (PERIODS.find((p) => p.key === k)?.extra ? (m.times?.extraHalf || 5) : (m.times?.half || 20)) * 60000;
+  const gks = Object.entries(m.members || {}).filter(([, v]) => v.pos === 'GK').map(([pid]) => pid);
+  const nm = (pid) => `${m.members?.[pid]?.no ?? ''} ${S.players.find((p) => p.id === pid)?.last || ''}`.trim();
+  st8.gk = st8.gk || {};
+  const res = playOpsFromSC({ files: fl, byNo, lenMs: lenOf('1H'), gk: st8.gk, startT: Date.parse(`${m.date || '2026-01-01'}T${m.kickoff || '12:00'}:00+09:00`) || Date.now() });
+  // 延長のピリオドの長さは別（作った記録の kickoff の長さを直す）
+  for (const o of res.ops) if (o.type === 'kickoff') o.len = lenOf(o.period);
+  st8.build = res;
+  const per = Object.entries(res.info).sort((a, b) => order(a[0]) - order(b[0])).map(([k, x]) => {
+    const needGK = !x.ok && x.lineup.length === 4 && gks.length;
+    return `<div class="sibper"><b>${periodLabel(k)}</b>${x.ok ? `<span>時計が動いた時間 <b>${mmss(x.play * 1000)}</b></span><span>時計の区切り ${x.segs}回</span><span>交代 ${x.subs}回</span><span class="mu">先発：${x.lineup.map(nm).join('・')}</span>` : ''}
+      ${x.warn.map((w) => `<div class="siwarn">⚠ ${esc(w)}</div>`).join('')}
+      ${needGK || st8.gk[k] ? `<div class="sigk">GK の行がファイルにありません。このピリオドに出ていたGK：<select data-gk="${k}"><option value="">選んでください</option>${gks.map((p) => `<option value="${p}" ${st8.gk[k] === p ? 'selected' : ''}>${esc(nm(p))}</option>`).join('')}</select>（時計が動いた間ずっと出ていたものとして作ります）</div>` : ''}</div>`;
+  }).join('');
+  const miss = res.missing.length ? `<div class="siwarn">⚠ 試合メンバーにない背番号：${res.missing.map((n) => '#' + n).join('・')}。<a href="#/m/${m.id}/members">試合メンバー</a>に入れてから作ってください。</div>` : '';
+  const can = !res.missing.length && Object.values(res.info).length && Object.values(res.info).every((x) => x.ok);
+  const html = `${head}<details class="siadj"><summary>ピリオドの当て方（${rows.map((r) => `${many ? esc(r.f.name) + ' ' : ''}Kick Off ${r.i + 1} → ${r.key === '-' ? '使わない' : periodLabel(r.key)}`).join('、')}）</summary>${asg}</details>
+    <div class="sibpers">${per}</div>${miss}
+    <div class="row end"><button class="btn pri" id="siBuild" ${can ? '' : 'disabled'}>この内容で試合の記録を作る</button></div>
+    <p class="mu sm">作った記録は、MATCH PLAY で記録したものと同じように、マッチレビュー・分析・記録の修正で使えます。動画を見ながらのイベント入力でも、この XML と同じ動画を開けば時刻が自動で合います（Kick Off の位置が同じとき）。</p></div>`;
+  function bindAsg(root) { root.querySelectorAll('[data-bsg]').forEach((s2) => s2.onchange = () => { const [fid, i] = s2.dataset.bsg.split(':'); const x = st8.files.find((y) => y.id === fid); if (x) x.assign[+i] = s2.value; render(); }); }
+  return { html, bind: (root) => {
+    bindAsg(root);
+    root.querySelectorAll('[data-gk]').forEach((s2) => s2.onchange = () => { st8.gk[s2.dataset.gk] = s2.value || undefined; render(); });
+    const b = root.querySelector('#siBuild');
+    if (b) b.onclick = async () => {
+      const r = st8.build; if (!r?.ops.length) return;
+      if (!(await confirmBox({ title: '試合の記録を作りますか？', body: `<p>${Object.keys(r.info).map(periodLabel).join('・')}の出場・交代・時計の記録を作ります（${r.ops.length}件の操作）。</p><p>あとから直すときは「記録の修正」を使います。</p>`, ok: '作る' }))) return;
+      for (const o of r.ops) addOp(m.id, o);
+      put(teamPath('matches', m.id), { status: 'done', recSrc: 'sportscode', vclock: Object.fromEntries(Object.entries(r.vclock).map(([k, v]) => [k, { base: v.base, file: v.file }])) });
+      // 続けてイベントを取り込めるように、ピリオドの当て方はそのまま使う
+      for (const f of st8.files) f.mode = null;
+      toast('試合の記録を作りました。続けてイベントを取り込めます');
+      render();
+    };
+  } };
+}
 export function vScImport(m) {
   if (st8.m !== m.id) st8 = fresh(m.id);
   const opsC = watchOps(m.id); const evC = watchEvents(m.id);
@@ -44,7 +138,8 @@ export function vScImport(m) {
   const pick = `<div class="card"><h3>1. ファイルを読み込む</h3><p class="mu sm">前半だけ・後半だけ・両方入ったファイルのどれでも取り込めます。前半と後半のファイルを2つ一緒に読み込むこともできます。</p>
     <div class="sipick"><label class="filebtn btn pri">ファイルを選ぶ（XML・CSV）<input type="file" id="siFile" accept=".xml,.csv,.XML,.CSV,text/xml,text/csv,application/xml" multiple hidden></label>
     <div class="sidrop" id="siDrop"><b>ここにファイルをドラッグ＆ドロップ</b><span>XML・CSV　2つ同時でも大丈夫です</span></div></div>${fileList}</div>`;
-  if (!started.length) return { active: 'acts', html: `<div class="scw">${crumb}${intro}<div class="card empty">MATCH PLAY でキックオフを押したピリオドがありません。時計の記録を使うので、先に MATCH PLAY の記録が必要です。</div></div>` };
+  if (!started.length) { const b = buildPlay(m, st); return { active: 'acts', html: `<div class="scw siw">${crumb}<h1>Sportscodeから取り込み</h1><p class="mu">この試合は MATCH PLAY の記録がありません。Sportscode で書き出した XML か CSV から、まず出場・交代・時計の記録を作り、続けてイベント（シュート、ゾーン進入、FINISH SET PLAY、リカバリー・ロスト、ファール）を取り込みます。</p>${pick}${b.html}</div>`, bind: (root) => { bindFiles(root); b.bind(root); } }; }
+  if (false) return { active: 'acts', html: `<div class="scw">${crumb}${intro}<div class="card empty">MATCH PLAY でキックオフを押したピリオドがありません。時計の記録を使うので、先に MATCH PLAY の記録が必要です。</div></div>` };
   const done = importedByPeriod(evC.list, M);
   const doneHtml = done.length ? `<div class="card sidone"><h3>取り込み済み</h3>${done.map((g) => `<div class="sidrow"><b>${g.label}</b><span class="sifn">${g.name ? `📄 ${esc(g.name)}` : '<span class="mu">Sportscodeから取り込み（ファイル名の記録なし）</span>'}</span><span>${g.n}件</span><span class="mu sm">${g.t ? `${dt(g.t)} に取り込み` : ''}</span><button class="btn sm danger" data-impdel="${g.key}">この取り込みを消す</button></div>`).join('')}
     <p class="mu sm">違うファイルに変えるときは、下でそのピリオドのファイルを読み込んで取り込みます（取り込み済みの分と置き換わります）。消しても、アプリで入力したイベントと MATCH PLAY の記録は残ります。</p></div>` : '';
@@ -64,7 +159,7 @@ export function vScImport(m) {
       }
       const rows = files.flatMap((f) => kickOffs(f.parsed.instances).map((k, i) => ({ f, i, k, key: f.assign[i] })));
       const many = files.length > 1;
-      const rowHtml = (r, need) => `<div class="sirow"><span class="sikick"><b>${many ? `${esc(r.f.name)}：` : ''}Kick Off ${r.i + 1}（動画 ${mmss(r.k.start * 1000)}）</b><span class="siar">→</span><select data-asg="${r.f.id}:${r.i}" class="${r.key ? '' : 'sineed'}">${r.key ? '' : '<option value="" selected disabled>選んでください</option>'}${started.map((x) => `<option value="${x.key}" ${x.key === r.key ? 'selected' : ''}>${x.label}</option>`).join('')}</select>${r.key && r.f.guess === r.key && kickOffs(r.f.parsed.instances).length === 1 ? '<span class="mu sm siguess">ファイル名から選びました</span>' : ''}</span>
+      const rowHtml = (r, need) => `<div class="sirow"><span class="sikick"><b>${many ? `${esc(r.f.name)}：` : ''}Kick Off ${r.i + 1}（動画 ${mmss(r.k.start * 1000)}）</b><span class="siar">→</span><select data-asg="${r.f.id}:${r.i}" class="${r.key ? '' : 'sineed'}">${r.key ? '' : '<option value="" selected disabled>選んでください</option>'}${started.map((x) => `<option value="${x.key}" ${x.key === r.key ? 'selected' : ''}>${x.label}</option>`).join('')}<option value="-" ${r.key === '-' ? 'selected' : ''}>使わない</option></select>${r.key && r.f.guess === r.key && kickOffs(r.f.parsed.instances).length === 1 ? '<span class="mu sm siguess">ファイル名から選びました</span>' : ''}</span>
         ${need ? '' : `<label>全体をずらす（秒）<input data-sh="${r.key}" value="${st8.shift[r.key] ?? ''}" placeholder="0" inputmode="decimal"></label>`}</div>`;
       const dupKeys = (() => { const ks = rows.map((r) => r.key).filter(Boolean); return [...new Set(ks.filter((k, i) => ks.indexOf(k) !== i))]; })();
       if (rows.some((r) => !r.key) || dupKeys.length) {
@@ -128,29 +223,7 @@ export function vScImport(m) {
   return {
     active: 'acts', html: `<div class="scw siw">${crumb}${intro}${doneHtml}${pick}${body}</div>`,
     bind: (root) => {
-      const f = root.querySelector('#siFile');
-      // 読み込んだファイルは一覧に足す（同じ名前のファイルは新しいほうに置き換える）。XML・CSV 以外は読まずに知らせる
-      const loadAll = (list) => {
-        const ok = [...list].filter((x) => /\.(xml|csv)$/i.test(x.name)), ng = list.length - ok.length;
-        if (ng) toast(ok.length ? `XML・CSV 以外の ${ng}つのファイルは読み込みませんでした` : 'XML か CSV のファイルを選んでください');
-        if (!ok.length) return;
-        Promise.all(ok.map((file) => file.text().then((text) => ({ id: 'f' + (++fileSeq), name: file.name, parsed: parseSC(text), assign: [], guess: null })))).then((add) => {
-          st8.files = [...st8.files.filter((x) => !add.some((a) => a.name === x.name)), ...add];
-          render();
-        });
-      };
-      f.onchange = () => { if (f.files?.length) loadAll(f.files); f.value = ''; };
-      // ドラッグ＆ドロップ（PC）：枠の中に落とす。上に持ってくると枠が光る。枠の外に落としたときは、ブラウザがファイルを開かないように止めて知らせる
-      if (!guarded) { guarded = true; for (const t of ['dragover', 'drop']) document.addEventListener(t, (e) => { if (location.hash.includes('/scimport') && [...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); if (t === 'drop' && !e.target.closest?.('#siDrop')) toast('点線の枠の中に落としてください'); } }); }
-      const dz = root.querySelector('#siDrop');
-      if (dz) {
-        let depth = 0;
-        const hasFile = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
-        dz.addEventListener('dragenter', (e) => { if (!hasFile(e)) return; e.preventDefault(); depth++; dz.classList.add('over'); });
-        dz.addEventListener('dragover', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
-        dz.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) dz.classList.remove('over'); });
-        dz.addEventListener('drop', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.stopPropagation(); depth = 0; dz.classList.remove('over'); if (e.dataTransfer.files?.length) loadAll(e.dataTransfer.files); });
-      }
+      bindFiles(root);
       const ad = root.querySelector('#siAdj'); if (ad) ad.addEventListener('toggle', () => { st8.adjOpen = ad.open; });
       root.querySelectorAll('[data-impdel]').forEach((b) => b.onclick = async () => {
         const k = b.dataset.impdel; const list = evC.list.filter((e) => !e.deleted && isImp(e) && e.period === k); const ed = list.filter(isEdited).length;
@@ -158,7 +231,6 @@ export function vScImport(m) {
         for (const e of list) saveEvent(m.id, { ...e, deleted: true });
         toast(`${periodLabel(k)}の取り込み ${list.length}件を消しました`); render();
       });
-      root.querySelectorAll('[data-fdel]').forEach((b) => b.onclick = () => { st8.files = st8.files.filter((x) => x.id !== b.dataset.fdel); render(); });
       root.querySelectorAll('[data-asg]').forEach((sel) => sel.onchange = () => { const [fid, i] = sel.dataset.asg.split(':'); const x = st8.files.find((y) => y.id === fid); if (x) { x.assign[+i] = sel.value; x.guess = null; } render(); });
       root.querySelectorAll('[data-sh]').forEach((i) => i.onchange = () => { const v = i.value.trim(); st8.shift[i.dataset.sh] = v === '' ? 0 : +v || 0; render(); });
       root.querySelectorAll('[data-ld]').forEach((i) => i.onchange = () => { const L = { ...(teamSettings().scLead || {}) }; L[i.dataset.ld] = +i.value || 0; put(teamPath(), { settings: { ...(S.team?.settings || {}), scLead: L } }); if (S.team) S.team.settings = { ...(S.team.settings || {}), scLead: L }; render(); });

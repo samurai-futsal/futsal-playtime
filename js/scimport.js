@@ -81,12 +81,12 @@ export const kickOffs = (inst) => inst.filter((i) => /^kick ?off$/i.test(i.code)
 // files：[{ instances, assign: [Kick Off ごとのピリオド] }]。ファイルごとに Kick Off でピリオドに分けて buildImport し、結果を1つにまとめる。
 // 同じピリオドを2つ以上の Kick Off で選んでいたら dup に入れる（取り込みは止める）
 export function buildImportFiles(files, o) {
-  const keys = files.flatMap((f) => f.assign || []).filter(Boolean);
+  const keys = files.flatMap((f) => f.assign || []).filter((k) => k && k !== '-'); // 「-」＝使わない Kick Off（動画の終わりの印など）
   const dup = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
   const sum = (lists) => { const m = new Map(); for (const l of lists) for (const [k, n] of l) m.set(k, (m.get(k) || 0) + n); return [...m]; };
   const rs = files.map((f) => {
     const kos = kickOffs(f.instances);
-    const periods = kos.map((k, i) => ({ key: f.assign[i], ko: k.start, shift: +(o.shift || {})[f.assign[i]] || 0, from: i ? k.start : -1e9, to: kos[i + 1] ? kos[i + 1].start : 1e9 }));
+    const periods = kos.map((k, i) => ({ key: f.assign[i], ko: k.start, shift: +(o.shift || {})[f.assign[i]] || 0, from: i ? k.start : -1e9, to: kos[i + 1] ? kos[i + 1].start : 1e9 })).filter((x) => x.key && x.key !== '-');
     return { periods, r: buildImport({ ...o, instances: f.instances, periods }) };
   });
   return {
