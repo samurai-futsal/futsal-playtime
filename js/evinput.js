@@ -3,7 +3,8 @@
 // 入れないと記録できないのは時刻とイベントだけ。項目は ●基本／○詳細／△任意 の3段階（基本の空きだけが「未入力」）。
 import { S as D, watchOps, watchEvents, saveEvent, patchEvent, playerById, opts, teamSettings, put, teamPath, deviceId } from './store.js';
 import { replay, PERIODS, periodLabel } from './engine.js';
-import { matchModel, periodSig } from './model.js';
+import { matchModel, periodSig, toRunning } from './model.js';
+import { clockAtVideo, videoAtClock } from './vsync.js';
 import { esc, openModal, closeModal, confirmBox, toast } from './ui.js';
 import { keypadHTML, bindKeypad } from './keypad.js';
 import { render } from './views.js';
@@ -21,6 +22,51 @@ let ui = { m: null };
 let todoFor = null;
 export function openTodo(matchId) { todoFor = matchId; if (ui.m === matchId) ui.todo = true; }
 const FIELDS = EV_FIELDS;
+
+// ---------- 動画を見ながら入力（2026-10-22） ----------
+// 動画は端末の中のファイルを開いて再生するだけ（どこにも送らない）。画面を描き直しても同じ <video> を使い続ける（再生の位置がそのまま）。
+// 一時停止すると、止めた場面の試合の時計が①の時刻に入る（ピリオドごとにキックオフの場面を1回合わせておく）
+const VID = { el: null, url: null, name: '', open: false, ctx: null, skip: false };
+const syncKey = (mid) => `fpt.vsync.${mid}`;
+const syncOf = (mid) => { try { return JSON.parse(localStorage.getItem(syncKey(mid)) || '{}'); } catch { return {}; } };
+const saveSync = (mid, s) => { try { localStorage.setItem(syncKey(mid), JSON.stringify(s)); } catch {} };
+const hms = (v) => { v = Math.max(0, Math.floor(v || 0)); const h = Math.floor(v / 3600), mm = Math.floor(v / 60) % 60, ss = v % 60; return `${h ? h + ':' + String(mm).padStart(2, '0') : mm}:${String(ss).padStart(2, '0')}`; };
+function runOf(c) { if (!c.R) c.R = toRunning(c.M, c.st, Date.now()); return c.R; }
+function vidClock(c) {
+  if (!VID.el || !VID.url) return null;
+  return clockAtVideo(runOf(c), c.M.periods, syncOf(c.m.id), VID.name, VID.el.currentTime);
+}
+function vidEl() {
+  if (VID.el) return VID.el;
+  const v = document.createElement('video'); v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.className = 'evvideo';
+  const stop = (seek) => {
+    if (VID.skip) { if (seek) VID.skip = false; return; } // 一覧から場面へ動かしたとき（時刻は記録のまま）
+    const c = VID.ctx; if (!c || !VID.open || !v.paused) return;
+    const r = vidClock(c); if (!r) return;
+    const p = c.M.periods.find((x) => x.key === r.period); if (!p) return;
+    ui.period = r.period; ui.listPer = r.period; ui.sec = Math.max(0, Math.round((p.len - r.at) / 1000));
+    render();
+  };
+  v.addEventListener('pause', () => stop(false));
+  v.addEventListener('seeked', () => { if (v.paused) stop(true); else if (VID.skip) VID.skip = false; });
+  v.addEventListener('timeupdate', () => { const n = document.querySelector('.evvid .vnow'); if (n && VID.ctx) n.innerHTML = vidNow(VID.ctx); });
+  VID.el = v; return v;
+}
+function vidNow(c) {
+  if (!VID.url) return '';
+  const r = vidClock(c); const p = r && c.M.periods.find((x) => x.key === r.period);
+  return `動画 <b>${hms(VID.el.currentTime)}</b>　→　${r ? `<b class="vclk">${p.label} ${mmss(Math.round((p.len - r.at) / 1000))}</b><small>（残り時間）</small>` : '<span class="mu">キックオフの場面を合わせると、試合の時計が出ます</span>'}`;
+}
+function vidPanel(m, M) {
+  const sync = syncOf(m.id);
+  const pers = M.periods.filter((p) => p.status !== 'none');
+  const syncRows = pers.map((p) => { const s = sync[p.key]; const here = s && s.name === VID.name;
+    return `<div class="vsr"><span class="vsl">${p.label}</span>${here ? `<span class="vok">✓ 動画 ${hms(s.v)} がキックオフ</span>` : s ? `<span class="mu">別の動画（${esc(s.name)}）で合わせています</span>` : '<span class="mu">まだ合わせていません</span>'}${VID.url ? `<button class="btn sm" data-vk="${p.key}">今の場面を${p.label}のキックオフにする</button>` : ''}</div>`; }).join('');
+  return `<div class="card evvid"><div class="vh"><b>動画</b><span class="mu vnm">${VID.url ? esc(VID.name) : ''}</span><span class="sp"></span><label class="btn sm">${VID.url ? '別の動画を開く' : '動画を開く'}<input type="file" accept="video/*,.mp4,.mov,.m4v" id="evVidFile" hidden></label><button class="btn sm" id="evVidClose">閉じる</button></div>
+    <div class="vslot" id="evVidSlot">${VID.url ? '' : '<div class="vnone">PC・iPadの中にある試合の動画を開いてください。<br>動画はどこにも送らず、この端末で再生するだけです。</div>'}</div>
+    ${VID.url ? `<div class="vctl"><button class="btn sm" data-vs="-5">−5秒</button><button class="btn sm" data-vs="-1">−1秒</button><button class="btn sm pri" data-vs="0">${VID.el && !VID.el.paused ? '❚❚ 止める' : '▶ 再生'}</button><button class="btn sm" data-vs="1">＋1秒</button><button class="btn sm" data-vs="5">＋5秒</button></div><div class="vnow"></div>` : ''}
+    <div class="vsync"><div class="vst">時刻の合わせ方：動画をピリオドの始まり（キックオフ）の場面にして、ボタンを押す。止めた場面の時計が①に入ります</div>${syncRows || '<span class="mu">MATCH PLAYで記録したピリオドがありません（時刻は①で入れてください）</span>'}</div></div>`;
+}
 
 function cfgOf(m) { return { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 }; }
 const goalTypes = () => opts('goalTypes', true);
@@ -271,7 +317,7 @@ export function vEvents(m, { rt = false } = {}) {
   const foot = ui.edit
     ? `${keepBtn}<div class="foot"><button class="btn dangerline" id="evDel">このイベントを削除</button><span class="sp"></span><button class="btn" id="evCancel">やめる</button><button class="btn pri" id="evSave" ${ui.kind ? '' : 'disabled'}>直す</button></div>`
     : `<div class="foot">${undoBtn}<span class="mu">時刻とイベントだけで記録できます。空けた分は資料で「—」や「未入力 n」になり、あとで埋められます</span><button class="btn" id="evCancel" ${ui.kind ? '' : 'disabled'}>やめる</button><button class="btn pri" id="evSave" ${ui.kind ? '' : 'disabled'}>記録する（時刻はそのまま）</button></div>`;
-  const ctx = { m, cfg, M, events, per, nm, all, sp, role };
+  const ctx = { m, cfg, M, st, events, per, nm, all, sp, role };
   const form = `<div class="card evform">${ui.edit ? '<div class="evediting">入力したイベントを直しています</div>' : ''}${step1}${step2}<div id="evDyn">${dynHTML(ctx)}</div>${foot}</div>`;
 
   return {
@@ -279,8 +325,8 @@ export function vEvents(m, { rt = false } = {}) {
     html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › ${title}</div>
       <div class="row between"><h1 style="margin:0">${title}</h1><span class="mu">記録した時点で試合の記録になり、マッチレビューにすぐ反映されます</span></div>
       <div class="evrole"><span class="rl">入力の担当人数</span><b>${sp.n}人</b>${sp.n > 1 ? `<span class="rl">この端末</span><b>${roleName(m, role)}</b><span class="mu">${kindsShown(mine).map(kindLabel).join('・')}</span><button class="btn sm" id="evRoleChange">担当を変える</button>` : '<span class="mu">（1人で全部のイベントを入力）</span>'}
-        <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><button class="dev" id="evWho">担当者：<b>${esc(whoLabel())}</b> <span>変える</span></button></div>
-      <div class="evw mt">${list}${form}</div>`,
+        <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><button class="btn sm ${VID.open ? 'pri' : ''}" id="evVid">🎬 動画を見ながら入力${VID.open ? '（開いています）' : ''}</button><button class="dev" id="evWho">担当者：<b>${esc(whoLabel())}</b> <span>変える</span></button></div>
+      <div class="evw mt ${VID.open ? 'vid' : ''}"><div class="evleft">${VID.open ? vidPanel(m, M) : ''}${list}</div>${form}</div>`,
     bind: (root) => bindEv(root, ctx),
   };
 }
@@ -440,6 +486,9 @@ function bindEv(root, ctx) {
   const dyn = () => { root.querySelector('#evDyn').innerHTML = dynHTML(ctx); };
   // 相手の退場の「4×3の終わり」を入れているときは、同じ数字のボタンで終わりの時刻を入れる
   const endP = ui.kind === 'oej' && ui.oejStep === 'end' ? ctx.M.periods.find((p) => p.key === ui.f.endPeriod) : null;
+  VID.ctx = ctx;
+  if (VID.open && VID.url) { const slot = root.querySelector('#evVidSlot'); if (slot) { slot.appendChild(vidEl()); const n = root.querySelector('.evvid .vnow'); if (n) n.innerHTML = vidNow(ctx); } }
+  { const fi = root.querySelector('#evVidFile'); if (fi) fi.onchange = () => { const file = fi.files?.[0]; if (!file) return; if (VID.url) URL.revokeObjectURL(VID.url); VID.url = URL.createObjectURL(file); VID.name = file.name; const v = vidEl(); v.src = VID.url; render(); }; }
   const kp = endP ? bindKeypad(root.querySelector('.evkp'), {
     init: Math.max(0, Math.round((endP.len - (ui.f.endAt ?? endP.len)) / 1000)), min: 0, max: Math.round(endP.len / 1000),
     onChange: (v) => { if (v.ok) { const at = endP.len - v.sec * 1000; if (at !== ui.f.endAt) { ui.f.endAt = at; ui.endTouched = true; dyn(); kp && kp.note(`4×3の終わり：${endP.label}（経過 ${mmss(Math.round(at / 1000))}）`); } } },
@@ -460,6 +509,10 @@ function bindEv(root, ctx) {
   root.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b || b.disabled) return;
     if (b.dataset.locclr != null) { delete ui.f.loc; return dyn(); }
+    if (b.id === 'evVid') { VID.open = !VID.open; return render(); }
+    if (b.id === 'evVidClose') { VID.open = false; if (VID.el) VID.el.pause(); return render(); }
+    if (b.dataset.vk) { const s = syncOf(m.id); s[b.dataset.vk] = { v: Math.round(VID.el.currentTime * 10) / 10, name: VID.name }; saveSync(m.id, s); toast(`${periodLabel(b.dataset.vk)}のキックオフを合わせました`); return render(); }
+    if (b.dataset.vs != null) { const v = vidEl(); const d = +b.dataset.vs; if (!d) { if (v.paused) v.play(); else v.pause(); } else { v.currentTime = Math.max(0, v.currentTime + d); } setTimeout(() => { const t = root.querySelector('[data-vs="0"]'); if (t) t.textContent = v.paused ? '▶ 再生' : '❚❚ 止める'; }, 50); return; }
     if (b.dataset.per) { ui.period = b.dataset.per; ui.listPer = b.dataset.per; applyAuto(ctx); return render(); }
     if (b.dataset.lper) { ui.listPer = b.dataset.lper; ui.todo = false; ui.det = false; return render(); }
     if (b.id === 'evTodo') { ui.todo = !ui.todo; ui.det = false; return render(); }
@@ -527,6 +580,8 @@ function loadEvent(ctx, id) {
   if (ev.side) ui.f.side = ev.side;
   ui.clsTouched = true; ui.clsAutoNote = '';
   ui.oejStep = 'start'; ui.endTouched = ev.kind === 'oej' && ev.endPeriod != null;
+  // 動画を開いていれば、その場面の3秒前へ（止めたまま。時刻は記録のまま）
+  if (VID.open && VID.url && VID.el) { const v = videoAtClock(runOf(ctx), syncOf(ctx.m.id), VID.name, ev.period, ev.at); if (v != null) { VID.skip = true; VID.el.pause(); VID.el.currentTime = Math.max(0, v - 3); } }
 }
 async function save(ctx) {
   const { m, M, per } = ctx;
