@@ -246,7 +246,7 @@ export function summary(ev, nm, goalName = (x) => x, fmtAt = null) {
   if (ev.n != null && ev.n !== '') parts.push(`${ev.n}人`);
   if (ev.cls) parts.push(lab(CLS, ev.cls) + (ev.sp ? `（${lab(SETP, ev.sp)}）` : ''));
   if (ev.fsp) parts.push(lab(FSP, ev.fsp));
-  if (ev.zone) parts.push(ev.zone);
+  if (ev.loc && areaOf(ev.loc)) parts.push(areaOf(ev.loc).area); else if (ev.zone) parts.push(ev.zone);
   if (ev.card && ev.card !== 'none') parts.push(CARD_LABEL[ev.card] || ev.card);
   if ((k === 'foul' || k === 'fouled') && ev.card === 'none') parts.push('カードなし');
   return parts.join('・');
@@ -306,15 +306,44 @@ export function pitchSig(M) {
   return `${(M.stints || []).length}:${h.toString(36)}`;
 }
 
+// ---------- 場所（コートの図。2026-10-22） ----------
+// loc = { x, y }（メートル。40m×20m のコートとして記録）。x：自陣のゴールライン 0 → 相手のゴールライン 40（自チームはいつも右へ攻める）。
+// y：+10 が上（攻める向きの左＝L）〜 −10 が下（R）。
+// エリア（相手のゴール前＝ZONE 4）：
+//  SZ（スコアゾーン）＝第2PKの点（ゴールラインから10m）から左右5mの2点と、ペナルティーラインとゴールラインの交点（中心から左右7.5m）を結んだ台形。
+//    ゴールラインから5mで分け、ゴール側が XP、手前が X。
+//  デッドゾーン＝コーナーから、ゴールに向かって5mの点と、ハーフラインに向かって10mの点を結んだ三角形（上 DL・下 DR）。SZと重なるところはSZ。
+//  4L・4R＝ZONE 4 のそのほか。ZONE 1〜3 は中央の10mを C、その外を L（上）・R（下）。
+// 自陣のゴール前（ZONE 1）は画面では 1L・1C・1R のまま。中では同じ形で「被X・被XP・被DL・被DR・被4L・被4R」として持つ（相手のSZ・Z4でのプレー）。
+export const PITCH = { L: 40, W: 20 };
+function goalArea(d, y) { // d＝そのゴールラインからの距離（0〜10）
+  const w = 7.5 - d * 0.25; // SZの半分の幅（ゴールライン 7.5m → 10mの所で 5m）
+  if (Math.abs(y) <= w) return d <= 5 ? 'XP' : 'X';
+  if (Math.abs(y) >= 5 + d * 0.5) return y > 0 ? 'DL' : 'DR'; // (ゴールライン,5m)〜(10m,タッチライン) の線より外
+  return y > 0 ? '4L' : '4R';
+}
+// 返す：{ zone:'Z1'..'Z4', area:画面の名前, sz:相手のSZの中, osz:自陣のSZの中（相手のシュート）, oarea:自陣のゴール前の中の名前（被X など）}
+export function areaOf(loc) {
+  if (!loc || !Number.isFinite(+loc.x) || !Number.isFinite(+loc.y)) return null;
+  const x = Math.max(0, Math.min(PITCH.L, +loc.x)), y = Math.max(-10, Math.min(10, +loc.y));
+  const z = x < 10 ? 1 : x < 20 ? 2 : x < 30 ? 3 : 4;
+  const lcr = y > 5 ? 'L' : y < -5 ? 'R' : 'C';
+  const a4 = z === 4 ? goalArea(PITCH.L - x, y) : null;
+  const a1 = z === 1 ? goalArea(x, y) : null;
+  return { zone: 'Z' + z, area: z === 4 ? a4 : `${z}${lcr}`, sz: a4 === 'X' || a4 === 'XP', osz: a1 === 'X' || a1 === 'XP', oarea: a1 ? '被' + a1 : null };
+}
+export const areaLabel = (loc) => { const a = areaOf(loc); return a ? a.area : ''; };
+const okLoc = (v) => v && typeof v === 'object' && Number.isFinite(+v.x) && Number.isFinite(+v.y) && +v.x >= 0 && +v.x <= PITCH.L && Math.abs(+v.y) <= 10;
+
 // ---------- イベントの種類ごとに持てる項目（記3：種類を変えたときは、新しい種類の項目だけを残す） ----------
-export const EV_FIELDS = ['pid', 'pid2', 'assist', 'method', 'result', 'n', 'cls', 'sp', 'gtype', 'sz', 'zone', 'card', 'fsp', 'og', 'endPeriod', 'endAt'];
+export const EV_FIELDS = ['pid', 'pid2', 'assist', 'method', 'result', 'n', 'cls', 'sp', 'gtype', 'sz', 'zone', 'card', 'fsp', 'og', 'endPeriod', 'endAt', 'loc'];
 const FIELDS_OF = {
-  shot: ['pid', 'result', 'n', 'cls', 'sp'], szshot: ['pid', 'result', 'n', 'cls', 'sp'],
-  oshot: ['result', 'n', 'cls', 'sp'], oszshot: ['result', 'n', 'cls', 'sp'],
+  shot: ['pid', 'result', 'n', 'cls', 'sp', 'loc'], szshot: ['pid', 'result', 'n', 'cls', 'sp', 'loc'],
+  oshot: ['result', 'n', 'cls', 'sp', 'loc'], oszshot: ['result', 'n', 'cls', 'sp', 'loc'],
   z4: ['method', 'pid', 'pid2', 'cls', 'sp'], sz: ['method', 'pid', 'pid2'], oz4: ['cls', 'sp'], osz: [],
-  goal: ['pid', 'assist', 'gtype', 'sz', 'n'], conc: ['gtype', 'og', 'sz', 'n'],
-  fspat: ['fsp'], fspdf: ['fsp'], rec: ['pid', 'zone'], lost: ['pid', 'zone'],
-  foul: ['pid', 'card'], fouled: ['pid', 'card'], oej: ['endPeriod', 'endAt'],
+  goal: ['pid', 'assist', 'gtype', 'sz', 'n', 'loc'], conc: ['gtype', 'og', 'sz', 'n', 'loc'],
+  fspat: ['fsp'], fspdf: ['fsp'], rec: ['pid', 'zone', 'loc'], lost: ['pid', 'zone', 'loc'],
+  foul: ['pid', 'card', 'loc'], fouled: ['pid', 'card', 'loc'], oej: ['endPeriod', 'endAt'],
 };
 const okVal = { result: RESULTS, cls: CLS, sp: SETP, fsp: FSP, method: METHODS, zone: ZONES };
 // 項目を新しい種類に合うものだけにしたイベントを返す（イベントのほかの印 id・時刻・src・imp・hist などはそのまま）
@@ -326,6 +355,7 @@ export function cleanFields(ev, goalName = null) {
     if (!keep.has(f) || v == null || v === '') { delete out[f]; continue; }
     if (okVal[f] && !okVal[f].some(([x]) => x === v)) delete out[f];
   }
+  if (out.loc != null) { if (okLoc(out.loc)) out.loc = { x: Math.round(+out.loc.x * 10) / 10, y: Math.round(+out.loc.y * 10) / 10 }; else delete out.loc; }
   if (out.card != null && !(k === 'fouled' ? CARDS_OPP : CARDS).some(([x]) => x === out.card)) delete out.card;
   if ((k === 'foul' || k === 'fouled') && out.card == null) out.card = 'none';
   if (out.n != null && !(Number.isInteger(+out.n) && +out.n >= 0 && +out.n <= 5)) delete out.n;

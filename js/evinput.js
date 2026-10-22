@@ -11,8 +11,9 @@ import { devName } from './matchplay.js';
 import {
   KIND, MAIN_OWN, MAIN_OPP, SUBS, RESULTS, CLS, SETP, FSP, METHODS, ZONES, CARDS, CARDS_OPP, cardsOf, UNKNOWN, OPP_OG, NO_ASSIST,
   isShot, isSZ, isFsp, hasCls, isOGType, goalTypeIdOf, missing, missingLv, recheckAll, isTodo, pitchAt, subAtSecond, autoCls, liveEvents, sortEvents, summary,
-  EV_FIELDS, PLAYER_KEYS, cleanFields, checkOf, cardIssues, pitchSig, oejDefaultEnd,
+  EV_FIELDS, PLAYER_KEYS, cleanFields, checkOf, cardIssues, pitchSig, oejDefaultEnd, areaOf,
 } from './events.js';
+import { courtSVG, locFromEvent } from './court.js';
 
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.max(0, sec) % 60).padStart(2, '0')}`;
 let ui = { m: null };
@@ -150,13 +151,14 @@ function lastMine(all) {
   return best;
 }
 // 何をどう変えたか（履歴の1行）
-const FL = { at: '時刻', kind: 'イベント', pid: '選手', pid2: '受け手', assist: 'アシスト', result: '結果', n: '進入人数', cls: '局面', sp: 'セットプレー', gtype: '種類', sz: 'SZ', zone: 'ゾーン', card: 'カード', fsp: '種類', method: '方法', og: 'OG', period: 'ピリオド', endPeriod: '終わりのピリオド', endAt: '4×3の終わり' };
+const FL = { loc: '場所', at: '時刻', kind: 'イベント', pid: '選手', pid2: '受け手', assist: 'アシスト', result: '結果', n: '進入人数', cls: '局面', sp: 'セットプレー', gtype: '種類', sz: 'SZ', zone: 'ゾーン', card: 'カード', fsp: '種類', method: '方法', og: 'OG', period: 'ピリオド', endPeriod: '終わりのピリオド', endAt: '4×3の終わり' };
 function diffText(a, b, nm, periods) {
   const lists = { result: RESULTS, cls: CLS, sp: SETP, fsp: FSP, method: METHODS, zone: ZONES, card: [...CARDS_OPP] };
   const v = (k, x, e) => {
     if (x == null || x === '') return '—';
     if (k === 'at' || k === 'endAt') { const pl = periods.find((p) => p.key === (k === 'at' ? e.period : e.endPeriod)); return pl ? mmss(Math.round((pl.len - x) / 1000)) : String(x); }
     if (k === 'kind') return KIND[x]?.label || x;
+    if (k === 'loc') return areaOf(x)?.area || '—';
     if (k === 'period' || k === 'endPeriod') return periods.find((p) => p.key === x)?.label || x;
     if (['pid', 'pid2', 'assist'].includes(k)) return x === UNKNOWN ? '不明' : x === OPP_OG ? '相手OG' : x === NO_ASSIST ? 'なし' : nm(x);
     if (lists[k]) return (lists[k].find((y) => y[0] === x) || [])[1] || x;
@@ -315,6 +317,16 @@ function dynHTML(ctx) {
   const row = (label, mark, body, hint = '') => `<div class="rrow"><label>${label}${mark}</label><div>${body}${hint ? `<div class="hint">${hint}</div>` : ''}</div></div>`;
   const step = (n, title, body) => `<div class="step"><span class="num">${n}</span><div><div class="st">${title}</div>${body}</div></div>`;
   const at5 = `<small>${mmss(ui.sec)} にピッチにいた5人</small>${sideSw}`;
+  // 場所（コートの図。2026-10-22）：押した点を残し、エリア・ZONE・SZの中かを自動で決める
+  const locStep = (n) => {
+    const a = areaOf(f.loc); const opp = KIND[k].team === 'opp' && k !== 'oej';
+    const auto = !a ? '' : (k === 'shot' || k === 'szshot') ? (a.sz ? '→ SZの中なので「SZ内シュート」として記録します' : '→ SZの外なので「シュート」として記録します')
+      : (k === 'oshot' || k === 'oszshot') ? (a.osz ? '→ 自陣のSZの中なので「被SZ内シュート」として記録します' : '→ 自陣のSZの外なので「被シュート」として記録します')
+      : k === 'goal' ? `→ SZ${a.sz ? '内' : '外'}` : k === 'conc' ? (isOGg(f.gtype) ? '' : `→ SZ${a.osz ? '内' : '外'}`) : (k === 'rec' || k === 'lost') ? `→ ゾーン ${a.zone}` : '';
+    const nmA = a ? `<b>${a.area}</b><span>（${a.zone.replace('Z', 'ZONE ')}${a.sz ? '・SZの中' : ''}${a.oarea ? `・自陣のゴール前：${a.oarea.replace('被', '')}` : ''}）</span>` : '<span class="mu">コートを押すと、その場所を記録します</span>';
+    return step(n, `場所 ${OPT}<small>コートを押す（自チームは右のゴールへ${opp ? '、相手は左のゴールへ' : ''}攻める）</small>`,
+      `<div class="evcourt">${courtSVG({ marks: f.loc ? [{ loc: f.loc, cls: opp ? 'o' : 'w' }] : [], opp })}</div><div class="locinfo">${nmA}${auto ? `<em>${auto}</em>` : ''}${f.loc ? '<button class="btn sm" data-locclr>場所を消す</button>' : ''}</div>`);
+  };
   const nCount = (sz) => choice('n', [0, 1, 2, 3, 4, 5].map((x) => [x, `${x}人`]), { dis: sz ? [0] : [] });
   const clsRow = () => row('分類', DET, `${choice('cls', CLS)}${f.cls === 'set' ? `<div class="sp2"><span style="margin:0 8px 0 0">セットプレーの種類 ${OPT}</span>${choice('sp', SETP)}</div>` : ''}`,
     ui.clsAutoNote || '');
@@ -338,7 +350,8 @@ function dynHTML(ctx) {
   if (isShot(k)) {
     const sz = isSZ(k);
     html += own ? step(3, `打った選手 ${DET}${at5}`, players('pid')) : step(3, '選手', `<div class="mu">相手チームのイベントなので、選手は選びません${sideSw ? '　' + sideSw : ''}</div>`);
-    html += step(4, '結果', row('結果', BAS, choice('result', RESULTS)) +
+    html += locStep(4);
+    html += step(5, '結果', row('結果', BAS, choice('result', RESULTS)) +
       row('ゾーン内の人数', sz ? OPT : DET, nCount(sz), sz ? 'SZ内は打った選手を1人目に数えるので0人は押せません' : 'シュートの瞬間にSZの中にいた攻撃側の人数（0人＝人無）') + clsRow());
   } else if (k === 'z4' || k === 'sz') {
     const meth = row('方法', DET, choice('method', METHODS));
@@ -355,14 +368,16 @@ function dynHTML(ctx) {
     const ogg = f.pid === OPP_OG;
     html += step(3, `得点者とアシスト ${at5}`, row('得点者', BAS, players('pid', { oppOG: true })) +
       (ogg ? '' : row('アシスト', DET, `<div class="ch">${on.filter((p) => p !== f.pid).map((p) => `<button class="btn ${f.assist === p ? 'on' : ''}" data-set="assist" data-v="${p}">${esc(nm(p))}</button>`).join('')}<button class="btn ${f.assist === NO_ASSIST ? 'on' : ''}" data-set="assist" data-v="${NO_ASSIST}">なし</button><button class="btn ${f.assist == null ? 'on soft' : ''}" data-set="assist" data-v="">あとで</button></div>`)));
-    html += step(4, '結果', ogg ? '<div class="mu">相手のオウンゴール：得点の種類は「OG」、アシストは「なし」が自動で入ります。シュートには数えません</div>'
+    if (!ogg) html += locStep(4);
+    html += step(ogg ? 4 : 5, '結果', ogg ? '<div class="mu">相手のオウンゴール：得点の種類は「OG」、アシストは「なし」が自動で入ります。シュートには数えません</div>'
       : row('得点の種類', DET, choice('gtype', gtList.filter(([id]) => !isOGg(id)))) + row('SZ内／SZ外', DET, choice('sz', [['in', 'SZ内'], ['out', 'SZ外']])) +
         (f.sz ? row('ゾーン内の人数', f.sz === 'in' ? OPT : DET, nCount(f.sz === 'in')) : '') +
         '<div class="hint">得点は「枠内シュート」としても数えるので、同じ場面のシュートは入れません。分類は種類から自動で付きます</div>');
   } else if (k === 'conc') {
     const og = isOGg(f.gtype);
     html += step(3, `失点の種類 ${DET}`, choice('gtype', gtList));
-    html += step(4, og ? 'オウンゴール' : '結果', og
+    if (!og) html += locStep(4);
+    html += step(og ? 4 : 5, og ? 'オウンゴール' : '結果', og
       ? row('OGの選手', DET, players('og', { unknown: true })) + '<div class="hint">OGのときは「SZ内／SZ外」と「ゾーン内の人数」は入れません。シュートにも数えません</div>'
       : row('SZ内／SZ外', DET, choice('sz', [['in', 'SZ内'], ['out', 'SZ外']])) + (f.sz ? row('ゾーン内の人数', f.sz === 'in' ? OPT : DET, nCount(f.sz === 'in'), '相手の人数') : '') +
         '<div class="hint">失点は「枠内の被シュート」としても数えるので、同じ場面の被シュートは入れません</div>');
@@ -370,10 +385,12 @@ function dynHTML(ctx) {
     html += step(3, `種類 ${DET}`, choice('fsp', FSP));
   } else if (k === 'rec' || k === 'lost') {
     html += step(3, `${k === 'rec' ? 'ボールを奪った選手' : 'ボールを失った選手'} ${DET}${at5}`, players('pid'));
-    html += step(4, '場所', row('ゾーン', OPT, `<div class="ch zch">${ZONES.map(([z, c]) => `<button class="btn ${f.zone === z ? 'on' : ''}" data-set="zone" data-v="${z}">${z}<span class="zcap">${c}</span></button>`).join('')}</div>`));
+    html += locStep(4);
+    html += step(5, 'ゾーン', row('ゾーン', OPT, `<div class="ch zch">${ZONES.map(([z, c]) => `<button class="btn ${f.zone === z ? 'on' : ''}" data-set="zone" data-v="${z}">${z}<span class="zcap">${c}</span></button>`).join('')}</div>`));
   } else if (k === 'foul' || k === 'fouled') {
     html += step(3, `${k === 'foul' ? 'ファールをした選手' : 'ファールを受けた選手'} ${k === 'foul' ? DET : OPT}${at5}`, players('pid'));
-    html += step(4, 'カード', row('カード', BAS, choice('card', k === 'fouled' ? CARDS_OPP : CARDS), k === 'fouled' ? '相手選手へのカード' : '同じ選手の2枚目のイエローは、自動で「イエロー2枚目（退場）」として数えます'));
+    html += locStep(4);
+    html += step(5, 'カード', row('カード', BAS, choice('card', k === 'fouled' ? CARDS_OPP : CARDS), k === 'fouled' ? '相手選手へのカード' : '同じ選手の2枚目のイエローは、自動で「イエロー2枚目（退場）」として数えます'));
   }
   return html;
 }
@@ -404,6 +421,17 @@ function applyAuto(ctx) {
   if (c === 'special') ui.clsAutoNote = '自チームがGKをフィールドの選手と入れ替えていた区間か相手の5×4の時間帯なので「特殊局面」にしています（変えられます）';
   if (c === 'set') ui.clsAutoNote = '前後5秒以内にFINISH SET PLAYがあるので「セットプレー」にしています（変えられます）';
 }
+// 場所を入れて、場所から決まる項目を入れる。種類が変わったら true（上のボタンも描き直す）
+function setLoc(loc) {
+  ui.f.loc = loc; const a = areaOf(loc); const k0 = ui.kind; if (!a) return false;
+  if (k0 === 'shot' || k0 === 'szshot') ui.kind = a.sz ? 'szshot' : 'shot';
+  else if (k0 === 'oshot' || k0 === 'oszshot') ui.kind = a.osz ? 'oszshot' : 'oshot';
+  else if (k0 === 'goal' && ui.f.pid !== OPP_OG) ui.f.sz = a.sz ? 'in' : 'out';
+  else if (k0 === 'conc' && !isOGg(ui.f.gtype)) ui.f.sz = a.osz ? 'in' : 'out';
+  else if (k0 === 'rec' || k0 === 'lost') ui.f.zone = a.zone;
+  if (ui.f.n === 0 && (isSZ(ui.kind) || ui.f.sz === 'in')) delete ui.f.n; // SZ内は0人はない
+  return ui.kind !== k0;
+}
 function resetForm() { ui.kind = null; ui.f = {}; ui.edit = null; ui.clsTouched = false; ui.clsAutoNote = ''; ui.oejStep = 'start'; ui.endTouched = false; }
 
 function bindEv(root, ctx) {
@@ -423,8 +451,15 @@ function bindEv(root, ctx) {
   });
   if (endP) kp.note(`4×3の終わり：${endP.label}（経過 ${mmss(Math.round((ui.f.endAt ?? 0) / 1000))}）`);
   else kp.note(`${per.label}（経過 ${mmss(Math.max(0, lenSec - ui.sec))}）`);
+  // コートを押す → 場所。シュートは SZの中か外かで種類を、得点・失点は SZ内／SZ外を、ロスト・リカバリーはゾーンを自動で入れる
+  root.addEventListener('click', (e) => {
+    const svg = e.target.closest('.evcourt svg'); if (!svg || !ui.kind) return;
+    const loc = locFromEvent(svg, e); if (!loc) return;
+    if (setLoc(loc)) render(); else dyn();
+  });
   root.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b || b.disabled) return;
+    if (b.dataset.locclr != null) { delete ui.f.loc; return dyn(); }
     if (b.dataset.per) { ui.period = b.dataset.per; ui.listPer = b.dataset.per; applyAuto(ctx); return render(); }
     if (b.dataset.lper) { ui.listPer = b.dataset.lper; ui.todo = false; ui.det = false; return render(); }
     if (b.id === 'evTodo') { ui.todo = !ui.todo; ui.det = false; return render(); }

@@ -1540,3 +1540,16 @@ body.jpn .tile{border-top:4px solid #1B2550}
 .anglist{margin-bottom:16px}.anglist td.gcl i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:0}
 .anglist tr.gown td{background:#F5F8FE}.anglist tr.gopp td{background:#FEF6F5}
 .anglist .anres{min-width:40px}
+/* コートの図（2026-10-22） */
+.court{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none}
+.court .cbg{fill:#fff}.court .cz1{fill:#FBE3DF;opacity:.55}.court .cz4{fill:#DCE8FA;opacity:.6}
+.court .csz{fill:#2F7BE0;opacity:.22}.court .csz.o{fill:#E0543F;opacity:.12}.court.opp .csz.o{opacity:.26}.court.opp .csz:not(.o){opacity:.12}
+.court .cszl{stroke:#2F7BE0;stroke-width:1.5;stroke-dasharray:5 4;opacity:.7}
+.court .cdz{fill:#555;opacity:.28}
+.court .cdash{stroke:#555;stroke-width:1.5;stroke-dasharray:5 5;fill:none}.court .cdash2{stroke:#777;stroke-width:1;stroke-dasharray:3 6;fill:none}
+.court .cline{fill:none;stroke:#1A2340;stroke-width:3}.court .cline.thin{stroke-width:2.2}.court .cgoal{fill:#ddd;stroke:#1A2340;stroke-width:2}.court .cdot{fill:#1A2340}
+.court .clab{font:800 15px Inter,sans-serif;fill:#6A7389;text-anchor:middle;pointer-events:none}.court .clab.sz{fill:#0B2D6B}
+.court .czn{font:700 12px Inter,sans-serif;fill:#7A8699;text-anchor:middle}
+.court .cmk{stroke:#fff;stroke-width:3;pointer-events:none}.court .cmk.w{fill:#1F5FBF}.court .cmk.o{fill:#C8312B}
+.evcourt{max-width:680px;cursor:crosshair;border-radius:10px;overflow:hidden;border:1px solid #DCE2EE}
+.locinfo{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:6px;font-size:14px}.locinfo b{font-size:18px;color:#0B2D6B}.locinfo em{font-style:normal;font-weight:700;color:#1A7F4B;background:#E9F7EF;border-radius:8px;padding:2px 10px;font-size:13px}

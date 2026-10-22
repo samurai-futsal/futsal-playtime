@@ -1,7 +1,7 @@
 // Event rules (spec 6章・13章): 未入力の数え方、ピッチの5人（交代と同じ秒）、分類の初めの選択、要確認。
 // Run: node test/events.test.mjs
 import { cardsOf, recheckAll, isTodo, todoCount, missing, missingLv, pitchAt, subAtSecond, autoCls, needsCheck, OPP_OG, NO_ASSIST, UNKNOWN, sortEvents, setEventTable,
-  cardIssues, checkOf, CHECK_PITCH, gkOutWindows, goalTypeKey, isOGType, clsOfGoalTypeId, goalTypeIdOf, cleanFields, oejDefaultEnd, oppEjWindows, pitchSig, summary } from '../js/events.js';
+  cardIssues, checkOf, CHECK_PITCH, gkOutWindows, goalTypeKey, isOGType, clsOfGoalTypeId, goalTypeIdOf, cleanFields, oejDefaultEnd, oppEjWindows, pitchSig, summary, areaOf } from '../js/events.js';
 
 let pass = 0, fail = 0;
 const eq = (a, b, msg) => { const ok = JSON.stringify(a) === JSON.stringify(b); ok ? pass++ : (fail++, console.log('FAIL', msg, '\n  got', JSON.stringify(a), '\n  want', JSON.stringify(b))); };
@@ -227,6 +227,30 @@ eq(sortEvents([{ id: 2, period: '2H', at: 1 }, { id: 3, period: '1H', at: 5, seq
   eq(oppEjWindows(evs, MM), { '1H': [[1140000, 1200000]], '2H': [[0, 100000], [500000, 620000]] }, 'oppEjWindows: split by period, merged, default end');
   eq([missingLv({ kind: 'oej' }), needsCheck(M, ev({ kind: 'oej', at: 150000 }))], [{ basic: 0, detail: 0 }, false], 'oej is never a todo');
   eq(summary({ kind: 'oej', endPeriod: '2H', endAt: 60000 }, (x) => x, undefined, (p, at) => `${p}-${at}`), '4×3 〜 2H-60000まで', 'oej summary');
+}
+
+// --- 場所（コートの図。2026-10-22）：SZ（X・XP）、デッドゾーン（DL・DR、SZと重なるところはSZ）、4L・4R、1〜3のL・C・R、自陣のゴール前は被〜
+{
+  const A = (x, y) => { const a = areaOf({ x, y }); return a && [a.zone, a.area, a.sz, a.osz, a.oarea]; };
+  eq(A(37, 0), ['Z4', 'XP', true, false, null], 'XP');
+  eq(A(32, 0), ['Z4', 'X', true, false, null], 'X');
+  eq(A(30.1, 5), ['Z4', 'X', true, false, null], 'SZ corner at the 10m line (5m wide)');
+  eq(A(30.1, 5.3), ['Z4', '4L', false, false, null], 'just outside SZ at the 10m line');
+  eq(A(39.9, 7.4), ['Z4', 'XP', true, false, null], 'SZ reaches 7.5m at the goal line');
+  eq(A(39.9, 7.0), ['Z4', 'XP', true, false, null], 'overlap of SZ and dead zone is SZ');
+  eq(A(39.5, 9), ['Z4', 'DL', false, false, null], 'dead zone top');
+  eq(A(31, -9.8), ['Z4', 'DR', false, false, null], 'dead zone bottom near the 10m point on the touchline');
+  eq(A(33, 8), ['Z4', '4L', false, false, null], '4L');
+  eq(A(15, 7), ['Z2', '2L', false, false, null], '2L');
+  eq(A(25, -6), ['Z3', '3R', false, false, null], '3R');
+  eq(A(3, 0), ['Z1', '1C', false, true, '被XP'], 'own goal front: shown 1C, kept as 被XP');
+  eq(A(8, 2), ['Z1', '1C', false, true, '被X'], '被X');
+  eq(A(0.5, -8.5), ['Z1', '1R', false, false, '被DR'], '被DR');
+  eq(A(7, 7), ['Z1', '1L', false, false, '被4L'], '被4L');
+  eq(areaOf(null), null, 'no location');
+  eq(cleanFields({ kind: 'shot', loc: { x: 37.04, y: -1.26 } }).loc, { x: 37, y: -1.3 }, 'loc is kept on shots and rounded');
+  eq(cleanFields({ kind: 'fspat', loc: { x: 1, y: 1 } }).loc, undefined, 'loc is dropped where the kind has no place');
+  eq(cleanFields({ kind: 'rec', loc: { x: 50, y: 1 } }).loc, undefined, 'loc out of the court is dropped');
 }
 
 console.log(`events: ${pass} passed, ${fail} failed`);
