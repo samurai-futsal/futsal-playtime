@@ -26,6 +26,25 @@ export function shotsOf(events, goalName, own) {
   return out;
 }
 
+// FINISH SET PLAY のサインごと（2026-10-23）：回数と、そのあと SIGN_SEC 秒以内（同じピリオド・次のセットプレーより前）の自チームのシュート
+export const SIGN_SEC = 10;
+export function signStats(evs, gn) {
+  const fs = evs.filter((e) => !e.deleted && (e.kind === 'fspat' || e.kind === 'fspdf')).sort((a, b) => (a.at || 0) - (b.at || 0));
+  const sh = shotsOf(evs, gn, true);
+  const out = new Map();
+  for (const e of fs) {
+    if (e.kind !== 'fspat') continue;
+    const key = (e.sign || '').trim() || '';
+    const r = out.get(key) || out.set(key, { n: 0, hit: 0, sh: 0, on: 0, g: 0, types: {} }).get(key);
+    r.n++; if (e.fsp) r.types[e.fsp] = (r.types[e.fsp] || 0) + 1;
+    const next = fs.find((o) => o !== e && o.period === e.period && (o.at || 0) > (e.at || 0));
+    const mine = sh.filter((s) => s.e.period === e.period && (s.e.at || 0) >= (e.at || 0) && (s.e.at || 0) - (e.at || 0) <= SIGN_SEC * 1000 && (!next || (s.e.at || 0) < (next.at || 0)));
+    if (mine.length) r.hit++;
+    r.sh += mine.length; r.on += mine.filter((s) => s.result === 'in').length; r.g += mine.filter((s) => s.goal).length;
+  }
+  return out;
+}
+
 // periods：M.periods（並び順と長さ）。keys：数える範囲のピリオド（null＝試合全体）
 export function teamStats(M, events, goalName, keys = null, win = null) {
   // win(e)：数える時間帯か（分析の「5×4を除く」など）。null＝すべて

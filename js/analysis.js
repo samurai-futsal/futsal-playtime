@@ -5,8 +5,10 @@ import { S, watchOps, watchEvents, opts, teamSettings, playerById, activityById,
 import { periodLabel } from './engine.js';
 import { modelOf, playerTable, entryOrder } from './model.js';
 import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppWindows, windowsOf, clipModel, winTest, ppTime, setSplit, asOfLabel } from './teamstats.js';
+import { areaOf, FSP, RESULTS } from './events.js';
+import { courtSVG } from './court.js';
 import { missing, pitchAt, isFsp, OPP_OG, isOG, UNKNOWN, NO_ASSIST, clsOfGoalTypeId, isOGType } from './events.js';
-import { shotsOf, CLS_KEYS } from './teamstats.js';
+import { shotsOf, CLS_KEYS, signStats, SIGN_SEC } from './teamstats.js';
 import { paceSection, goalMarks, PACE_ROWS, teamSection, bandTip } from './review58.js';
 import { timelineHTML, declutterTimeline, printReviews } from './review.js';
 import { esc, fmtShort, openModal, closeModal, toast } from './ui.js';
@@ -22,11 +24,11 @@ import { bigBtn, bindBig, fitBox } from './bigview.js';
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const PCOL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const MCOL = ['#1F5FBF', '#E0832B', '#2E8B57', '#8A5AC8', '#C8312B', '#0E8A9E', '#B5600F', '#5F6B80'];
-const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '局面別'], ['pace', 'マッチ・ペース'], ['bym', '試合ごと'], ['byo', '相手ごと']]; // 試合ごと・相手ごとは2026-10-22 追加（何試合かを並べて見るものなので右に）
+const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セット'], ['pp', 'パワープレー'], ['type', '局面別'], ['loc', '場所'], ['pace', 'マッチ・ペース'], ['bym', '試合ごと'], ['byo', '相手ごと']]; // 試合ごと・相手ごとは2026-10-22 追加（何試合かを並べて見るものなので右に）
 // 2026-10-16：この2つだけ。2026-10-17（決8）：「5×4/4×5を除く」→「数的同数だけ」（5×4・4×5と、両チームの退場の時間帯を除く）
 const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く']];
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
-const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '', opp: '', rg: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', gside: 'all', gcls: 'all', msub: 'time', tmet: 'shot', osub: 'rg', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
+const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '', opp: '', rg: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', gside: 'all', gcls: 'all', msub: 'time', tmet: 'shot', osub: 'rg', lsub: 'own', lpid: '', lpl: '1', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
 if (A.tmet === 'z4' || A.tmet === 'sz') A.tmet = 'ent';
 A.gside = 'all'; A.gcls = 'all'; // 得点・失点の一覧の絞り込みは、開き直すと「すべて」から // 2026-10-22：Z4進入とSZ進入は1つのボタンで、グラフを横に並べる
@@ -34,7 +36,7 @@ let fromHash = null;
 let paceSel = null;
 const anHl = new Set(); // 表の強調している行（開いている間だけ）
 if (!['all', 'ex'].includes(A.pp)) A.pp = 'all';
-const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, bin, rows } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, bin, rows })); } catch {} };
+const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, lsub, lpid, lpl, bin, rows } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, lsub, lpid, lpl, bin, rows })); } catch {} };
 
 // 分析できる試合（試合中・終わった試合）
 const candidates = () => S.matches.filter((m) => !m.deleted && (m.status === 'playing' || m.status === 'done'))
@@ -192,6 +194,7 @@ export function vAnalysis(r, mFrom = null) {
   else if (A.tab === 'set') body = setTab(ctx);
   else if (A.tab === 'pp') body = ppTab(ctx);
   else if (A.tab === 'type') body = typeTab(ctx);
+  else if (A.tab === 'loc') body = locTab(ctx);
   else body = paceTab(ctx);
   return { active: 'analysis', html: `<div class="anw">${head}<div class="anbody">${body}</div></div>`, bind: bindAnalysis };
 }
@@ -490,7 +493,112 @@ function teamFsp(ctx, g) {
     ['1本あたりのシュート', sum('at') ? (set.own[0] / sum('at')).toFixed(2) : '—', sum('df') ? (set.opp[0] / sum('df')).toFixed(2) : '—', { pct: true }]], g, { note: '局面が「セットプレー」のシュート・得点（得点・失点の種類から分類したものを含む）' });
   const perT = per.length > 1 ? `<div class="ancmpw"><h4>試合ごと</h4><table class="antb anband"><colgroup><col style="width:60%"></colgroup><thead><tr><th class="apl">試合</th><th class="w">自チーム</th><th class="o">相手</th></tr></thead><tbody>${per.map(([x, c]) => `<tr><td class="apl">${fmtShort(x.m.date)} vs ${esc(x.m.opponent || '')}</td><td class="w">${c.at}</td><td class="o">${c.df}</td></tr>`).join('')}</tbody></table></div>` : '';
   return `<div class="anteamv">${cmpTable('FINISH SET PLAY の種類', rows, g, { note: '自チーム＝自チームのセットプレー（AT）、相手＝相手のセットプレー（こちらのDF）' })}${res}
+    ${signTable(ctx)}
     ${bandRows('時間帯ごとの FINISH SET PLAY', bandLabels(ctx), ctx.team.A.fspBand, ctx.team.B.fspBand, g)}${perT}</div>`;
+}
+
+// サインごと（2026-10-23）：自チームの FINISH SET PLAY を、サイン名ごとに。
+// 「そのあとのシュート」＝同じピリオドで、そのセットプレーから ${SIGN_SEC}秒以内の自チームのシュート（次のセットプレーより前のもの）
+function signTable(ctx) {
+  const T = new Map();
+  for (const x of ctx.ok) for (const [k, r] of signStats(evIn(x), x.gn)) {
+    const t = T.get(k) || T.set(k, { n: 0, hit: 0, sh: 0, on: 0, g: 0, types: {} }).get(k);
+    for (const f of ['n', 'hit', 'sh', 'on', 'g']) t[f] += r[f];
+    for (const [ty, c] of Object.entries(r.types)) t.types[ty] = (t.types[ty] || 0) + c;
+  }
+  if (!T.size) return '';
+  const named = [...T.entries()].filter(([k]) => k).sort((a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0], 'ja'));
+  const none = T.get('');
+  const fl = (v) => FSP.find(([k]) => k === v)?.[1] || v;
+  const pc = (a, b) => (b ? Math.round(a / b * 100) + '%' : '—');
+  const row = (label, r, c = '') => `<tr class="${c}"><td class="apl">${label}</td><td class="mu">${Object.entries(r.types).sort((a, b) => b[1] - a[1]).map(([t, c2]) => `${fl(t)}${Object.keys(r.types).length > 1 ? ` ${c2}` : ''}`).join('・') || '—'}</td><td><b>${r.n}</b></td><td>${r.hit}</td><td>${pc(r.hit, r.n)}</td><td>${r.sh}</td><td>${r.on}</td><td><b>${r.g}</b></td></tr>`;
+  const tot = [...T.values()].reduce((a, r) => { for (const f of ['n', 'hit', 'sh', 'on', 'g']) a[f] += r[f]; return a; }, { n: 0, hit: 0, sh: 0, on: 0, g: 0, types: {} });
+  return `<div class="ancmpw ansign"><h4>サインごと（自チームの FINISH SET PLAY）</h4><table class="antb"><thead><tr><th class="apl">サイン名</th><th>種類</th><th>回数</th><th>シュートまで<br>行った回数</th><th>その割合</th><th>シュート</th><th>枠内</th><th>得点</th></tr></thead><tbody>
+    ${named.map(([k, r]) => row(esc(k), r)).join('')}${none ? row('<span class="mu">サイン名なし</span>', none, 'ex') : ''}${named.length && (named.length > 1 || none) ? row('合計', tot, 'tot') : ''}</tbody></table>
+    <p class="anhint">シュート・枠内・得点は、そのセットプレーから${SIGN_SEC}秒以内（同じピリオドで、次のセットプレーより前）の自チームのシュート。得点も枠内とシュートに数えます。サイン名はイベント入力の FINISH SET PLAY（自チーム）で入れます</p></div>`;
+}
+
+// ---------- 場所（2026-10-23）：シュート・リカバリー・ロストを入力した場所で見る ----------
+const LSUBS = [['own', 'シュート（自チーム）'], ['opp', 'シュート（相手）'], ['rl', 'リカバリー・ロスト']];
+const OWN_AREAS = ['XP', 'X', 'DL', 'DR', '4L', '4R', '3L', '3C', '3R', '2L', '2C', '2R', '1L', '1C', '1R'];
+const OPP_AREAS = ['被XP', '被X', '被DL', '被DR', '被4L', '被4R', '2L', '2C', '2R', '3L', '3C', '3R', '4L', '4R', 'X', 'XP', 'DL', 'DR'];
+const RL_ZONES = [['ZONE 4', ['XP', 'X', 'DL', 'DR', '4L', '4R']], ['ZONE 3', ['3L', '3C', '3R']], ['ZONE 2', ['2L', '2C', '2R']], ['ZONE 1', ['1L', '1C', '1R']]];
+const resL = (r) => RESULTS.find(([k]) => k === r)?.[1] || '結果未入力';
+function locTab(ctx) {
+  if (!ctx.hasEv) return '<div class="card empty">選んだ試合にはイベントが入力されていません。</div>';
+  const multi = ctx.ok.length > 1;
+  const evT = (x, e) => `${multi ? `${fmtShort(x.m.date)} vs ${x.m.opponent || ''}　` : ''}${x.M.periods.find((p) => p.key === e.period)?.label || ''} ${mmss(e.at)}`;
+  const nm = (pid) => (pid && pid !== OPP_OG && pid !== UNKNOWN ? `${ctx.no[pid] ?? ''} ${playerById(pid)?.last || ''}`.trim() : '');
+  const parts = A.print ? LSUBS.map(([k]) => k) : [LSUBS.some(([k]) => k === A.lsub) ? A.lsub : 'own'];
+  const keepP = A.lpid; if (A.print) A.lpid = ''; // 書き出しは全員
+  let html; try { html = parts.map((k) => (k === 'rl' ? locRL(ctx, evT, nm) : locShots(ctx, k === 'own', evT, nm))).join(''); } finally { A.lpid = keepP; }
+  const subs = A.print ? '' : `<div class="ansubs">${LSUBS.map(([v, l]) => `<button class="${A.lsub === v ? 'on' : ''}" data-aset="lsub" data-v="${v}">${l}</button>`).join('')}</div>`;
+  return `${subs}<div class="antbl anscroll anlocw">${html}</div>`;
+}
+// 選手で絞る（自チームのシュート・リカバリー・ロスト）
+function locPick(ctx, pids) {
+  if (A.print) return '';
+  if (A.lpid && !pids.includes(A.lpid)) A.lpid = '';
+  return `<label class="anlpick">選手 <select id="anLocP"><option value="">全員</option>${ctx.pids.filter((p) => pids.includes(p)).map((p) => `<option value="${p}" ${A.lpid === p ? 'selected' : ''}>${esc(String(ctx.no[p] ?? ''))} ${esc(playerById(p)?.last || '')}</option>`).join('')}</select></label>`;
+}
+function locShots(ctx, own, evT, nm) {
+  const all = [];
+  for (const x of ctx.ok) for (const s of shotsOf(evIn(x), x.gn, own)) all.push({ x, s });
+  const pids = [...new Set(all.map(({ s }) => s.pid).filter(Boolean))];
+  const pick = own ? locPick(ctx, pids) : '';
+  const use = all.filter(({ s }) => !own || !A.lpid || s.pid === A.lpid);
+  const withL = use.filter(({ s }) => areaOf(s.e.loc)); const noL = use.length - withL.length;
+  const marks = [], lines = [];
+  const lpOn = own && A.lpl === '1';
+  for (const { x, s } of withL) {
+    const e = s.e; const st = s.goal ? 'g' : s.result === 'in' ? 'on' : s.result === 'block' ? 'blk' : s.result ? 'off' : 'nr';
+    const who = own ? nm(s.pid) : ''; const lp = own && e.lp ? nm(e.lp) : '';
+    const bt = `${evT(x, e)}　${s.goal ? (own ? '得点' : '失点') : resL(s.result)}${who ? `　${who}` : ''}${lp ? `（ラストパス ${lp}）` : ''}　${areaLbl(e.loc, own)}`;
+    marks.push({ loc: e.loc, cls: `anm ${own ? 'w' : 'o'} ${st}`, shape: s.result === 'block' && !s.goal ? 'sq' : null, r: s.goal ? 10 : 7.5, bt, g: s.goal });
+    if (lpOn && e.lpLoc) lines.push({ from: e.lpLoc, to: e.loc });
+  }
+  marks.sort((a, b) => a.g - b.g); // 得点をいちばん上に
+  const areas = own ? OWN_AREAS : OPP_AREAS;
+  const T = {}; for (const a of areas) T[a] = { sh: 0, on: 0, g: 0 };
+  for (const { s } of withL) { const a = areaLbl(s.e.loc, own); const t = T[a] || (T[a] = { sh: 0, on: 0, g: 0 }); t.sh++; if (s.result === 'in') t.on++; if (s.goal) t.g++; }
+  const tot = withL.length; const tg = withL.filter(({ s }) => s.goal).length; const ton = withL.filter(({ s }) => s.result === 'in').length;
+  const szN = withL.filter(({ s }) => (own ? areaOf(s.e.loc).sz : areaOf(s.e.loc).osz)).length; const szG = withL.filter(({ s }) => s.goal && (own ? areaOf(s.e.loc).sz : areaOf(s.e.loc).osz)).length;
+  const pc = (a, b) => (b ? Math.round(a / b * 100) + '%' : '—');
+  const rows = Object.keys(T).filter((a) => T[a].sh).map((a) => `<tr><td class="apl"><b>${esc(a)}</b>${/X/.test(a) ? '<small class="mu"> SZ</small>' : ''}</td><td>${T[a].sh}</td><td>${pc(T[a].sh, tot)}</td><td>${T[a].on}</td><td><b>${T[a].g}</b></td><td>${pc(T[a].g, T[a].sh)}</td></tr>`).join('');
+  const c = own ? 'w' : 'o';
+  const lg = `<div class="anleg"><span><i class="lg g ${c}"></i>${own ? '得点' : '失点'}</span><span><i class="lg on ${c}"></i>枠内</span><span><i class="lg off ${c}"></i>枠外・ポスト</span><span><i class="lg blk ${c}"></i>ブロック</span><span><i class="lg nr ${c}"></i>結果未入力</span>${own ? `<label class="anlpl"><input type="checkbox" id="anLpl" ${A.lpl === '1' ? 'checked' : ''} ${A.print ? 'disabled' : ''}>ラストパスの線（${withL.filter(({ s }) => s.e.lpLoc).length}本に入力あり）</label>` : ''}</div>`;
+  return `<div class="anloc"><h3 class="anh3">${own ? 'シュートの場所（自チーム）' : 'シュートの場所（相手）'}<small>${own ? '右が相手のゴール' : '左が自チームのゴール（相手は左に向かって攻める）'}・得点もシュートに数える（OGは除く）</small></h3>${pick}
+    <div class="anlocg"><div class="anlocc">${courtSVG({ marks, lines, opp: !own, cls: 'ancourt' })}${lg}</div>
+    <div class="anloct"><table class="antb ${c}"><thead><tr><th class="apl">場所</th><th>シュート</th><th>割合</th><th>枠内</th><th>${own ? '得点' : '失点'}</th><th>決定率</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="mu">場所が入ったシュートはありません</td></tr>'}
+      ${tot ? `<tr class="tot"><td class="apl">合計</td><td>${tot}</td><td></td><td>${ton}</td><td><b>${tg}</b></td><td>${pc(tg, tot)}</td></tr><tr class="ex"><td class="apl">うちSZ（X・XP）</td><td>${szN}</td><td>${pc(szN, tot)}</td><td></td><td>${szG}</td><td>${pc(szG, szN)}</td></tr>` : ''}</tbody></table>
+    ${noL ? `<p class="antodo2">場所が入っていない${own ? 'シュート' : '被シュート'}が ${noL}本あります（図と表には入っていません）</p>` : ''}
+    <p class="anhint">${own ? '' : '被XP・被X など「被」がつくのは自陣のゴール前（相手のシュート）。'}決定率＝${own ? '得点' : '失点'}÷シュート。割合＝その場所のシュート÷場所が入ったシュート</p></div></div></div>`;
+}
+const areaLbl = (loc, own) => { const a = areaOf(loc); if (!a) return ''; return !own && a.oarea ? a.oarea : a.area; };
+function locRL(ctx, evT, nm) {
+  const all = [];
+  for (const x of ctx.ok) for (const e of evIn(x)) if (e.kind === 'rec' || e.kind === 'lost') all.push({ x, e });
+  const pick = locPick(ctx, [...new Set(all.map(({ e }) => e.pid).filter(Boolean))]);
+  const use = all.filter(({ e }) => !A.lpid || e.pid === A.lpid);
+  const marks = [];
+  const T = {}; const Z = {}; let noL = 0, noZ = 0, zOnly = 0;
+  for (const { x, e } of use) {
+    const a = areaOf(e.loc); const r = e.kind === 'rec';
+    const z = a ? a.zone : e.zone ? String(e.zone).replace(/^Z?/, 'Z') : null;
+    if (z) { const q = Z[z] || (Z[z] = [0, 0]); q[r ? 0 : 1]++; } else noZ++;
+    if (!a) { noL++; if (z) zOnly++; continue; }
+    const t = T[a.area] || (T[a.area] = [0, 0]); t[r ? 0 : 1]++;
+    marks.push({ loc: e.loc, cls: `anm ${r ? 'rec' : 'lost'}`, shape: r ? null : 'diamond', r: 7, bt: `${evT(x, e)}　${r ? 'リカバリー' : 'ロスト'}${nm(e.pid) ? `　${nm(e.pid)}` : ''}　${a.area}` });
+  }
+  const zrow = (zl, list) => { const zk = 'Z' + zl.slice(-1); const zz = Z[zk] || [0, 0];
+    const sub = list.filter((a) => T[a]).map((a) => `<tr class="ars"><td class="apl">${a}</td><td class="w">${T[a][0]}</td><td class="o">${T[a][1]}</td><td>${T[a][0] - T[a][1] > 0 ? '+' : ''}${T[a][0] - T[a][1]}</td></tr>`).join('');
+    return `<tr class="zr"><td class="apl"><b>${zl}</b></td><td class="w"><b>${zz[0]}</b></td><td class="o"><b>${zz[1]}</b></td><td>${zz[0] - zz[1] > 0 ? '+' : ''}${zz[0] - zz[1]}</td></tr>${sub}`; };
+  const lg = `<div class="anleg"><span><i class="lg rec"></i>リカバリー（●）</span><span><i class="lg lost"></i>ロスト（◆）</span></div>`;
+  return `<div class="anloc"><h3 class="anh3">リカバリー・ロストの場所<small>右が相手のゴール</small></h3>${pick}
+    <div class="anlocg"><div class="anlocc">${courtSVG({ marks, cls: 'ancourt' })}${lg}</div>
+    <div class="anloct"><table class="antb"><thead><tr><th class="apl">場所</th><th class="w">リカバリー</th><th class="o">ロスト</th><th>差</th></tr></thead><tbody>${RL_ZONES.map(([zl, list]) => zrow(zl, list)).join('')}</tbody></table>
+    ${noL ? `<p class="antodo2">場所（図で押した所）が入っていないもの ${noL}件は図に出ていません${zOnly ? `（うちゾーンだけ入っている ${zOnly}件は、ゾーンの行に数えています）` : ''}${noZ ? `。ゾーンも未入力のもの ${noZ}件はどこにも数えていません` : ''}</p>` : ''}
+    <p class="anhint">ゾーンの行＝ゾーンが入ったものすべて。その下の行（4L・X など）＝図で場所を押したものだけ</p></div></div></div>`;
 }
 
 // ---------- スタッツ ----------
@@ -595,6 +703,9 @@ function bindAnalysis(root) {
   const tp = root.querySelector('#anTimePdf'); if (tp) tp.onclick = () => { const ms = selected(); if (ms.length) printTime(ms); };
   const np = root.querySelector('#anNoPP'); if (np) np.onchange = () => { A.pp = np.checked ? 'ex' : 'all'; keep(); render(); };
   root.querySelectorAll('[data-aset]').forEach((b) => b.onclick = () => { A[b.dataset.aset] = b.dataset.v; A.sort = { col: '', dir: 'desc' }; keep(); render(); });
+  { const lp = root.querySelector('#anLocP'); if (lp) lp.onchange = () => { A.lpid = lp.value; keep(); render(); }; }
+  { const ll = root.querySelector('#anLpl'); if (ll) ll.onchange = () => { A.lpl = ll.checked ? '1' : '0'; keep(); render(); }; }
+  root.querySelectorAll('.anlocc').forEach((ch) => { const sv = ch.querySelector('svg'); if (sv) bandTip(ch, sv, '.anm', (g) => g.dataset.bt); });
   root.querySelectorAll('[data-tview]').forEach((b) => b.onclick = () => { A.tview = b.dataset.tview; keep(); render(); });
   root.querySelectorAll('[data-bin-set]').forEach((b) => b.onclick = () => { A.bin = +b.dataset.binSet; keep(); render(); });
   root.querySelectorAll('[data-prow-set]').forEach((b) => b.onclick = () => { const k = b.dataset.prowSet; const r = new Set(A.rows); r.has(k) ? r.delete(k) : r.add(k); A.rows = Object.keys(PACE_ROWS).filter((x) => r.has(x)); keep(); render(); });
@@ -940,6 +1051,7 @@ function pushCommon(pages, ctx, who) {
   add('セットの集計', setTab(ctx));
   add('パワープレー', ppTab(ctx));
   add('局面別（得点・失点の種類と局面、局面ごとのシュート）', typeTab(ctx));
+  add('場所（シュート・リカバリー・ロストの場所）', locTab(ctx));
   add('進入（Z4・SZ進入の方法、パスの出し手・受け手）', sub('ent'));
   add('リカバリーとロスト（ゾーン別）', sub('rl'));
   add('FINISH SET PLAY（チーム）', sub('fsp'));

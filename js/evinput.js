@@ -442,6 +442,13 @@ function dynHTML(ctx) {
         '<div class="hint">失点は「枠内の被シュート」としても数えるので、同じ場面の被シュートは入れません</div>');
   } else if (isFsp(k)) {
     html += step(3, `種類 ${DET}`, choice('fsp', FSP));
+    // サイン名（自チームの FINISH SET PLAY。2026-10-23）：前に使ったサインを押すか、新しい名前を書く。種類が同じサインを先に並べる
+    if (k === 'fspat') {
+      const signs = signList();
+      const ord = [...signs].sort((a, b) => (signTypeOf(b) === f.fsp) - (signTypeOf(a) === f.fsp));
+      html += step(4, `サイン名 ${OPT}`, `<div class="ch signs">${ord.map((n) => `<button class="btn ${f.sign === n ? 'on' : ''}" data-set="sign" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+        <div class="signnew"><input id="evSign" placeholder="新しいサイン名（例：CK-①、KI-B）" value="${f.sign && !signs.includes(f.sign) ? esc(f.sign) : ''}" maxlength="30"><span class="mu">書いて「記録する」を押すと、次からボタンで選べます</span></div>`);
+    }
   } else if (k === 'rec' || k === 'lost') {
     html += step(3, `${k === 'rec' ? 'ボールを奪った選手' : 'ボールを失った選手'} ${DET}${at5}`, players('pid'));
     html += locStep(4);
@@ -570,6 +577,18 @@ function installKeys() {
   }, true);
 }
 
+// FINISH SET PLAY のサイン名：チームで使ったことのある名前（設定に覚える）と、種類ごとに使った回数（並べる順に使う）
+// 並び順：いちばん最近使ったものが先頭。いま選んでいる種類（CK など）で前に使ったサインをさらに先に出す
+const signList = () => (teamSettings().fspSigns || []).filter(Boolean);
+const signTypeOf = (n) => (teamSettings().fspSignType || {})[n];
+function rememberSign(ev) {
+  if (!ev.sign) return;
+  const list = [ev.sign, ...signList().filter((n) => n !== ev.sign)].slice(0, 60);
+  if (list.join('\u0001') === signList().join('\u0001') && signTypeOf(ev.sign) === ev.fsp) return;
+  const st = D.team?.settings || {};
+  put(teamPath(), { settings: { ...st, fspSigns: list, fspSignType: { ...(st.fspSignType || {}), [ev.sign]: ev.fsp || null } } });
+}
+
 function resetForm() { ui.locMode = 'shot'; ui.kind = null; ui.f = {}; ui.edit = null; ui.clsTouched = false; ui.clsAutoNote = ''; ui.oejStep = 'start'; ui.endTouched = false; }
 
 function bindEv(root, ctx) {
@@ -579,6 +598,8 @@ function bindEv(root, ctx) {
   // 相手の退場の「4×3の終わり」を入れているときは、同じ数字のボタンで終わりの時刻を入れる
   const endP = ui.kind === 'oej' && ui.oejStep === 'end' ? ctx.M.periods.find((p) => p.key === ui.f.endPeriod) : null;
   VID.ctx = ctx; installKeys();
+  root.addEventListener('keydown', (e) => { if (e.target.id === 'evSign' && e.key === 'Enter' && !e.isComposing && ui.kind) { e.preventDefault(); e.target.blur(); save(ctx); } });
+  root.addEventListener('input', (e) => { if (e.target.id !== 'evSign') return; ui.f.sign = e.target.value.trim() || undefined; root.querySelectorAll('.signs .btn.on').forEach((b) => b.classList.remove('on')); });
   if (VID.open && VID.url) { const slot = root.querySelector('#evVidSlot'); if (slot) { slot.appendChild(vidEl()); const n = root.querySelector('.evvid .vnow'); if (n) n.innerHTML = vidNow(ctx); } }
   { const fi = root.querySelector('#evVidFile'); if (fi) fi.onchange = () => { const file = fi.files?.[0]; if (!file) return; if (VID.url) URL.revokeObjectURL(VID.url); VID.url = URL.createObjectURL(file); VID.name = file.name; const v = vidEl(); v.src = VID.url; render(); }; }
   const kp = endP ? bindKeypad(root.querySelector('.evkp'), {
@@ -709,6 +730,7 @@ async function save(ctx) {
   const { check, why } = checkOf(M, ev, cardIssues([...others, ev], M.periods.map((p) => p.key)));
   ev.check = check; ev.checkWhy = why || undefined;
   const saved = writeEv(m, ev, old ? 'edit' : 'add', old);
+  if (ev.kind === 'fspat') rememberSign(ev);
   afterWrite(ctx);
   const was = ui.edit; const sec = ui.sec;
   toast(`${was ? '直しました' : '記録しました'}：${mmss(sec)} ${KIND[ev.kind].label}${saved.check ? '（要確認）' : ''}`);

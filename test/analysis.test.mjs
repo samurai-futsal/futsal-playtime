@@ -174,3 +174,29 @@ if (fail) process.exit(1);
 }
 console.log(`analysis (modelOf): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
+
+// FINISH SET PLAY のサインごと（2026-10-23）
+{
+  const { signStats } = await import('../js/teamstats.js');
+  let p2 = 0, f2 = 0; const eq2 = (a, b, m) => { JSON.stringify(a) === JSON.stringify(b) ? p2++ : (f2++, console.log('FAIL', m, JSON.stringify(a), JSON.stringify(b))); };
+  const E = [
+    { kind: 'fspat', period: '1H', at: 10000, fsp: 'CK', sign: 'A' },
+    { kind: 'shot', period: '1H', at: 13000, pid: 'p', result: 'in' },
+    { kind: 'shot', period: '1H', at: 19000, pid: 'p', result: 'out' },
+    { kind: 'fspat', period: '1H', at: 30000, fsp: 'KI', sign: 'A' },
+    { kind: 'shot', period: '1H', at: 41000, pid: 'p', result: 'in' }, // 11秒後 → 数えない
+    { kind: 'fspat', period: '1H', at: 60000, fsp: 'CK', sign: 'B' },
+    { kind: 'fspdf', period: '1H', at: 62000, fsp: 'CK' },
+    { kind: 'shot', period: '1H', at: 64000, pid: 'p', result: 'in' }, // 次のセットプレーのあと → 数えない
+    { kind: 'fspat', period: '1H', at: 1190000, fsp: 'FK' },
+    { kind: 'goal', period: '2H', at: 2000, pid: 'p' }, // 別のピリオド → 数えない
+    { kind: 'fspat', period: '2H', at: 100000, fsp: 'CK', sign: 'B' },
+    { kind: 'goal', period: '2H', at: 105000, pid: 'p', sz: 'in' },
+    { kind: 'fspat', period: '2H', at: 200000, fsp: 'CK', sign: 'A', deleted: true },
+  ];
+  const r = Object.fromEntries(signStats(E, () => ''));
+  eq2([r.A.n, r.A.hit, r.A.sh, r.A.on, r.A.g, r.A.types], [2, 1, 2, 1, 0, { CK: 1, KI: 1 }], 'sign A: 10s window, deleted ignored');
+  eq2([r.B.n, r.B.hit, r.B.sh, r.B.on, r.B.g], [2, 1, 1, 1, 1], 'sign B: stops at next set play, goal counts as on-target shot');
+  eq2([r[''].n, r[''].sh], [1, 0], 'no sign → own row, other period not counted');
+  console.log(`analysis (signs): ${p2} passed, ${f2} failed`); if (f2) process.exit(1);
+}

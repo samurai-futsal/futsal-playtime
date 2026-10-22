@@ -8,7 +8,8 @@ const X = (m) => M + m * S, Y = (m) => M + (10 - m) * S;
 const poly = (pts, attrs) => `<polygon points="${pts.map(([a, b]) => `${X(a).toFixed(1)},${Y(b).toFixed(1)}`).join(' ')}" ${attrs}/>`;
 
 // marks：[{ loc, cls, label }]。opp：相手のイベント（自陣のゴール前を強める）
-export function courtSVG({ marks = [], opp = false, cls = '', labels = true, line = null } = {}) {
+// lines：[{ from, to, cls }]（分析のラストパスの線）。marks の bt：カーソルを合わせたときの説明（分析）、shape：'diamond'・'sq'・円
+export function courtSVG({ marks = [], opp = false, cls = '', labels = true, line = null, lines = [] } = {}) {
   const g = [];
   g.push(`<rect x="${X(0)}" y="${Y(10)}" width="${40 * S}" height="${20 * S}" class="cbg"/>`);
   g.push(`<rect x="${X(0)}" y="${Y(10)}" width="${10 * S}" height="${20 * S}" class="cz1"/><rect x="${X(30)}" y="${Y(10)}" width="${10 * S}" height="${20 * S}" class="cz4"/>`);
@@ -34,9 +35,13 @@ export function courtSVG({ marks = [], opp = false, cls = '', labels = true, lin
     ['ZONE 1', 'ZONE 2', 'ZONE 3', 'ZONE 4'].forEach((t, i) => g.push(`<text x="${X(5 + 10 * i)}" y="${Y(-10) + 15}" class="czn">${t}</text>`));
   }
   if (line && line[0] && line[1]) g.push(`<line x1="${X(+line[0].x)}" y1="${Y(+line[0].y)}" x2="${X(+line[1].x)}" y2="${Y(+line[1].y)}" class="cpass"/>`);
+  for (const ln of lines) if (ln.from && ln.to) g.push(`<line x1="${X(+ln.from.x)}" y1="${Y(+ln.from.y)}" x2="${X(+ln.to.x)}" y2="${Y(+ln.to.y)}" class="cpass ${ln.cls || ''}"/><circle cx="${X(+ln.from.x)}" cy="${Y(+ln.from.y)}" r="3.5" class="cpfrom ${ln.cls || ''}"/>`);
   for (const mk of marks) {
-    if (!mk.loc) continue; const cx = X(+mk.loc.x), cy = Y(+mk.loc.y);
-    g.push(mk.shape === 'diamond' ? `<path d="M${cx} ${cy - 8} l8 8 -8 8 -8 -8z" class="cmk ${mk.cls || ''}"/>` : `<circle cx="${cx}" cy="${cy}" r="${mk.r || 8}" class="cmk ${mk.cls || ''}"/>`);
+    if (!mk.loc) continue; const cx = X(+mk.loc.x), cy = Y(+mk.loc.y); const r = mk.r || 8;
+    const bt = mk.bt ? ` data-bt="${String(mk.bt).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"` : '';
+    g.push(mk.shape === 'diamond' ? `<path d="M${cx} ${cy - r} l${r} ${r} ${-r} ${r} ${-r} ${-r}z" class="cmk ${mk.cls || ''}"${bt}/>`
+      : mk.shape === 'sq' ? `<rect x="${cx - r * 0.8}" y="${cy - r * 0.8}" width="${r * 1.6}" height="${r * 1.6}" class="cmk ${mk.cls || ''}"${bt}/>`
+      : `<circle cx="${cx}" cy="${cy}" r="${r}" class="cmk ${mk.cls || ''}"${bt}/>`);
   }
   return `<svg class="court ${cls} ${opp ? 'opp' : ''}" viewBox="0 0 ${CW} ${CH}">${g.join('')}</svg>`;
 }
