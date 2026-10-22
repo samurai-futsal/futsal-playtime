@@ -197,7 +197,7 @@ export function autoCls(M, events, ev) {
 }
 
 // 記録上その時刻にピッチにいない選手を選んだか（要確認）
-export const PLAYER_KEYS = ['pid', 'pid2', 'assist', 'og'];
+export const PLAYER_KEYS = ['pid', 'pid2', 'assist', 'og', 'lp'];
 export function needsCheck(M, ev) {
   if (ev.kind === 'oej') return false;
   const on = new Set(pitchAt(M, ev.period, ev.at, ev.side));
@@ -246,6 +246,7 @@ export function summary(ev, nm, goalName = (x) => x, fmtAt = null) {
   if (ev.n != null && ev.n !== '') parts.push(`${ev.n}人`);
   if (ev.cls) parts.push(lab(CLS, ev.cls) + (ev.sp ? `（${lab(SETP, ev.sp)}）` : ''));
   if (ev.fsp) parts.push(lab(FSP, ev.fsp));
+  if (ev.lp) parts.push(ev.lp === NO_ASSIST ? 'LPなし' : `LP ${P(ev.lp)}${ev.lpLoc && areaOf(ev.lpLoc) ? '（' + areaOf(ev.lpLoc).area + '）' : ''}`);
   if (ev.loc && areaOf(ev.loc)) parts.push(areaOf(ev.loc).area); else if (ev.zone) parts.push(ev.zone);
   if (ev.card && ev.card !== 'none') parts.push(CARD_LABEL[ev.card] || ev.card);
   if ((k === 'foul' || k === 'fouled') && ev.card === 'none') parts.push('カードなし');
@@ -336,12 +337,12 @@ export const areaLabel = (loc) => { const a = areaOf(loc); return a ? a.area : '
 const okLoc = (v) => v && typeof v === 'object' && Number.isFinite(+v.x) && Number.isFinite(+v.y) && +v.x >= 0 && +v.x <= PITCH.L && Math.abs(+v.y) <= 10;
 
 // ---------- イベントの種類ごとに持てる項目（記3：種類を変えたときは、新しい種類の項目だけを残す） ----------
-export const EV_FIELDS = ['pid', 'pid2', 'assist', 'method', 'result', 'n', 'cls', 'sp', 'gtype', 'sz', 'zone', 'card', 'fsp', 'og', 'endPeriod', 'endAt', 'loc'];
+export const EV_FIELDS = ['pid', 'pid2', 'assist', 'method', 'result', 'n', 'cls', 'sp', 'gtype', 'sz', 'zone', 'card', 'fsp', 'og', 'endPeriod', 'endAt', 'loc', 'lp', 'lpLoc'];
 const FIELDS_OF = {
-  shot: ['pid', 'result', 'n', 'cls', 'sp', 'loc'], szshot: ['pid', 'result', 'n', 'cls', 'sp', 'loc'],
+  shot: ['pid', 'result', 'n', 'cls', 'sp', 'loc', 'lp', 'lpLoc'], szshot: ['pid', 'result', 'n', 'cls', 'sp', 'loc', 'lp', 'lpLoc'],
   oshot: ['result', 'n', 'cls', 'sp', 'loc'], oszshot: ['result', 'n', 'cls', 'sp', 'loc'],
   z4: ['method', 'pid', 'pid2', 'cls', 'sp'], sz: ['method', 'pid', 'pid2'], oz4: ['cls', 'sp'], osz: [],
-  goal: ['pid', 'assist', 'gtype', 'sz', 'n', 'loc'], conc: ['gtype', 'og', 'sz', 'n', 'loc'],
+  goal: ['pid', 'assist', 'gtype', 'sz', 'n', 'loc', 'lpLoc'], conc: ['gtype', 'og', 'sz', 'n', 'loc'],
   fspat: ['fsp'], fspdf: ['fsp'], rec: ['pid', 'zone', 'loc'], lost: ['pid', 'zone', 'loc'],
   foul: ['pid', 'card', 'loc'], fouled: ['pid', 'card', 'loc'], oej: ['endPeriod', 'endAt'],
 };
@@ -355,7 +356,11 @@ export function cleanFields(ev, goalName = null) {
     if (!keep.has(f) || v == null || v === '') { delete out[f]; continue; }
     if (okVal[f] && !okVal[f].some(([x]) => x === v)) delete out[f];
   }
-  if (out.loc != null) { if (okLoc(out.loc)) out.loc = { x: Math.round(+out.loc.x * 10) / 10, y: Math.round(+out.loc.y * 10) / 10 }; else delete out.loc; }
+  for (const f of ['loc', 'lpLoc']) if (out[f] != null) { if (okLoc(out[f])) out[f] = { x: Math.round(+out[f].x * 10) / 10, y: Math.round(+out[f].y * 10) / 10 }; else delete out[f]; }
+  // ラストパス（2026-10-22）：シュートの1つ前のパスの選手（なし＝ドリブル・こぼれ球、不明）。打った選手と同じなら消す。得点はアシストがラストパス
+  if (out.lp != null && (out.lp === out.pid && out.lp !== NO_ASSIST && out.lp !== UNKNOWN)) delete out.lp;
+  if (out.lp === NO_ASSIST) delete out.lpLoc;
+  if (k === 'goal' && out.assist === NO_ASSIST) delete out.lpLoc;
   if (out.card != null && !(k === 'fouled' ? CARDS_OPP : CARDS).some(([x]) => x === out.card)) delete out.card;
   if ((k === 'foul' || k === 'fouled') && out.card == null) out.card = 'none';
   if (out.n != null && !(Number.isInteger(+out.n) && +out.n >= 0 && +out.n <= 5)) delete out.n;

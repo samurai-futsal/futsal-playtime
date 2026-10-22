@@ -251,6 +251,13 @@ eq(sortEvents([{ id: 2, period: '2H', at: 1 }, { id: 3, period: '1H', at: 5, seq
   eq(cleanFields({ kind: 'shot', loc: { x: 37.04, y: -1.26 } }).loc, { x: 37, y: -1.3 }, 'loc is kept on shots and rounded');
   eq(cleanFields({ kind: 'fspat', loc: { x: 1, y: 1 } }).loc, undefined, 'loc is dropped where the kind has no place');
   eq(cleanFields({ kind: 'rec', loc: { x: 50, y: 1 } }).loc, undefined, 'loc out of the court is dropped');
+  // ラストパス
+  eq(cleanFields({ kind: 'shot', pid: 'a', lp: 'b', lpLoc: { x: 33, y: 8 } }).lp, 'b', 'shot keeps the last pass');
+  eq(cleanFields({ kind: 'shot', pid: 'a', lp: 'a' }).lp, undefined, 'last pass by the shooter is dropped');
+  eq(cleanFields({ kind: 'shot', pid: 'a', lp: NO_ASSIST, lpLoc: { x: 33, y: 8 } }).lpLoc, undefined, 'no last pass → no pass location');
+  eq(cleanFields({ kind: 'oshot', lp: 'b' }).lp, undefined, 'opponent shots have no last pass');
+  eq(cleanFields({ kind: 'goal', pid: 'a', assist: 'b', lpLoc: { x: 33, y: 8 } }).lpLoc, { x: 33, y: 8 }, 'goal keeps the pass location (the assist is the last pass)');
+  eq(summary({ kind: 'shot', pid: 'a', lp: 'b', lpLoc: { x: 33, y: 8 }, loc: { x: 37, y: 0 } }, (x) => x), 'a・LP b（4L）・XP', 'summary shows the last pass and places');
 }
 
 console.log(`events: ${pass} passed, ${fail} failed`);

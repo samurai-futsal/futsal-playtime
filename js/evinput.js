@@ -314,7 +314,7 @@ export function vEvents(m, { rt = false } = {}) {
   const step2 = `<div class="step"><span class="num">2</span><div>
       <div class="st">イベント<small>${sp.n > 1 ? `${roleName(m, role)}が入力するイベント` : 'メインイベント：上が自チーム、下が相手チーム'}</small></div>${mineRow}${showAll ? `
       <div class="mainev"><span class="lab own">自チーム</span>${MAIN_OWN.map(evBtn).join('')}<span class="lab opp">相手チーム</span>${MAIN_OPP.map(evBtn).join('')}</div>
-      <div class="subev"><span class="lab">サブイベント</span>${SUBS.map(evBtn).join('')}${evBtn('oej')}</div>` : ''}</div></div>`;
+      <div class="subev"><span class="lab">サブイベント</span>${SUBS.map(evBtn).join('')}${evBtn('oej')}</div>` : ''}${contRow(mine)}</div></div>`;
   const lm = lastMine(all);
   const undoBtn = `<button class="btn evundo" id="evUndo" ${lm ? '' : 'disabled'}>↶ 1つ戻す${lm ? `（${ACT[lm.h.act]}：${esc(evDesc(lm.h.act === 'add' ? lm.ev : lm.h.prev || lm.ev))}）` : ''}</button>`;
   const editing = ui.edit ? all.find((x) => x.id === ui.edit) : null;
@@ -332,7 +332,7 @@ export function vEvents(m, { rt = false } = {}) {
     html: `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › ${title}</div>
       <div class="row between"><h1 style="margin:0">${title}</h1><span class="mu">記録した時点で試合の記録になり、マッチレビューにすぐ反映されます</span></div>
       <div class="evrole"><span class="rl">入力の担当人数</span><b>${sp.n}人</b>${sp.n > 1 ? `<span class="rl">この端末</span><b>${roleName(m, role)}</b><span class="mu">${kindsShown(mine).map(kindLabel).join('・')}</span><button class="btn sm" id="evRoleChange">担当を変える</button>` : '<span class="mu">（1人で全部のイベントを入力）</span>'}
-        <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><button class="btn sm ${VID.open ? 'pri' : ''}" id="evVid">🎬 動画を見ながら入力${VID.open ? '（開いています）' : ''}</button><button class="dev" id="evWho">担当者：<b>${esc(whoLabel())}</b> <span>変える</span></button></div>
+        <a class="btn sm" href="#/m/${m.id}/split">入力担当の設定</a><button class="btn sm" id="evKeys" title="PCのキーボードで入力するときのキー">⌨ キー操作</button><button class="btn sm ${VID.open ? 'pri' : ''}" id="evVid">🎬 動画を見ながら入力${VID.open ? '（開いています）' : ''}</button><button class="dev" id="evWho">担当者：<b>${esc(whoLabel())}</b> <span>変える</span></button></div>
       <div class="evw mt ${VID.open ? 'vid' : ''}"><div class="evleft">${VID.open ? vidPanel(m, M) : ''}${list}</div>${form}</div>`,
     bind: (root) => bindEv(root, ctx),
   };
@@ -358,12 +358,12 @@ function dynHTML(ctx) {
   const on = pitchAt(M, ui.period, ev.at, ev.side);
   const subHere = subAtSecond(M, ui.period, ev.at);
   const sideSw = subHere ? `<span class="sidesw">この秒に交代があります：<button class="btn sm ${ev.side === 'before' ? 'pri' : ''}" data-side="before">交代前の5人</button><button class="btn sm ${ev.side === 'after' ? 'pri' : ''}" data-side="after">交代後の5人</button></span>` : '';
-  const players = (key, { exclude = null, oppOG = false, unknown = true } = {}) => {
+  const players = (key, { exclude = null, oppOG = false, unknown = true, none = false } = {}) => {
     const sel = f[key];
     const cards = on.map((pid) => `<button class="pc2 ${cfg.members?.[pid]?.pos === 'GK' ? 'gk' : ''} ${sel === pid ? 'on' : ''}" data-pick="${key}" data-v="${pid}" ${pid === exclude ? 'disabled' : ''}><span class="n">${esc(cfg.members?.[pid]?.no ?? '?')}</span><span class="nm">${esc(playerById(pid)?.last || '')}</span></button>`).join('');
     const other = sel && sel !== UNKNOWN && sel !== OPP_OG && sel !== NO_ASSIST && !on.includes(sel)
       ? `<button class="pc2 on chk2" data-pick="${key}" data-v="${sel}"><span class="n">${esc(cfg.members?.[sel]?.no ?? '?')}</span><span class="nm">${esc(playerById(sel)?.last || '')} ⚠</span></button>` : '';
-    return `<div class="pl">${cards}${other}</div><div class="pl2"><button class="btn" data-other="${key}">ほかの選手…</button>${unknown ? `<button class="btn ${sel === UNKNOWN ? 'on' : ''}" data-pick="${key}" data-v="${UNKNOWN}">不明</button>` : ''}${oppOG ? `<button class="btn ${sel === OPP_OG ? 'on' : ''}" data-pick="${key}" data-v="${OPP_OG}">相手OG</button>` : ''}<button class="btn ${sel == null ? 'on soft' : ''}" data-pick="${key}" data-v="">あとで</button></div>
+    return `<div class="pl">${cards}${other}</div><div class="pl2"><button class="btn" data-other="${key}">ほかの選手…</button>${unknown ? `<button class="btn ${sel === UNKNOWN ? 'on' : ''}" data-pick="${key}" data-v="${UNKNOWN}">不明</button>` : ''}${oppOG ? `<button class="btn ${sel === OPP_OG ? 'on' : ''}" data-pick="${key}" data-v="${OPP_OG}">相手OG</button>` : ''}${none ? `<button class="btn ${sel === NO_ASSIST ? 'on' : ''}" data-pick="${key}" data-v="${NO_ASSIST}">なし（ドリブル・こぼれ球）</button>` : ''}<button class="btn ${sel == null ? 'on soft' : ''}" data-pick="${key}" data-v="">あとで</button></div>
       ${other ? `<div class="evwarn">⚠ ${esc(nm(sel))} は記録上この時刻にピッチにいません。このまま記録すると「要確認」になります（交代の時刻のずれを試合後に直します）</div>` : ''}`;
   };
   const choice = (key, list, { dis = [] } = {}) => `<div class="ch">${list.map(([v, l]) => `<button class="btn ${String(f[key]) === String(v) ? 'on' : ''}" data-set="${key}" data-v="${v}" ${dis.includes(v) ? 'disabled' : ''}>${l}</button>`).join('')}</div>`;
@@ -373,12 +373,18 @@ function dynHTML(ctx) {
   // 場所（コートの図。2026-10-22）：押した点を残し、エリア・ZONE・SZの中かを自動で決める
   const locStep = (n) => {
     const a = areaOf(f.loc); const opp = KIND[k].team === 'opp' && k !== 'oej';
+    // ラストパスの場所も同じ図で（自チームのシュート・得点。2026-10-22）
+    const lpOk = (k === 'shot' || k === 'szshot' || (k === 'goal' && f.pid !== OPP_OG)) && (k === 'goal' ? f.assist !== NO_ASSIST : f.lp !== NO_ASSIST);
+    if (!lpOk) ui.locMode = 'shot';
+    const lpMode = lpOk && ui.locMode === 'lp'; const la = areaOf(f.lpLoc);
+    const modes = lpOk ? `<div class="locmode"><button class="btn sm ${lpMode ? '' : 'on'}" data-locmode="shot">● ${k === 'goal' ? '得点' : 'シュート'}の場所</button><button class="btn sm ${lpMode ? 'on' : ''}" data-locmode="lp">◆ ラストパスの場所${la ? `：${la.area}` : ''}</button></div>` : '';
+    const marks = [...(f.loc ? [{ loc: f.loc, cls: opp ? 'o' : 'w' }] : []), ...(lpOk && f.lpLoc ? [{ loc: f.lpLoc, cls: 'lp', shape: 'diamond' }] : [])];
     const auto = !a ? '' : (k === 'shot' || k === 'szshot') ? (a.sz ? '→ SZの中なので「SZ内シュート」として記録します' : '→ SZの外なので「シュート」として記録します')
       : (k === 'oshot' || k === 'oszshot') ? (a.osz ? '→ 自陣のSZの中なので「被SZ内シュート」として記録します' : '→ 自陣のSZの外なので「被シュート」として記録します')
       : k === 'goal' ? `→ SZ${a.sz ? '内' : '外'}` : k === 'conc' ? (isOGg(f.gtype) ? '' : `→ SZ${a.osz ? '内' : '外'}`) : (k === 'rec' || k === 'lost') ? `→ ゾーン ${a.zone}` : '';
     const nmA = a ? `<b>${a.area}</b><span>（${a.zone.replace('Z', 'ZONE ')}${a.sz ? '・SZの中' : ''}${a.oarea ? `・自陣のゴール前：${a.oarea.replace('被', '')}` : ''}）</span>` : '<span class="mu">コートを押すと、その場所を記録します</span>';
     return step(n, `場所 ${OPT}<small>コートを押す（自チームは右のゴールへ${opp ? '、相手は左のゴールへ' : ''}攻める）</small>`,
-      `<div class="evcourt">${courtSVG({ marks: f.loc ? [{ loc: f.loc, cls: opp ? 'o' : 'w' }] : [], opp })}</div><div class="locinfo">${nmA}${auto ? `<em>${auto}</em>` : ''}${f.loc ? '<button class="btn sm" data-locclr>場所を消す</button>' : ''}</div>`);
+      `${modes}<div class="evcourt">${courtSVG({ marks, opp, line: lpOk && f.loc && f.lpLoc ? [f.lpLoc, f.loc] : null })}</div><div class="locinfo">${nmA}${auto ? `<em>${auto}</em>` : ''}${(lpMode ? f.lpLoc : f.loc) ? `<button class="btn sm" data-locclr>${lpMode ? 'ラストパスの場所' : '場所'}を消す</button>` : ''}</div>`);
   };
   const nCount = (sz) => choice('n', [0, 1, 2, 3, 4, 5].map((x) => [x, `${x}人`]), { dis: sz ? [0] : [] });
   const clsRow = () => row('分類', DET, `${choice('cls', CLS)}${f.cls === 'set' ? `<div class="sp2"><span style="margin:0 8px 0 0">セットプレーの種類 ${OPT}</span>${choice('sp', SETP)}</div>` : ''}`,
@@ -402,7 +408,7 @@ function dynHTML(ctx) {
   }
   if (isShot(k)) {
     const sz = isSZ(k);
-    html += own ? step(3, `打った選手 ${DET}${at5}`, players('pid')) : step(3, '選手', `<div class="mu">相手チームのイベントなので、選手は選びません${sideSw ? '　' + sideSw : ''}</div>`);
+    html += own ? step(3, `打った選手とラストパス ${at5}`, row('打った選手', DET, players('pid')) + row('ラストパス', OPT, players('lp', { exclude: f.pid, none: true }), 'シュートの1つ前のパスを出した選手')) : step(3, '選手', `<div class="mu">相手チームのイベントなので、選手は選びません${sideSw ? '　' + sideSw : ''}</div>`);
     html += locStep(4);
     html += step(5, '結果', row('結果', BAS, choice('result', RESULTS)) +
       row('ゾーン内の人数', sz ? OPT : DET, nCount(sz), sz ? 'SZ内は打った選手を1人目に数えるので0人は押せません' : 'シュートの瞬間にSZの中にいた攻撃側の人数（0人＝人無）') + clsRow());
@@ -476,6 +482,7 @@ function applyAuto(ctx) {
 }
 // 場所を入れて、場所から決まる項目を入れる。種類が変わったら true（上のボタンも描き直す）
 function setLoc(loc) {
+  if (ui.locMode === 'lp' && (ui.kind === 'shot' || ui.kind === 'szshot' || ui.kind === 'goal')) { ui.f.lpLoc = loc; ui.locMode = 'shot'; return false; } // ラストパスの場所を押したら、次はシュートの場所に戻す
   ui.f.loc = loc; const a = areaOf(loc); const k0 = ui.kind; if (!a) return false;
   if (k0 === 'shot' || k0 === 'szshot') ui.kind = a.sz ? 'szshot' : 'shot';
   else if (k0 === 'oshot' || k0 === 'oszshot') ui.kind = a.osz ? 'oszshot' : 'oshot';
@@ -485,7 +492,85 @@ function setLoc(loc) {
   if (ui.f.n === 0 && (isSZ(ui.kind) || ui.f.sz === 'in')) delete ui.f.n; // SZ内は0人はない
   return ui.kind !== k0;
 }
-function resetForm() { ui.kind = null; ui.f = {}; ui.edit = null; ui.clsTouched = false; ui.clsAutoNote = ''; ui.oejStep = 'start'; ui.endTouched = false; }
+// ---------- つづけて入力（2026-10-22）：記録した直後に、同じ時刻で続きのイベントを入れる（選手・局面を引き継ぐ） ----------
+const NEXT = {
+  z4: ['sz', 'shot', 'szshot', 'goal', 'lost'], sz: ['szshot', 'shot', 'goal', 'lost'], shot: ['shot', 'szshot', 'goal', 'rec', 'lost'], szshot: ['szshot', 'shot', 'goal', 'rec', 'lost'],
+  rec: ['z4', 'sz', 'shot', 'szshot', 'lost'], lost: ['oz4', 'osz', 'oshot', 'oszshot', 'rec'], fspat: ['shot', 'szshot', 'goal'],
+  oz4: ['osz', 'oshot', 'oszshot', 'conc', 'rec'], osz: ['oszshot', 'oshot', 'conc', 'rec'], oshot: ['oshot', 'oszshot', 'conc', 'rec'], oszshot: ['oszshot', 'oshot', 'conc', 'rec'],
+  fspdf: ['oshot', 'oszshot', 'conc'], foul: ['fspdf'], fouled: ['fspat'],
+};
+function contRow(mine) {
+  const L = ui.cont; if (!L || ui.kind || ui.edit) return '';
+  const ks = (NEXT[L.kind] || []).filter((k) => mine.includes(k)); if (!ks.length) return '';
+  return `<div class="controw"><span class="lab">つづけて</span><span class="mu">${esc(KIND[L.kind].label)}の続き（同じ時刻・選手・局面を引き継ぐ）</span>${ks.map((k) => `<button class="btn sm ${KIND[k].team === 'opp' ? 'o' : ''}" data-cont="${k}">${KIND[k].label}</button>`).join('')}</div>`;
+}
+function contStart(ctx, k) {
+  const L = ui.cont; ui.cont = null; startKind(ctx, k); if (!L) return;
+  const same = KIND[k].team === KIND[L.kind].team;
+  if (same && KIND[k].team === 'own') {
+    const pass = (L.kind === 'z4' || L.kind === 'sz') && L.method === 'pass';
+    const who = pass ? L.pid2 : L.pid;
+    if (who && who !== UNKNOWN && who !== OPP_OG) ui.f.pid = who;
+    if (pass && L.pid) { if (k === 'goal') ui.f.assist = L.pid; else if (k === 'shot' || k === 'szshot') ui.f.lp = L.pid; }
+  }
+  if (L.cls && hasCls(k) && (same || L.kind === 'lost' || L.kind === 'rec')) { ui.f.cls = L.kind === 'lost' || L.kind === 'rec' ? (same ? L.cls : 'trans') : L.cls; ui.clsTouched = true; ui.clsAutoNote = ''; }
+  else if ((L.kind === 'rec' || L.kind === 'lost') && hasCls(k)) { ui.f.cls = 'trans'; ui.clsTouched = true; ui.clsAutoNote = 'ボールを奪った・失った直後なので「トランジション」にしています（変えられます）'; }
+}
+
+// ---------- キーボード（PC。2026-10-22） ----------
+const KEYS = { KeyS: ['shot', 'oshot'], KeyA: ['szshot', 'oszshot'], KeyZ: ['z4', 'oz4'], KeyX: ['sz', 'osz'], KeyG: ['goal', 'conc'], KeyC: ['fspat', 'fspdf'], KeyR: ['rec', null], KeyL: ['lost', null], KeyF: ['foul', 'fouled'] };
+const RKEYS = { KeyI: 'in', KeyO: 'out', KeyB: 'block', KeyP: 'post' };
+let keysOn = false, numBuf = '', numTimer = null;
+function keyHelp() {
+  const row = (k, t) => `<tr><td><kbd>${k}</kbd></td><td>${t}</td></tr>`;
+  const md = openModal(`<h2>キー操作（PC）</h2><p class="mu">入力の欄にいないときに使えます。Shift を押しながらだと相手チームのイベントになります。</p>
+    <table class="keyt">${row('S', 'シュート（Shift：被シュート）')}${row('A', 'SZ内シュート（Shift：被SZ内シュート）')}${row('Z', 'Z4進入（Shift：被Z4進入）')}${row('X', 'SZ進入（Shift：被SZ進入）')}${row('G', '得点（Shift：失点）')}${row('C', 'FINISH SET PLAY AT（Shift：DF）')}${row('R', 'ボールリカバリー')}${row('L', 'ボールロスト')}${row('F', 'ファール（Shift：被ファール）')}
+    ${row('数字', 'イベントを選ぶ前：時刻（今までどおり）／イベントを選んだあと：選手の背番号（打った選手 → ラストパス、得点者 → アシスト などの順に入る）')}${row('I・O・B・P', 'シュートの結果：枠内・枠外・ブロック・ポスト')}${row('Enter', '記録する')}${row('Esc', 'やめる')}
+    ${row('Space', '動画の再生・止める（動画を開いているとき）')}${row('← →', '動画を1秒戻す・進める（Shift で5秒）')}</table>
+    <div class="row end"><button class="btn" data-c>閉じる</button></div>`);
+  md.querySelector('[data-c]').onclick = closeModal;
+}
+function installKeys() {
+  if (keysOn) return; keysOn = true;
+  addEventListener('keydown', (e) => {
+    const c = VID.ctx; if (!c || !/\/events/.test(location.hash) || !document.querySelector('.evform')) return;
+    if (e.target.closest?.('input,textarea,select') || document.querySelector('.modal-bg') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const stop = () => { e.preventDefault(); e.stopPropagation(); };
+    const v = VID.open && VID.url ? VID.el : null;
+    if (e.code === 'Space' && v) { stop(); if (v.paused) v.play(); else v.pause(); return; }
+    if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && v) { stop(); v.currentTime = Math.max(0, v.currentTime + (e.code === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 5 : 1)); return; }
+    if (e.code === 'Escape') { stop(); resetForm(); ui.cont = null; render(); return; }
+    if (e.key === '?' || (e.code === 'KeyH' && !e.shiftKey)) { stop(); keyHelp(); return; }
+    if (KEYS[e.code]) {
+      const k = KEYS[e.code][e.shiftKey ? 1 : 0]; if (!k) return; stop();
+      const mine = c.sp.n > 1 ? kindsOf(c.sp, c.role) : ALLK;
+      if (!mine.includes(k)) { toast(`${KIND[k].label}はこの端末の担当ではありません`); return; }
+      if (ui.cont && (NEXT[ui.cont.kind] || []).includes(k)) contStart(c, k); else { ui.cont = null; startKind(c, k); }
+      render(); return;
+    }
+    if (RKEYS[e.code] && ui.kind && isShot(ui.kind)) { stop(); ui.f.result = RKEYS[e.code]; render(); return; }
+    if (/^[0-9]$/.test(e.key) && ui.kind) {
+      stop(); numBuf += e.key; clearTimeout(numTimer);
+      const members = c.cfg.members || {};
+      const done = () => {
+        const no = numBuf; numBuf = '';
+        const pid = Object.keys(members).find((p) => String(members[p].no) === no);
+        if (!pid) { toast(`背番号 ${no} の選手は試合メンバーにいません`); return; }
+        const k = ui.kind; const f = ui.f;
+        const order = isShot(k) && KIND[k].team === 'own' ? ['pid', 'lp'] : k === 'goal' ? ['pid', 'assist'] : (k === 'z4' || k === 'sz') ? (f.method === 'pass' ? ['pid', 'pid2'] : ['pid']) : ['rec', 'lost', 'foul', 'fouled'].includes(k) ? ['pid'] : [];
+        if (!order.length) { toast('このイベントは選手を選びません'); return; }
+        const key = order.find((x) => f[x] == null) || order[order.length - 1];
+        if (key !== 'pid' && f.pid === pid) { toast('同じ選手です'); return; }
+        f[key] = pid; afterPick(key); render();
+      };
+      // 2けたの背番号を待つ（1けたで決まるときはすぐ）
+      const two = Object.values(members).some((m) => String(m.no).length > numBuf.length && String(m.no).startsWith(numBuf));
+      if (numBuf.length >= 2 || !two) done(); else numTimer = setTimeout(done, 650);
+    }
+  }, true);
+}
+
+function resetForm() { ui.locMode = 'shot'; ui.kind = null; ui.f = {}; ui.edit = null; ui.clsTouched = false; ui.clsAutoNote = ''; ui.oejStep = 'start'; ui.endTouched = false; }
 
 function bindEv(root, ctx) {
   const { m, cfg, per } = ctx;
@@ -493,7 +578,7 @@ function bindEv(root, ctx) {
   const dyn = () => { root.querySelector('#evDyn').innerHTML = dynHTML(ctx); };
   // 相手の退場の「4×3の終わり」を入れているときは、同じ数字のボタンで終わりの時刻を入れる
   const endP = ui.kind === 'oej' && ui.oejStep === 'end' ? ctx.M.periods.find((p) => p.key === ui.f.endPeriod) : null;
-  VID.ctx = ctx;
+  VID.ctx = ctx; installKeys();
   if (VID.open && VID.url) { const slot = root.querySelector('#evVidSlot'); if (slot) { slot.appendChild(vidEl()); const n = root.querySelector('.evvid .vnow'); if (n) n.innerHTML = vidNow(ctx); } }
   { const fi = root.querySelector('#evVidFile'); if (fi) fi.onchange = () => { const file = fi.files?.[0]; if (!file) return; if (VID.url) URL.revokeObjectURL(VID.url); VID.url = URL.createObjectURL(file); VID.name = file.name; const v = vidEl(); v.src = VID.url; render(); }; }
   const kp = endP ? bindKeypad(root.querySelector('.evkp'), {
@@ -515,7 +600,10 @@ function bindEv(root, ctx) {
   });
   root.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b || b.disabled) return;
-    if (b.dataset.locclr != null) { delete ui.f.loc; return dyn(); }
+    if (b.dataset.locclr != null) { if (ui.locMode === 'lp') delete ui.f.lpLoc; else delete ui.f.loc; return dyn(); }
+    if (b.dataset.locmode) { ui.locMode = b.dataset.locmode; return dyn(); }
+    if (b.dataset.cont) { contStart(ctx, b.dataset.cont); return render(); }
+    if (b.id === 'evKeys') return keyHelp();
     if (b.id === 'evVid') { VID.open = !VID.open; return render(); }
     if (b.id === 'evVidClose') { VID.open = false; if (VID.el) VID.el.pause(); return render(); }
     if (b.dataset.vk) { const s = syncOf(m.id); s[b.dataset.vk] = { v: Math.round(VID.el.currentTime * 10) / 10, name: VID.name }; saveSync(m.id, s); toast(`${periodLabel(b.dataset.vk)}のキックオフを合わせました`); return render(); }
@@ -562,6 +650,7 @@ function bindEv(root, ctx) {
   });
 }
 function afterPick(key) {
+  if ((ui.kind === 'shot' || ui.kind === 'szshot') && key === 'pid' && ui.f.lp === ui.f.pid) delete ui.f.lp;
   if (ui.kind === 'goal' && key === 'pid') {
     if (ui.f.pid === OPP_OG) { ui.f.gtype = ogId() || undefined; ui.f.assist = NO_ASSIST; delete ui.f.sz; delete ui.f.n; }
     else if (ui.f.assist === ui.f.pid) delete ui.f.assist;
@@ -624,6 +713,7 @@ async function save(ctx) {
   const was = ui.edit; const sec = ui.sec;
   toast(`${was ? '直しました' : '記録しました'}：${mmss(sec)} ${KIND[ev.kind].label}${saved.check ? '（要確認）' : ''}`);
   resetForm(); ui.listPer = ui.period;
+  ui.cont = was ? null : saved; // つづけて入力（同じ時刻で、選手・局面を引き継いで次のイベントへ）
   render();
   // 被ファールでレッドかイエロー2枚目：相手の退場（4×3の時間帯）も作るか聞く（決8）
   const red = (c) => c === 'red' || c === 'y2';
