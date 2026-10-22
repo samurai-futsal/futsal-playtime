@@ -28,12 +28,13 @@ const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と�
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
 const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '', opp: '', rg: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', gside: 'all', gcls: 'all', msub: 'time', tmet: 'shot', osub: 'rg', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
-if (A.tmet === 'z4' || A.tmet === 'sz') A.tmet = 'ent'; // 2026-10-22：Z4進入とSZ進入は1つのボタンで、グラフを横に並べる
+if (A.tmet === 'z4' || A.tmet === 'sz') A.tmet = 'ent';
+A.gside = 'all'; A.gcls = 'all'; // 得点・失点の一覧の絞り込みは、開き直すと「すべて」から // 2026-10-22：Z4進入とSZ進入は1つのボタンで、グラフを横に並べる
 let fromHash = null;
 let paceSel = null;
 const anHl = new Set(); // 表の強調している行（開いている間だけ）
 if (!['all', 'ex'].includes(A.pp)) A.pp = 'all';
-const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, gside, gcls, bin, rows } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, gside, gcls, bin, rows })); } catch {} };
+const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, bin, rows } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, bin, rows })); } catch {} };
 
 // 分析できる試合（試合中・終わった試合）
 const candidates = () => S.matches.filter((m) => !m.deleted && (m.status === 'playing' || m.status === 'done'))
@@ -841,6 +842,9 @@ function goalList(ctx) {
     }
   }
   const PL = [...LCLS, 'OG', '局面が分からない'];
+  // 選んでいた局面がこの試合（たち）にないときは「すべて」に戻す（ボタンが出ないので、絞っていることが見えなくなるため。2026-10-23）
+  if (A.gcls !== 'all' && !all.some((g) => g.ci === +A.gcls)) A.gcls = 'all';
+  if (A.gside !== 'all' && !all.some((g) => (A.gside === 'own') === g.o)) A.gside = 'all';
   const list = all.filter((g) => (A.gside === 'all' || (A.gside === 'own') === g.o) && (A.gcls === 'all' || +A.gcls === g.ci));
   const cnt = (f) => all.filter(f).length;
   const chips = A.print ? '' : `<div class="ansubs glf">${[['all', 'すべて'], ['own', '得点'], ['opp', '失点']].map(([v, l]) => `<button class="${A.gside === v ? 'on' : ''}" data-aset="gside" data-v="${v}">${l}<small>${cnt((g) => v === 'all' || (v === 'own') === g.o)}</small></button>`).join('')}
@@ -849,7 +853,7 @@ function goalList(ctx) {
     const scorer = o ? P(e.pid) : (e.og ? `OG ${P(e.og)}` : '<span class="mu">—</span>');
     const assist = !o || e.pid === OPP_OG ? '<span class="mu">—</span>' : e.assist === NO_ASSIST ? 'なし' : e.assist ? P(e.assist) : '<span class="mu">未入力</span>';
     return `<tr class="${o ? 'gown' : 'gopp'}">${multi ? `<td class="apl">${fmtShort(x.m.date)}</td><td class="apl">${opn(x.m.opponent, ow)}</td>` : ''}<td>${t}</td><td><b class="anres ${o ? 'w' : 'l'}">${o ? '得点' : '失点'}</b></td><td><b>${sc}</b></td><td class="gcl"><i style="background:${PIEC[ci]}"></i>${PL[ci]}</td><td>${e.gtype ? esc(x.gn(e.gtype)) : '<span class="mu">未入力</span>'}</td><td>${scorer}</td><td>${assist}</td></tr>`;
-  }).join('') || `<tr><td colspan="${multi ? 9 : 7}" class="mu">${all.length ? 'この条件の得点・失点はありません' : '得点・失点はありません'}</td></tr>`;
+  }).join('') || `<tr><td colspan="${multi ? 9 : 7}" class="mu">${all.length ? 'この条件の得点・失点はありません（上の「すべて」で絞り込みを外せます）' : '得点・失点はありません'}</td></tr>`;
   return `<h3 class="anh3">得点・失点の一覧<small>${multi ? '試合は日付の古い順、' : ''}時間はピリオドの経過時間。スコアはその試合のその時点（${own} − 相手）</small></h3>${chips}
     <table class="antb anglist"><thead><tr>${multi ? '<th class="apl">日付</th><th class="apl">相手</th>' : ''}<th>時間</th><th></th><th>スコア</th><th>局面</th><th>種類</th><th>得点者</th><th>アシスト</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
