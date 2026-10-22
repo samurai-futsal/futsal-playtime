@@ -17,7 +17,73 @@ let fillSeat = null; const fillReadyShown = new Set();
 const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const mmssFloor = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
+// ---------- あとから記録（2026-10-22）：動画を見ながら MATCH PLAY を操作する ----------
+// 操作の時刻を、実際の時計ではなく「そのピリオドの基準＋動画の秒」で記録する（基準は試合の vclock に残す）。
+// こうすると、出場時間・プレーイングタイム・ランニングタイムは試合中に記録したときと同じに出て、動画を見ながらのイベント入力も時刻が自動で合う。
+// 動画を戻して見返している間（最後の記録より前）は、記録できない。
+const VP = { on: false, el: null, url: null, name: '', tent: {}, mid: null };
+const lastOpT = (m) => watchOps(m.id).list.reduce((a, o) => Math.max(a, +o.t || 0), 0) || null;
+function vpBase(m, st) {
+  const k = st.current; const vc = m.vclock?.[k];
+  if (vc && Number.isFinite(+vc.base) && st.periods[k].status !== 'none') return +vc.base;
+  if (VP.tent[k] != null && VP.tent[k].name === VP.name) return VP.tent[k].base;
+  // 同じ動画で記録した前のピリオドがあれば同じ基準（ハーフタイムの間もそのまま）。違う動画なら、最後の記録の1分後から
+  const prev = PERIODS.map((p) => m.vclock?.[p.key]).filter((v) => v && v.name === VP.name).pop();
+  const base = prev ? +prev.base : (lastOpT(m) ?? Date.parse(`${m.date || '2026-01-01'}T${m.kickoff || '12:00'}:00+09:00`) ?? Date.now()) + 60000;
+  VP.tent[k] = { base, name: VP.name }; return base;
+}
+// 今の時刻：あとから記録なら動画の時刻から、ふだんは実際の時計
+function nowT(m, st) { return VP.on && VP.url && VP.el ? Math.round(vpBase(m, st) + VP.el.currentTime * 1000) : Date.now(); }
+const vpHms = (v) => { v = Math.max(0, Math.floor(v || 0)); const h = Math.floor(v / 3600), mm = Math.floor(v / 60) % 60, ss = v % 60; return `${h ? h + ':' + String(mm).padStart(2, '0') : mm}:${String(ss).padStart(2, '0')}`; };
+function vpVideo() {
+  if (VP.el) return VP.el;
+  const v = document.createElement('video'); v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.className = 'vpvideo';
+  v.addEventListener('timeupdate', () => vpInfo());
+  v.addEventListener('pause', () => { if (location.hash.endsWith('/playv')) render(); });
+  v.addEventListener('seeked', () => { if (v.paused && location.hash.endsWith('/playv')) render(); });
+  VP.el = v; return v;
+}
+// 動画の枠（画面の左。画面を描き直しても同じ <video> を使い続ける）
+function vpMount(m) {
+  let pn = document.getElementById('vpPanel');
+  if (!pn) {
+    pn = document.createElement('div'); pn.id = 'vpPanel';
+    pn.innerHTML = `<div class="vph"><b>あとから記録</b><span class="vpn"></span><label class="btn sm">動画を開く<input type="file" accept="video/*,.mp4,.mov,.m4v" hidden></label></div>
+      <div class="vps"><div class="vpnone">試合の動画を開いてください（PC・iPadの中のファイルを再生するだけで、どこにも送りません）。<br>動画を流しながら、試合中と同じようにスタート・ストップ・交代を押します。</div></div>
+      <div class="vpc"><button class="btn sm" data-vps="-5">−5秒</button><button class="btn sm" data-vps="-1">−1秒</button><button class="btn sm pri" data-vps="0">▶ 再生</button><button class="btn sm" data-vps="1">＋1秒</button><button class="btn sm" data-vps="5">＋5秒</button>
+      <select class="vprate"><option value="1">1倍</option><option value="0.5">0.5倍</option><option value="1.5">1.5倍</option><option value="2">2倍</option></select></div>
+      <div class="vpi"></div>`;
+    document.body.appendChild(pn);
+    pn.querySelector('input[type=file]').onchange = (e) => { const f = e.target.files?.[0]; if (!f) return; if (VP.url) URL.revokeObjectURL(VP.url); VP.url = URL.createObjectURL(f); VP.name = f.name; VP.tent = {}; vpVideo().src = VP.url; vpPlace(); render(); };
+    pn.addEventListener('click', (e) => { const b = e.target.closest('[data-vps]'); if (!b) return; const v = vpVideo(); const d = +b.dataset.vps; if (!d) { if (v.paused) v.play(); else v.pause(); } else v.currentTime = Math.max(0, v.currentTime + d); setTimeout(vpInfo, 60); });
+    pn.querySelector('.vprate').onchange = (e) => { vpVideo().playbackRate = +e.target.value || 1; };
+  }
+  VP.mid = m.id; vpPlace(); vpInfo();
+}
+function vpPlace() {
+  const pn = document.getElementById('vpPanel'); if (!pn) return;
+  const slot = pn.querySelector('.vps');
+  if (VP.url) { if (!slot.contains(vpVideo())) { slot.innerHTML = ''; slot.appendChild(vpVideo()); } }
+  pn.querySelector('.vpn').textContent = VP.url ? VP.name : '';
+}
+function vpInfo() {
+  const pn = document.getElementById('vpPanel'); if (!pn || !VP.mid) return;
+  const m = matchById(VP.mid); if (!m) return;
+  const tb = pn.querySelector('[data-vps="0"]'); if (tb) tb.textContent = VP.el && !VP.el.paused ? '❚❚ 止める' : '▶ 再生';
+  const box = pn.querySelector('.vpi'); if (!box) return;
+  if (!VP.url) { box.innerHTML = ''; return; }
+  const st = replay(watchOps(m.id).list, cfgOf(m));
+  const base = vpBase(m, st); const last = lastOpT(m);
+  const lastV = last != null ? (last - base) / 1000 : null;
+  const back = last != null && nowT(m, st) < last - 50;
+  box.innerHTML = `<div>動画 <b>${vpHms(VP.el.currentTime)}</b>　${periodLabel(st.current)}</div>${lastV != null && lastV >= 0 ? `<div class="mu">最後の記録：動画 ${vpHms(lastV)}</div>` : ''}
+    ${back ? '<div class="vpwarn">見返し中です：最後の記録より前の場面なので、記録できません（最後の記録の場面まで進めてください）</div>' : ''}`;
+}
+const vpBlocked = (m, st) => { if (!VP.on) return null; if (!VP.url) return '先に動画を開いてください'; const last = lastOpT(m); const k = st.current; if (st.periods[k].status === 'live' && !m.vclock?.[k] && VP.tent[k]?.name !== VP.name) return `${periodLabel(k)}は試合中に記録しています。あとから記録では続けられません`; if (last != null && nowT(m, st) < last - 50) return '見返し中です：最後の記録より前の場面では記録できません'; return null; };
+function vpUnmount() { const pn = document.getElementById('vpPanel'); if (pn) { if (VP.el) VP.el.pause(); pn.remove(); } document.body.classList.remove('vplay'); }
+
 export function unmountPlay() {
+  vpUnmount();
   const was = mountedId;
   clearInterval(tick); tick = null; clearInterval(heartbeat); heartbeat = null; mountedId = null; ejectMode = false; fillSeat = null;
   document.body.classList.remove('playmode'); document.body.style.touchAction = '';
@@ -75,7 +141,8 @@ function slotFor(m, draft, pid) {
 function setDraft(m, period, arr) { try { localStorage.setItem(draftKey(m, period), JSON.stringify(arr)); } catch {} }
 
 // ---------- view ----------
-export function vPlay(m) {
+export function vPlay(m, { video = false } = {}) {
+  VP.on = video;
   const opsC = watchOps(m.id);
   if (!opsC.ready && !opsC.list.length) return { full: true, html: '<p class="pad mu">読み込み中…</p>' };
   const cfg = cfgOf(m);
@@ -83,7 +150,7 @@ export function vPlay(m) {
   const per = st.periods[st.current];
   const live = per.status === 'live';
   const len = perLen(st, st.current);
-  const t = Date.now();
+  const t = nowT(m, st);
   const el = nowElapsed(st, t);
   const running = per.runningSince != null;
   const spOn = live && setplayOn(st, el); // 1:00で自動終了したら、次の操作を待たずに終わったものとして見せる（試2）
@@ -271,7 +338,12 @@ function bindPlay(root, m, st, cfg, draft) {
     // 同じ試合を2台で操作しない（spec 5章）：別の端末で記録中なら、この端末は見るだけ
     if (otherDevice(matchById(m.id) || m)) { toast('別の端末で記録中です。この端末で記録するときは、上の「この端末で記録する」を押してください'); return null; }
     const before = replay(watchOps(m.id).list, cfg);
-    const o = addOp(m.id, { ...op, period: st.current });
+    const mm = matchById(m.id) || m;
+    const blk = vpBlocked(mm, before); if (blk) { toast(blk); return null; }
+    const vt = VP.on ? nowT(mm, before) : null;
+    // あとから記録：キックオフのときに、このピリオドの基準（動画の秒 → 記録の時刻）を試合に残す
+    if (VP.on && op.type === 'kickoff') put(teamPath('matches', m.id), { vclock: { [before.current]: { base: vpBase(mm, before), name: VP.name } }, recSrc: 'video' });
+    const o = addOp(m.id, { ...op, period: st.current, ...(vt != null ? { t: vt } : {}) });
     const after = afterOp(m, cfg, before);
     after.notices.forEach((nt) => {
       if (nt.kind === 'needOut') toast('先に交代する選手のOUTを押してください');
@@ -281,8 +353,9 @@ function bindPlay(root, m, st, cfg, draft) {
     });
     return o;
   };
+  if (VP.on) { document.body.classList.add('vplay'); vpMount(m); } else vpUnmount();
   if (mountedId !== m.id) {
-    unmountPlay(); mountedId = m.id;
+    unmountPlay(); mountedId = m.id; if (VP.on) { document.body.classList.add('vplay'); vpMount(m); }
     document.body.classList.add('playmode'); document.body.style.touchAction = 'manipulation'; // iPadのダブルタップでの拡大を防ぐ
     startWake(m.id);
     // 記録中の印（spec 5章）：別の端末が記録中（印が新しい）なら、開いても取らずに見るだけで始める。
@@ -427,13 +500,13 @@ function syncStatus(m, st) {
 
 // ---------- every 250ms: clock and times, auto stop at 0:00 ----------
 function updateTick(m0) {
-  const m = matchById(m0.id); if (!m || !location.hash.endsWith('/play')) { unmountPlay(); return; }
+  const m = matchById(m0.id); if (!m || !/\/playv?$/.test(location.hash)) { unmountPlay(); return; }
   const cfg = cfgOf(m);
   const st = replay(watchOps(m.id).list, cfg);
   const per = st.periods[st.current];
   if (per.status !== 'live') return;
   const len = perLen(st, st.current);
-  const t = Date.now();
+  const t = nowT(m, st);
   const el = nowElapsed(st, t);
   const clock = $('#clock'); if (clock) clock.textContent = mmss(len - el);
   // 0:00の自動停止は、記録しているこの端末だけ（見るだけの端末は記録しない）
@@ -449,7 +522,7 @@ function updateTick(m0) {
         const before = replay(watchOps(m.id).list, c2);
         // 確認の間に「1つ戻す」などで状態が変わっていたら終了しない（時間になりましたの表示から終了できる）
         if (before.current !== st.current || before.periods[st.current].status !== 'live' || before.periods[st.current].runningSince != null || otherDevice(mm)) return;
-        addOp(m.id, { type: 'periodEnd', period: st.current }); afterOp(mm, c2, before);
+        addOp(m.id, { type: 'periodEnd', period: st.current, ...(VP.on ? { t: stopT + 1 } : {}) }); afterOp(mm, c2, before);
       });
     return;
   }

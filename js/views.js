@@ -591,6 +591,10 @@ function vMatch(r) {
   if (r.sub === 'datasheet') return vDatasheet(m);
   if (r.sub === 'report') return vReport(m);
   if (r.sub === 'physical') return vPhys(m);
+  if (r.sub === 'playv') { // あとから記録（動画を見ながら MATCH PLAY。2026-10-22）
+    if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">あとから記録を開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
+    return vPlay(m, { video: true });
+  }
   if (r.sub === 'play') {
     if (Object.keys(m.members || {}).length < 5) return { active: 'acts', html: `<div class="card empty">MATCH PLAYを開くには、試合メンバーを5人以上選んでください。<a href="#/m/${m.id}/members">試合メンバーへ</a></div>` };
     return vPlay(m);
@@ -631,7 +635,8 @@ function vMatch(r) {
     <div class="acts acts2">
       ${btn('イベント入力', '映像を見ながら入力\n試合中に入れたものの確認も', `#/m/${m.id}/events`, { kind: 'rec', pri: st === '未入力あり' })}
       ${btn('記録の修正', '交代・スタメン・退場\nパワープレー・試合情報', `#/m/${m.id}/fix`, { kind: 'rec' })}
-      ${btn('Sportscodeから取り込み', 'XML・CSVを読み込んで\nイベント入力に自動で記録', `#/m/${m.id}/scimport`, { kind: 'rec' })}
+      ${btn('Sportscodeから取り込み', 'XML・CSVを読み込んで\nイベント入力に自動で記録\n（記録がない試合は出場・交代も作る）', `#/m/${m.id}/scimport`, { kind: 'rec' })}
+      ${btn('あとから記録', '試合の動画を見ながら MATCH PLAY\n交代・時計・出場時間を記録', `#/m/${m.id}/playv`, { kind: 'rec' })}
     </div>
     ${postInputs(m)}
     <div class="grp">見る（記録はしない）</div>
