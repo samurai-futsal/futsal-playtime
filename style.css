@@ -1535,3 +1535,8 @@ body.jpn .tile{border-top:4px solid #1B2550}
 .opn{display:inline-block;text-align:left;white-space:nowrap}.opn .ofl{display:inline-block;width:1.9em}.opn .ofl .flg{margin-left:0}
 .antrend .fseg{cursor:pointer}.antrend .fseg:hover{opacity:.85}
 .antrend svg text{pointer-events:none}
+/* 得点・失点の一覧（2026-10-22） */
+.glf{margin:4px 0 8px;align-items:center}.glf button small{margin-left:5px;opacity:.75;font-size:11px}.glf button i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+.anglist{margin-bottom:16px}.anglist td.gcl i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:0}
+.anglist tr.gown td{background:#F5F8FE}.anglist tr.gopp td{background:#FEF6F5}
+.anglist .anres{min-width:40px}

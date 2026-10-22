@@ -5,7 +5,7 @@ import { S, watchOps, watchEvents, opts, teamSettings, playerById, activityById,
 import { periodLabel } from './engine.js';
 import { modelOf, playerTable, entryOrder } from './model.js';
 import { teamStats, playerDetail, addInto, blankDetail, FSP_KEYS, ZONE_KEYS, ppWindows, windowsOf, clipModel, winTest, ppTime, setSplit, asOfLabel } from './teamstats.js';
-import { missing, pitchAt, isFsp, OPP_OG, isOG } from './events.js';
+import { missing, pitchAt, isFsp, OPP_OG, isOG, UNKNOWN, NO_ASSIST, clsOfGoalTypeId, isOGType } from './events.js';
 import { shotsOf, CLS_KEYS } from './teamstats.js';
 import { paceSection, goalMarks, PACE_ROWS, teamSection, bandTip } from './review58.js';
 import { timelineHTML, declutterTimeline, printReviews } from './review.js';
@@ -26,14 +26,14 @@ const TABS = [['time', '出場時間'], ['stats', 'スタッツ'], ['set', 'セ�
 // 2026-10-16：この2つだけ。2026-10-17（決8）：「5×4/4×5を除く」→「数的同数だけ」（5×4・4×5と、両チームの退場の時間帯を除く）
 const PPM = [['all', 'すべて'], ['ex', '数的同数だけ', '5×4・4×5と、両チームの退場（3×4・4×3）の時間帯を除く']];
 const SUBS = [['sum', 'まとめ'], ['shot', 'シュート'], ['goal', '得失点'], ['ent', 'Z4・SZ進入'], ['rl', 'リカバリー・ロスト'], ['foul', 'ファール・カード'], ['fsp', 'FINISH SET PLAY']];
-const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '', opp: '', rg: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', msub: 'time', tmet: 'shot', osub: 'rg', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
+const A = { scope: 'match', matchId: null, picked: null, f: { act: '', type: '', cat: '', from: '', to: '', opp: '', rg: '' }, agg: 'sum', per: 'all', pp: 'all', tab: 'stats', tview: 'list', gside: 'all', gcls: 'all', msub: 'time', tmet: 'shot', osub: 'rg', bin: 60000, rows: ['shot', 'ent', 'fsp'], sub: 'sum', sort: { col: '', dir: 'desc' } };
 try { Object.assign(A, JSON.parse(localStorage.getItem('fpt.analysis') || '{}'), { sort: { col: '', dir: 'desc' } }); } catch {}
 if (A.tmet === 'z4' || A.tmet === 'sz') A.tmet = 'ent'; // 2026-10-22：Z4進入とSZ進入は1つのボタンで、グラフを横に並べる
 let fromHash = null;
 let paceSel = null;
 const anHl = new Set(); // 表の強調している行（開いている間だけ）
 if (!['all', 'ex'].includes(A.pp)) A.pp = 'all';
-const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, bin, rows } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, bin, rows })); } catch {} };
+const keep = () => { try { const { scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, gside, gcls, bin, rows } = A; localStorage.setItem('fpt.analysis', JSON.stringify({ scope, matchId, picked, f, agg, per, pp, tab, sub, tview, msub, tmet, osub, gside, gcls, bin, rows })); } catch {} };
 
 // 分析できる試合（試合中・終わった試合）
 const candidates = () => S.matches.filter((m) => !m.deleted && (m.status === 'playing' || m.status === 'done'))
@@ -819,8 +819,39 @@ function typeTab(ctx) {
   const clsT = `<table class="antb"><thead><tr><th class="apl">局面</th><th class="w">シュート</th><th class="w">得点</th><th class="w">決定率</th><th class="o">被シュート</th><th class="o">失点</th><th class="w">Z4進入</th><th class="o">被Z4進入</th></tr></thead><tbody>
     ${L.map((l, i) => `<tr><td class="apl">${l}</td><td class="w">${cls.own[i].sh}</td><td class="w">${cls.own[i].g}</td><td class="w">${cls.own[i].sh ? Math.round(cls.own[i].g / cls.own[i].sh * 100) + '%' : '—'}</td><td class="o">${cls.opp[i].sh}</td><td class="o">${cls.opp[i].g}</td><td class="w">${cls.z4[i]}</td><td class="o">${cls.oz4[i]}</td></tr>`).join('')}
     <tr class="ex"><td class="apl">局面が未入力</td><td class="w">${miss.own}</td><td></td><td></td><td class="o">${miss.opp}</td><td></td><td class="w">${miss.z4}</td><td class="o">${miss.oz4}</td></tr></tbody></table>`;
-  return `<div class="antbl anscroll">${pies}<div class="antypes">${T1('得点の種類', gf, gfN, gfMiss, 'w')}${T1('失点の種類', ga, gaN, gaMiss, 'o')}</div><h3 class="anh3">局面ごとのシュート・決定率・Z4進入</h3>${clsT}</div>
+  return `<div class="antbl anscroll">${pies}${goalList(ctx)}<div class="antypes">${T1('得点の種類', gf, gfN, gfMiss, 'w')}${T1('失点の種類', ga, gaN, gaMiss, 'o')}</div><h3 class="anh3">局面ごとのシュート・決定率・Z4進入</h3>${clsT}</div>
     <p class="anhint">得点・失点の局面は、得点・失点の種類から決まります（OGは「OG」。種類が未入力などで局面が分からないものは「局面が分からない」）。得点・失点もシュートに数えます（OGはシュートに数えない）。決定率＝得点÷シュート。割合は、その種類の数÷合計</p>`;
+}
+
+// 得点・失点の一覧（2026-10-22）：どの試合の、いつ、どの局面から得点・失点したか。局面と得点／失点で絞れる
+function goalList(ctx) {
+  const xs = byDate(ctx.ok); const multi = xs.length > 1;
+  const P = (pid) => (pid === OPP_OG ? '相手OG' : pid === UNKNOWN ? '不明' : pid ? `<span class="pnm">${badge(ctx, pid)}<span>${name(pid)}</span></span>` : '<span class="mu">未入力</span>');
+  const ow = oppW(xs.map((x) => x.m.opponent)); const own = esc(S.team?.name || '自チーム');
+  const all = [];
+  for (const x of xs) {
+    let so = 0, sp = 0;
+    for (const { e, own: o } of x.R.goals || []) {
+      o ? so++ : sp++;
+      if (x.keys && !x.keys.includes(e.period)) continue; // 前半・後半だけを見ているとき（スコアは試合のその時点のまま）
+      const og = o ? e.pid === OPP_OG : isOGType(e.gtype, x.gn);
+      const ci = og ? 5 : CLS_KEYS.indexOf(clsOfGoalTypeId(e.gtype, x.gn));
+      const pl = x.M.periods.find((p) => p.key === e.period);
+      all.push({ x, e, o, ci: ci < 0 ? 6 : ci, sc: `${so}−${sp}`, t: `${pl?.label || ''} ${mmss(e.at)}` });
+    }
+  }
+  const PL = [...LCLS, 'OG', '局面が分からない'];
+  const list = all.filter((g) => (A.gside === 'all' || (A.gside === 'own') === g.o) && (A.gcls === 'all' || +A.gcls === g.ci));
+  const cnt = (f) => all.filter(f).length;
+  const chips = A.print ? '' : `<div class="ansubs glf">${[['all', 'すべて'], ['own', '得点'], ['opp', '失点']].map(([v, l]) => `<button class="${A.gside === v ? 'on' : ''}" data-aset="gside" data-v="${v}">${l}<small>${cnt((g) => v === 'all' || (v === 'own') === g.o)}</small></button>`).join('')}
+    <span class="anlab">局面</span><button class="${A.gcls === 'all' ? 'on' : ''}" data-aset="gcls" data-v="all">すべて</button>${PL.map((l, i) => (cnt((g) => g.ci === i) ? `<button class="${A.gcls === String(i) ? 'on' : ''}" data-aset="gcls" data-v="${i}"><i style="background:${PIEC[i]}"></i>${l}<small>${cnt((g) => g.ci === i && (A.gside === 'all' || (A.gside === 'own') === g.o))}</small></button>` : '')).join('')}</div>`;
+  const rows = list.map(({ x, e, o, ci, sc, t }) => {
+    const scorer = o ? P(e.pid) : (e.og ? `OG ${P(e.og)}` : '<span class="mu">—</span>');
+    const assist = !o || e.pid === OPP_OG ? '<span class="mu">—</span>' : e.assist === NO_ASSIST ? 'なし' : e.assist ? P(e.assist) : '<span class="mu">未入力</span>';
+    return `<tr class="${o ? 'gown' : 'gopp'}">${multi ? `<td class="apl">${fmtShort(x.m.date)}</td><td class="apl">${opn(x.m.opponent, ow)}</td>` : ''}<td>${t}</td><td><b class="anres ${o ? 'w' : 'l'}">${o ? '得点' : '失点'}</b></td><td><b>${sc}</b></td><td class="gcl"><i style="background:${PIEC[ci]}"></i>${PL[ci]}</td><td>${e.gtype ? esc(x.gn(e.gtype)) : '<span class="mu">未入力</span>'}</td><td>${scorer}</td><td>${assist}</td></tr>`;
+  }).join('') || `<tr><td colspan="${multi ? 9 : 7}" class="mu">${all.length ? 'この条件の得点・失点はありません' : '得点・失点はありません'}</td></tr>`;
+  return `<h3 class="anh3">得点・失点の一覧<small>${multi ? '試合は日付の古い順、' : ''}時間はピリオドの経過時間。スコアはその試合のその時点（${own} − 相手）</small></h3>${chips}
+    <table class="antb anglist"><thead><tr>${multi ? '<th class="apl">日付</th><th class="apl">相手</th>' : ''}<th>時間</th><th></th><th>スコア</th><th>局面</th><th>種類</th><th>得点者</th><th>アシスト</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // 円グラフ（12時から時計回り）
@@ -857,7 +888,7 @@ function paceTab(ctx) {
 export function reportPages(ms, agg = 'sum', { perMatch = true } = {}) {
   const save = { ...A, sort: { ...A.sort }, rows: [...A.rows] };
   try {
-    Object.assign(A, { per: 'all', pp: 'all', agg, sort: { col: '', dir: 'desc' }, tview: 'list', print: true, scope: ms.length > 1 ? 'all' : 'match' });
+    Object.assign(A, { per: 'all', pp: 'all', agg, sort: { col: '', dir: 'desc' }, tview: 'list', gside: 'all', gcls: 'all', print: true, scope: ms.length > 1 ? 'all' : 'match' });
     const all = buildCtx(ms); if (all.loading) return null;
     const pages = [];
     const multi = ms.length > 1;
