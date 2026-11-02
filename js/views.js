@@ -378,11 +378,17 @@ function vActivities() {
     <p class="mu">合宿・大会・リーグ戦の節などの「活動」を作り、その中に招集メンバーと試合を登録します。</p>
     <div class="card list">${list.length ? list.map((a) => {
       const n = Object.keys(a.members || {}).length, mc = matchesOf(a.id).length;
-      return `<a class="lrow" href="#/a/${a.id}"><span class="chip c-type">${esc(a.type || '活動')}</span>
+      return `<a class="lrow" href="#/a/${a.id}"><span class="chip c-type" style="text-align:center">${esc(a.type || '活動')}</span>
         <span class="o">${esc(a.name)}<small>${fmtDate(a.start, false)}${a.end && a.end !== a.start ? ' 〜 ' + fmtDate(a.end, false) : ''}</small></span>
         <span class="mu">招集 ${n}人・試合 ${mc}件</span><span class="go">›</span></a>`;
     }).join('') : '<div class="empty">まだ活動がありません。「＋ 活動を作る」から作ってください。</div>'}</div>`,
-    bind() { $('#btnAddA').onclick = () => activityForm(null); },
+    bind(root) {
+      $('#btnAddA').onclick = () => activityForm(null);
+      // 種類の札の幅を、一覧で一番広い札に合わせる（活動名の書き出しをそろえる。2026-11-02）
+      const cs = [...document.querySelectorAll('.card.list .lrow .c-type')];
+      const w = Math.max(0, ...cs.map((c) => c.getBoundingClientRect().width));
+      cs.forEach((c) => { c.style.boxSizing = 'border-box'; c.style.minWidth = Math.ceil(w) + 'px'; });
+    },
   };
 }
 function timesFields(t, locked = false, pkGame = false, exLocked = locked) {
