@@ -11,7 +11,7 @@
 //   teams/{teamId}/matches/{id}        試合（members: {playerId: {no,pos,pp,order}} = 試合メンバー）
 
 import { todoCount } from './events.js';
-import { DEFAULT_OPTIONS, OPT_KEYS, readOptions, hasMap, fullMap, nameTaken, renamePatch, resolveDoc, normalizeWrite } from './options.js';
+import { DEFAULT_OPTIONS, OPT_KEYS, readOptions, hasMap, fullMap, nameTaken, renamePatch, resolveDoc, normalizeWrite, seedPlan } from './options.js';
 
 export { DEFAULT_OPTIONS };
 export const DEFAULT_TEAM_SETTINGS = { colorOrange: 120, colorRed: 180, setplayAuto: 60, refMin: 120, setMin: 60, runOrange: 180, runRed: 300 };
@@ -97,6 +97,15 @@ export function initStore(fsM, db) {
     S.global = readOptions(v);
     S.lastBackup = typeof v.lastBackup === 'number' ? v.lastBackup : 0;
     S.ready.global = true; derive(); emit();
+    // あとから足す選択肢（国際親善試合など）：サーバーから読んだ中身を見て、まだなら1回だけ足す
+    if (!snap.metadata.fromCache && !snap.metadata.hasPendingWrites) {
+      const plan = seedPlan(v, S.global);
+      if (plan) {
+        const optMap = {};
+        for (const [k, p] of Object.entries(plan.patch)) optMap[k] = { ...(hasMap(v, k) ? {} : fullMap(S.global[k])), ...p };
+        put(['config', 'global'], { ...(Object.keys(optMap).length ? { optMap } : {}), seeded: Object.fromEntries(plan.flags.map((f) => [f, true])) });
+      }
+    }
   }, onErr);
   onSnapshot(collection(db, 'teams'), { includeMetadataChanges: true }, (snap) => {
     track('teams', snap);

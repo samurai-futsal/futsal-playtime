@@ -1,6 +1,6 @@
 // 選択肢の id 化（options.js）と、バックアップから戻すときの計画（restoreplan.js）。
 // Run: node test/restore.test.mjs
-import { readOptions, resolveDoc, normalizeWrite, nameTaken, fullMap, renamePatch } from '../js/options.js';
+import { readOptions, resolveDoc, normalizeWrite, nameTaken, fullMap, renamePatch, seedPlan } from '../js/options.js';
 import { planRestore, checkFile, fileCounts, reviveDates } from '../js/restoreplan.js';
 
 let pass = 0, fail = 0;
@@ -72,6 +72,17 @@ eq(rp.filter((x) => x.startsWith('merge') || x.startsWith('delete')), ['merge:te
   '置き換え：ファイルに無いものは削除の印（操作は消す）');
 eq(rp.some((x) => x.includes('Tdel')), false, '選ばなかったチームは変えない');
 eq(reviveDates({ a: '2026-10-01T01:02:03.000Z', d: '2026-10-01', n: [1, '2026-10-01T01:02:03Z'] }, (d) => ({ ts: d.getTime() })), { a: { ts: Date.parse('2026-10-01T01:02:03Z') }, d: '2026-10-01', n: [1, { ts: Date.parse('2026-10-01T01:02:03Z') }] }, '日時を戻す');
+
+// あとから足す選択肢（国際親善試合。2026-11-02）
+{
+  const old = { optMap: { activityTypes: { a: { name: '合宿', order: 0 }, b: { name: '練習試合', order: 3 } } } };
+  const p1 = seedPlan(old);
+  eq(p1, { patch: { activityTypes: { o_intlFriendly: { name: '国際親善試合', hidden: false, order: 4 } } }, flags: ['intlFriendly'] }, '保存済みの一覧の最後に足す');
+  eq(seedPlan({ ...old, seeded: { intlFriendly: true } }), null, '1回足したら（あとで消しても）もう足さない');
+  eq(seedPlan({ optMap: { activityTypes: { a: { name: '国際親善試合', order: 0 } } } }), { patch: {}, flags: ['intlFriendly'] }, '同じ名前が自分で足してあれば、印だけ残す');
+  eq(readOptions({}).activityTypes.map((o) => o.name).includes('国際親善試合'), true, '新しく始めるときの一覧にもある');
+  eq(seedPlan({}).patch, {}, '初めからの一覧には入っているので足さない');
+}
 
 console.log(`restore: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

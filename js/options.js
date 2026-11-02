@@ -8,7 +8,7 @@
 // 読むときは id から今の名前を引くので、名前を変えると過去の試合の表示も変わる。
 
 export const DEFAULT_OPTIONS = {
-  activityTypes: ['合宿', '大会', 'リーグ戦の節', '遠征', '練習試合'],
+  activityTypes: ['合宿', '大会', 'リーグ戦の節', '遠征', '練習試合', '国際親善試合'], // 国際親善試合：2026-11-02 追加
   matchCategories: ['予選リーグ', '決勝トーナメント', '順位決定戦'],
   goalTypes: ['定位置', 'トランジション', 'CK', 'CK-KI', 'KI', 'FK', 'GK活用', 'パワープレー', 'パワープレー返し', 'PK', '第2PK', 'OG'],
 };
@@ -62,4 +62,21 @@ export function normalizeWrite(data, list, field, idField) {
   if (!v) return { ...data, [idField]: '', [field]: '' };
   if (o) return { ...data, [idField]: o.id, [field]: o.name };
   return { ...data, [idField]: '' }; // 一覧にない名前：名前だけを残す（古い id は外す）
+}
+
+// あとから足す選択肢（2026-11-02〜）：保存済みの一覧にも1回だけ足す。足したら seeded に印を残すので、
+// あとで設定から消したり隠したりしても、また出てくることはない。id を決めておくので、2台が同時に足しても1件になる
+export const SEED_OPTIONS = [{ key: 'activityTypes', id: 'o_intlFriendly', name: '国際親善試合', flag: 'intlFriendly' }];
+// 足すもの：{ patch: { key: { id: {name, hidden, order} } }, flags: [...] }。何もなければ null
+export function seedPlan(v = {}, g = readOptions(v)) {
+  const patch = {}, flags = [];
+  for (const sd of SEED_OPTIONS) {
+    if (v.seeded && v.seeded[sd.flag]) continue;
+    flags.push(sd.flag);
+    const list = g[sd.key] || [];
+    if (list.some((o) => o.name === sd.name || o.id === sd.id)) continue; // すでにある（自分で足した・初めからある）
+    const order = Math.max(-1, ...list.map((o, i) => (Number.isFinite(o.order) && o.order < 1e9 ? o.order : i))) + 1;
+    (patch[sd.key] = patch[sd.key] || {})[sd.id] = { name: sd.name, hidden: false, order };
+  }
+  return flags.length ? { patch, flags } : null;
 }
