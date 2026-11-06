@@ -131,7 +131,17 @@ export function render() {
 }
 let toasted = false;
 function toastOnce(m) { if (!toasted) { toasted = true; toast(m); } }
-function bindFrame() { const b = $('#btnBack'); b && (b.onclick = goBack); }
+function bindFrame() { const b = $('#btnBack'); b && (b.onclick = goBack); fitBar(); }
+// 上の帯が2段に折り返して「設定」が左下に落ちないように、幅が足りないときは飾り（ロゴの文字・同期の文字など）から順に省く（2026-11-06）
+function fitBar() {
+  const bar = document.querySelector('header.bar'); if (!bar) return;
+  const set = bar.querySelector('a[href="#/settings"]'), first = bar.firstElementChild; if (!set || !first) return;
+  const wrapped = () => set.getBoundingClientRect().top > first.getBoundingClientRect().bottom - 4;
+  bar.classList.remove('f1', 'f2', 'f3', 'f4');
+  for (const f of ['f1', 'f2', 'f3', 'f4']) { if (!wrapped()) break; bar.classList.add(f); }
+}
+addEventListener('resize', () => { clearTimeout(fitBar.t); fitBar.t = setTimeout(fitBar, 100); });
+document.fonts?.ready?.then(() => fitBar());
 // keep what the user is typing when data updates re-render the screen
 function captureInputs(root) {
   const a = document.activeElement;

@@ -1645,3 +1645,8 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:2px 6px;border
 .phrva{font-size:26px;font-weight:900;color:#E03A2E;margin-left:2px;line-height:1}
 @media (max-width:900px){.phrvt small{display:none}.phtop .btn.phrv{font-size:17px;min-height:50px;padding:0 10px 0 8px;gap:8px}.phrvi{width:30px;height:30px;padding:5px}.phrva{font-size:22px}}
 @media (max-width:600px){.phtop .phr1{flex-wrap:wrap;row-gap:8px}.phtop .phr1 .sp{flex-basis:100%;height:0}.phtop .btn.phrv{flex:1;justify-content:center}}
+/* 上の帯：幅が足りないときに省く順（fitBar。2026-11-06） */
+.bar.f1 .jbwm img:first-child{display:none}
+.bar.f2 .jbwm{display:none}
+.bar.f3 .sy{font-size:0;padding:0 4px}.bar.f3 .sy::first-letter{font-size:14px}
+.bar.f4 .nv.srch .wide{display:none}.bar.f4 .tm{max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;line-height:26px}
