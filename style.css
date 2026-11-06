@@ -1635,3 +1635,13 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:2px 6px;border
 .evform .signnew{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
 .evform .signnew input{font-size:15px;padding:6px 10px;border:1px solid #C9D0DB;border-radius:8px;width:16em;max-width:100%}
 .evform .signnew .mu{font-size:12px}
+/* フィジカルコーチ用：マッチレビューへのボタンを大きく・目立つように（2026-11-06） */
+.phtop .btn.phrv{min-height:54px;padding:0 14px 0 10px;gap:10px;display:inline-flex;align-items:center;background:#fff;color:var(--navy);border:3px solid #E03A2E;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,.28);font-size:18px;font-weight:900;line-height:1.1;text-decoration:none}
+.phtop .btn.phrv:hover{background:#FFF4F3}
+.phtop .btn.phrv:active{transform:scale(.97)}
+.phrvi{width:34px;height:34px;flex:none;background:#E03A2E;border-radius:8px;padding:6px;box-sizing:border-box;fill:#fff}
+.phrvt{display:flex;flex-direction:column;align-items:flex-start;white-space:nowrap}
+.phrvt small{font-size:11.5px;font-weight:700;color:#5A6680;margin-top:2px}
+.phrva{font-size:26px;font-weight:900;color:#E03A2E;margin-left:2px;line-height:1}
+@media (max-width:900px){.phrvt small{display:none}.phtop .btn.phrv{font-size:17px;min-height:50px;padding:0 10px 0 8px;gap:8px}.phrvi{width:30px;height:30px;padding:5px}.phrva{font-size:22px}}
+@media (max-width:600px){.phtop .phr1{flex-wrap:wrap;row-gap:8px}.phtop .phr1 .sp{flex-basis:100%;height:0}.phtop .btn.phrv{flex:1;justify-content:center}}

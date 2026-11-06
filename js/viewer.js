@@ -132,7 +132,7 @@ export function vPhys(m) {
   if (!live && !over && ss.cls === 'wait') setTimeout(() => { if (physMatch() === m.id) render(); }, 10500 - (Date.now() - (opsC.checkAt || opsC.cacheAt || 0)));
   // 上の帯は、いつも同じ2段の形（状態や文字の長さで並びが変わらないように。2026-10-18）
   // 1段目：試合の状態 … マッチレビュー・試合ページ　2段目：相手・最新かどうか … 最後の記録・同期ボタン
-  const head = `<div class="phtop"><div class="phr1">${state}<span class="sp"></span><a class="btn sm phrv" href="#/m/${m.id}/review">マッチレビュー ›</a><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></div>
+  const head = `<div class="phtop"><div class="phr1">${state}<span class="sp"></span><a class="btn phrv" href="#/m/${m.id}/review" title="マッチレビュー（出場時間・交代など）を開く"><svg class="phrvi" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg><span class="phrvt">マッチレビュー<small>出場時間・交代を見る</small></span><span class="phrva">›</span></a><a class="btn sm" href="#/m/${m.id}">‹ 試合ページ</a></div>
     <div class="phr2"><span class="phvs">vs ${esc(m.opponent || '')}</span>${over ? '' : `<span class="phsy ${ss.cls}">● ${ss.short ? `<span class="l">${ss.txt}</span><span class="s">${ss.short}</span>` : ss.txt}</span>`}<span class="sp"></span>${lastOp ? `<span class="phlast">最後の記録 ${clockS(lastOp)}</span>` : ''}${over ? '' : `<button class="btn sm phsyb ${ss.need ? 'need' : ''}" id="phSync">${ss.need ? '⟳ 同期してください' : '⟳ 同期'}</button>`}</div></div>
     <div class="phlg"><span class="lgrun">0:00</span><span>黒＝<b>実際の時間</b>（ランニングタイム）</span><span class="ptv s">0:00</span><span>緑＝<b>試合の時計</b>（プレーイングタイム）</span><span>枠の色<i class="org"></i>${mmss(OR)}〜<i class="red"></i>${mmss(RD)}〜</span></div>`;
 
