@@ -13,6 +13,7 @@ import { ensureChecks } from './evinput.js';
 import { savePdf, safeName, preloadPdf } from './pdfsave.js';
 import { openComments } from './advice.js';
 import { pickBar, bindPickBar } from './mpick.js';
+import { freshHTML, freshRows, setFreshRows, FR_ROWS } from './fresh.js';
 
 const COL = { '1H': '#1F5FBF', '2H': '#8FB3EC', E1: '#0E8A6E', E2: '#86D3BE' };
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -22,6 +23,9 @@ const SORT0 = { col: 'total', dir: 'desc' }; // 初めは合計の長い順
 const tlHl = new Set(); // タイムラインでタップして強調している選手（もう一度タップで戻す）
 let sortState = { ...SORT0 }; // 出場時間の表とグラフの並べ替え
 const compactKey = 'fpt.reviewCompact';
+// 3. 出場タイムラインの表示：'time'（いつ出ていたか）／'fresh'（出てからの時間で見る。2026-11-07）
+const tlViewKey = 'fpt.rvTlView';
+const tlView = () => { try { return localStorage.getItem(tlViewKey) === 'fresh' ? 'fresh' : 'time'; } catch { return 'time'; } };
 const isCompact = () => { try { return localStorage.getItem(compactKey) === '1'; } catch { return false; } };
 // 時間の数え方：プレーイングタイム（時計の時間）／ランニングタイム（実際に流れた時間）
 const modeKey = 'fpt.reviewMode';
@@ -236,8 +240,16 @@ export function vReview(m) {
   // ---------- 3. 出場タイムライン ----------
   // ピリオドごとに帯を分けて並べ、2つ目以降のピリオドの前に背番号と名前の列をもう一度置く（右の方の帯も誰か分かるように）
   const { tlHead, tlRows } = timelineHTML({ M, order, mem, last, badge, gkLast, T, marks, runMode, compact: isCompact(), hl: tlHl, showExtra: !!(st.askExtra || cfg.times?.extra) });
-  const s2 = `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>いつピッチにいたか。帯の数字＝その回の時間、右端＝合計${marks.length ? '。緑＝得点・赤＝失点' : ''}${(M.zero || []).length ? '。オレンジの「0:00」＝時計が止まっている間だけの出場' : ''}</span></div>
-    <div class="rvbox rvtl">${tlHead}${tlRows}</div></section>`;
+  const fresh = tlView() === 'fresh';
+  const frRows = freshRows();
+  const tlSw = `<div class="rv3ctl"><span class="rvmode" role="group" aria-label="タイムラインの表示"><button class="${fresh ? '' : 'on'}" data-tlv="time">いつ出ていたか</button><button class="${fresh ? 'on' : ''}" data-tlv="fresh">出てからの時間で見る</button></span>
+    ${fresh ? `<span class="frpick"><span class="mu">上に出す印：</span>${Object.entries(FR_ROWS).map(([k, r]) => `<button class="${frRows.includes(k) ? 'on' : ''} ${!evs.length ? 'dis' : ''}" data-frr="${k}">${esc(r[0])}</button>`).join('')}${evs.length ? '' : '<span class="mu">（イベントを入力すると出ます）</span>'}</span>` : ''}</div>`;
+  const frPrint = fresh ? `<p class="rvhint frsel">上の印：${frRows.map((k) => FR_ROWS[k][0]).join('・') || 'なし'}</p>` : '';
+  const s2 = fresh
+    ? `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン（出てからの時間）</b><span>選手の帯の色＝その出場で出てからの時間。帯の数字＝その回の時間。「FP4人の平均」の段がコメントの「出てから2分」の分け方。印にカーソルを合わせる（iPadは触れる）と、そのときの4人</span></div>
+    <div class="rvbox rvfr">${tlSw}${frPrint}${freshHTML({ M: M0, evs, goalName, mem, last }, evs.length ? frRows : [])}</div></section>`
+    : `<section class="rvsec" id="rv2"><div class="rvtt"><b>3. 出場タイムライン</b><span>いつピッチにいたか。帯の数字＝その回の時間、右端＝合計${marks.length ? '。緑＝得点・赤＝失点' : ''}${(M.zero || []).length ? '。オレンジの「0:00」＝時計が止まっている間だけの出場' : ''}</span></div>
+    <div class="rvbox rvtl">${tlSw}${tlHead}${tlRows}</div></section>`;
 
   // ---------- 4. セットの出場時間 ----------
   // 4・6 の表：数的同数の時間帯だけで数える（5×4・4×5と、両チームの退場の時間帯を除く）。出場時間が短いセット（設定、初めは1分未満）は
@@ -333,6 +345,9 @@ function bindReview(m) {
       render();
     });
     root.querySelectorAll('[data-tsort]').forEach((th) => th.onclick = () => { const [t, col] = th.dataset.tsort.split(':'); tSortNext(t, col); render(); });
+    root.querySelectorAll('[data-tlv]').forEach((b) => b.onclick = () => { try { localStorage.setItem(tlViewKey, b.dataset.tlv); } catch {} render(); });
+    root.querySelectorAll('[data-frr]').forEach((b) => b.onclick = () => { if (b.classList.contains('dis')) return; const k = b.dataset.frr; const v = freshRows(); setFreshRows(v.includes(k) ? v.filter((x) => x !== k) : [...Object.keys(FR_ROWS)].filter((x) => x === k || v.includes(x))); render(); });
+    root.querySelectorAll('#rv2 .rvfr svg.frsv').forEach((sv) => bandTip(sv.closest('.frp'), sv, '.fmk', (g) => g.dataset.bt));
     root.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => { runPref = b.dataset.mode === 'run'; try { localStorage.setItem(modeKey, b.dataset.mode); } catch {} render(); });
     const pdf = root.querySelector('#rvPdf'); if (pdf) pdf.onclick = () => pdfChoice(m);
     const adv = root.querySelector('#rvAdv'); if (adv) adv.onclick = () => openComments(m); // 良い点・気になる点（2026-10-22）
@@ -374,11 +389,11 @@ function reviewItems(root, only14) {
   const secs = [...root.querySelectorAll('.rvw .rvbody > .rvsec')].filter((x) => !x.classList.contains('rvwait') && (!only14 || ['rv1', 'rv1b', 'rv2', 'rv3'].includes(x.id)));
   return secs.map((sec) => {
     const c = sec.cloneNode(true); c.classList.remove('rvfull');
-    c.querySelectorAll('.rvmax,.rvfsbar').forEach((x) => x.remove());
+    c.querySelectorAll('.rvmax,.rvfsbar,.rv3ctl').forEach((x) => x.remove());
     c.querySelectorAll('.hl').forEach((x) => x.classList.remove('hl'));
     c.querySelectorAll('svg.pace .prl.on').forEach((x) => x.classList.remove('on'));
     c.querySelectorAll('svg.pace .pmk').forEach((x) => x.remove());
-    c.querySelectorAll('.rvtt span').forEach((x) => { x.textContent = x.textContent.replace(/[。、]?(見出しを押すと並べ替え|行を押すと強調・下のグラフを押すと●|行を押すと強調)/g, ''); });
+    c.querySelectorAll('.rvtt span').forEach((x) => { x.textContent = x.textContent.replace(/[。、]?(見出しを押すと並べ替え|行を押すと強調・下のグラフを押すと●|行を押すと強調|印にカーソルを合わせる（iPadは触れる）と、そのときの4人)/g, ''); });
     c.querySelectorAll('th.srt i').forEach((x) => { if (x.textContent === '⇅') x.remove(); });
     let need = 0;
     // 列の幅：画面の幅で決めた割合ではなく、中身の幅の比で組み直し、その合計より狭くしない（PDFのページの幅は画面と違うため。2026-10-22）

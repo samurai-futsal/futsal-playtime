@@ -1650,3 +1650,25 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:2px 6px;border
 .bar.f2 .jbwm{display:none}
 .bar.f3 .sy{font-size:0;padding:0 4px}.bar.f3 .sy::first-letter{font-size:14px}
 .bar.f4 .nv.srch .wide{display:none}.bar.f4 .tm{max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;line-height:26px}
+/* ---------- マッチレビュー 3：出てからの時間で見る（2026-11-07） ---------- */
+.rv3ctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:0 0 10px}
+.frpick{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}
+.frpick button{border:1.5px solid #C9D0DB;background:#fff;color:#18233A;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:700;cursor:pointer}
+.frpick button.on{background:#0B2D6B;border-color:#0B2D6B;color:#fff}
+.frpick button.dis{opacity:.45;cursor:default}
+.rvfr .frsel{display:none}.pdfstage .rvfr .frsel{display:block;margin:0 0 4px}
+.frlg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:#4A5468;margin:0 0 6px}
+.frlg span{display:inline-flex;align-items:center;gap:5px}.frlg i{display:inline-block;width:14px;height:10px;border-radius:2px}
+.frp{margin:6px 0 10px}.frsv{width:100%;height:auto;display:block}
+.frsv .fgl{stroke:#E6E9F0}.frsv .fgl5{stroke:#B9C0CC}.frsv .fax{font-size:11px;fill:#5F6B80;text-anchor:middle}
+.frsv .flab{font-size:11px;fill:#4A5468;font-weight:700}.frsv .flab.w{fill:#1F5FBF}.frsv .flab.o{fill:#C8312B}
+.frsv .flane{stroke:#EEF1F6}
+.frsv .frow{fill:#F6F7FA}.frsv .fnm{font-size:12.5px;fill:#18233A;font-weight:700}
+.frsv .fsb{fill:transparent;stroke:#18233A;stroke-width:.8}.frsv .fsl{font-size:10px;fill:#18233A;text-anchor:middle;font-weight:800;pointer-events:none}.frsv .fsl.r{fill:#fff}
+.frsv .fmk{cursor:default}.frsv .fmk.w{fill:#1F5FBF}.frsv .fmk.o{fill:#C8312B}.frsv .fmk.g{stroke:#18233A;stroke-width:1.5}
+.frsv .fvl{stroke-width:1.2;stroke-dasharray:3 2;opacity:.85;pointer-events:none}.frsv .fvl.w{stroke:#1F5FBF}.frsv .fvl.o{stroke:#C8312B}
+.frtw{max-width:760px}
+.frtb{width:100%;margin-top:4px}.frtb th,.frtb td{text-align:center;padding:5px 8px}.frtb .l{text-align:left}
+.frtb td.w{color:#1F5FBF}.frtb td.o{color:#C8312B}.frtb td.cc{background:#FDF0EE}.frtb tr.tm td{background:#F6F8FB;font-weight:700}
+.frsw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.ptip{white-space:pre-line}
