@@ -274,7 +274,7 @@ function vFiles(m, { st, M, R, evC, crumb }) {
     const asg = kos.map((k, i) => `<span class="sfa">Kick Off ${i + 1}（動画 ${mmss(k.start * 1000)}）→ <select data-fa="${f.id}:${i}">${keys.map((x) => opt(x, periodLabel(x), (f.assign || [])[i] === x)).join('')}${opt('-', '使わない', (f.assign || [])[i] === '-')}</select></span>`).join('');
     const playR = keys.filter((k) => { const r = rangeOf(f, k); return r && hasPlayRows(inst, r.ko, r.to); });
     return `<div class="sff"><div class="sffh"><b>📄 ${esc(f.name)}</b><span class="mu sm">${f.kind === 'csv' ? 'CSV' : 'XML'}・${inst.length}件・${f.addedAt ? dt(f.addedAt) + ' に取り込み' : ''}</span>
-      <button class="btn sm danger" data-fdelx="${f.id}" ${used.length ? 'disabled title="使っているファイルは消せません。上の表で使い道を外してから消してください"' : ''}>× 消す</button></div>
+      <button class="btn sm danger" data-fdelx="${f.id}">× 消す</button></div>
       <div class="mu sm">中身：${playR.length ? `#背番号の行あり（${playR.map(periodLabel).join('・')}）` : '#背番号の行なし'}・イベントのコード ${eventCodeCount(inst)}件　｜　使っている所：${used.length ? used.join('、') : 'なし'}</div><div class="sfas">${asg}</div></div>`;
   }).join('');
   const pick = `<div class="card"><h3>1. 取り込んだファイル</h3>${fileRows || '<p class="mu">まだありません。</p>'}
@@ -330,7 +330,8 @@ function vFiles(m, { st, M, R, evC, crumb }) {
       root.querySelectorAll('[data-tp]').forEach((s2) => s2.onchange = () => { (fu.target[s2.dataset.tp] = fu.target[s2.dataset.tp] || {}).play = s2.value; render(); });
       root.querySelectorAll('[data-te]').forEach((s2) => s2.onchange = () => { (fu.target[s2.dataset.te] = fu.target[s2.dataset.te] || {}).ev = s2.value; render(); });
       root.querySelectorAll('[data-fa]').forEach((s2) => s2.onchange = () => { const [id, i] = s2.dataset.fa.split(':'); const f = byId[id]; if (!f) return; const a = [...(f.assign || [])]; a[+i] = s2.value; saveScFile(m.id, { ...f, assign: a }); render(); });
-      root.querySelectorAll('[data-fdelx]').forEach((b) => b.onclick = async () => { const f = byId[b.dataset.fdelx]; if (!f) return; if (!(await confirmBox({ title: 'ファイルを消しますか？', body: `<p>${esc(f.name)} をこの試合から消します。今の記録（出場・イベント）は変わりません。</p>`, ok: '消す', danger: true }))) return; saveScFile(m.id, { id: f.id, name: f.name, deleted: true, data: '' }); for (const k of keys) { const t = fu.target[k]; if (t?.play === f.id) delete t.play; if (t?.ev === f.id) delete t.ev; } render(); });
+      root.querySelectorAll('[data-fdelx]').forEach((b) => b.onclick = async () => { const f = byId[b.dataset.fdelx]; if (!f) return; const used = usedBy(f.id);
+        if (!(await confirmBox({ title: 'ファイルを消しますか？', body: `<p>${esc(f.name)} をこの試合から消します。</p>${used.length ? `<p>このファイルから作った記録（${used.join('、')}）は<b>そのまま残ります</b>。ただし、あとでこのファイルを使い直す（出場を替えたときにイベントを新しい時計で入れ直す、など）ことはできなくなります。必要になったら、同じファイルをもう一度足せば使えます。</p>` : '<p>今の記録（出場・イベント）は変わりません。</p>'}`, ok: '消す', danger: true }))) return; saveScFile(m.id, { id: f.id, name: f.name, deleted: true, data: '' }); for (const k of keys) { const t = fu.target[k]; if (t?.play === f.id) delete t.play; if (t?.ev === f.id) delete t.ev; } render(); });
       root.querySelectorAll('[data-sh]').forEach((i) => i.onchange = () => { const v = i.value.trim(); fu.shift[i.dataset.sh] = v === '' ? 0 : +v || 0; render(); });
       root.querySelectorAll('[data-ld]').forEach((i) => i.onchange = () => { const L = { ...(teamSettings().scLead || {}) }; L[i.dataset.ld] = +i.value || 0; put(teamPath(), { settings: { ...(S.team?.settings || {}), scLead: L } }); if (S.team) S.team.settings = { ...(S.team.settings || {}), scLead: L }; render(); });
       const fi = root.querySelector('#sfFile'); if (fi) fi.onchange = () => { if (fi.files?.length) loadFiles(m, fi.files, keys, doneKeys); fi.value = ''; };
