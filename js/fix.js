@@ -49,7 +49,8 @@ let ctx = {}; // MATCH PLAYの記録（修正する前）
 // （ほかの画面や端末で直したメモ・会場などを巻き戻さない）
 function writeState(m, state, origin = false, infoKeys = INFO_KEYS) {
   const periods = {};
-  for (const [k, fp] of Object.entries(state.periods)) { const { len, ...rest } = fp; periods[k] = rest; }
+  // 保存は合わせ書き（merge）なので、なくなった項目は null で消す（XML から作った印 sc、空席から始まる startEmpty。2026-11-11）
+  for (const [k, fp] of Object.entries(state.periods)) { const { len, ...rest } = fp; periods[k] = { ...rest, sc: rest.sc || null, startEmpty: rest.startEmpty || null }; }
   const info = {}; for (const f of infoKeys) if ((m[f] ?? '') !== (state.info[f] ?? '')) info[f] = state.info[f];
   const fix = origin ? null : { periods, savedAt: Date.now(), dev: devName() };
   put(teamPath('matches', m.id), { fix, ...info });
@@ -628,17 +629,20 @@ export function scApplyPlans(m, base, ks, plans) {
   if (!ks.length) return;
   ctx = { origin: baseline({ ...m, fix: null }, base.st, base.sig), st: base.st };
   const d = base.d; const before = clone({ periods: d.periods, info: d.info });
-  for (const x of ks) { const cur = d.periods[x]; d.periods[x] = { ...plans[x].fp, basis: cur.basis, len: cur.len }; }
+  for (const x of ks) { const cur = d.periods[x]; d.periods[x] = plans[x].mp ? { ...clone(ctx.origin.periods[x]), basis: cur.basis, len: cur.len } : { ...plans[x].fp, basis: cur.basis, len: cur.len }; }
   const t = Date.now();
-  addFixLog(m.id, { kind: 'step', seq: t * 100, saveT: t, devName: devName(), type: 'Sportscode', text: `${ks.map(periodLabel).join('・')} の出場・交代を Sportscode（${[...new Set(ks.map((x) => plans[x].file))].join('、')}）から作り直した`, before });
+  const fk = ks.filter((x) => !plans[x].mp), mk = ks.filter((x) => plans[x].mp);
+  const text = [fk.length ? `${fk.map(periodLabel).join('・')} の出場・交代を Sportscode（${[...new Set(fk.map((x) => plans[x].file))].join('、')}）から作り直した` : '', mk.length ? `${mk.map(periodLabel).join('・')} の出場・交代を MATCH PLAY の記録に戻した` : ''].filter(Boolean).join('／');
+  addFixLog(m.id, { kind: 'step', seq: t * 100, saveT: t, devName: devName(), type: 'Sportscode', text, before });
   writeState(m, d);
 }
 // 作り直したときの試合の記録（取り込む前に、イベントの時刻・件数を新しい記録で見せるため）
 export function scPreviewFix(m, base, ks, plans) {
   const periods = { ...(m.fix?.periods || {}) };
-  for (const x of ks) periods[x] = { ...plans[x].fp, basis: base.d.periods[x].basis };
+  for (const x of ks) { if (plans[x].mp) delete periods[x]; else periods[x] = { ...plans[x].fp, basis: base.d.periods[x].basis }; }
   return { ...(m.fix || {}), periods };
 }
+export function scOrigin(m, base) { return baseline({ ...m, fix: null }, base.st, base.sig); }
 export { totalsOf, plain as scPlain, nm as scNm };
 
 // XML で出場を直したピリオドに、XML の時計で取り込んでいないイベント（試合中にアプリで入れたものなど）が残っていたら知らせる（2026-11-11）

@@ -7,7 +7,7 @@
 import { readOptions, OPT_KEYS, nameTaken } from './options.js';
 
 export const SUBS = ['players', 'activities', 'matches'];
-export const MSUBS = ['ops', 'events', 'fixlog'];
+export const MSUBS = ['ops', 'events', 'fixlog', 'scfiles']; // scfiles：取り込んだ Sportscode のファイル（2026-11-11）
 
 // ファイルの形を確かめる（exportBackup の形）。だめなら日本語の理由を返す
 export function checkFile(o) {
@@ -18,7 +18,7 @@ export function checkFile(o) {
   return null;
 }
 export function fileCounts(o, teamIds = null) {
-  const c = { teams: 0, players: 0, activities: 0, matches: 0, ops: 0, events: 0, fixlog: 0 };
+  const c = { teams: 0, players: 0, activities: 0, matches: 0, ops: 0, events: 0, fixlog: 0, scfiles: 0 };
   for (const t of o.teams) {
     if (teamIds && !teamIds.includes(t.id)) continue;
     c.teams++;

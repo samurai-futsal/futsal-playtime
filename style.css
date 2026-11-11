@@ -1687,3 +1687,12 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:2px 6px;border
 .siw .scper{padding:12px 14px;border-radius:10px;margin:10px 0;border:2px solid #E3E8F0}.siw .scper.on{border-color:#2F6FD6}
 .fxtabs .fxlink{margin-left:auto;color:#2F6FD6;text-decoration:none;font-weight:700}
 #siPlayOnly{margin-right:10px}
+/* ---------- Sportscode：ファイルと使い道（2026-11-11） ---------- */
+.sfu{width:100%}.sfu th,.sfu td{text-align:left;vertical-align:top;padding:8px}
+.sfu select{min-width:12em;max-width:100%}
+.sfu td.ch{background:#FFF6E6}
+.sfu small{display:block;margin-top:3px}.sfu small.was{color:#B5600F;font-weight:700}
+.sff{border:1px solid #E3E8F0;border-radius:10px;padding:10px 12px;margin:8px 0;background:#FBFCFE}
+.sffh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.sffh .btn{margin-left:auto}
+.sfas{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px;font-size:13px}.sfa select{width:auto}
+.sfch{border:2px solid #E8A33A}

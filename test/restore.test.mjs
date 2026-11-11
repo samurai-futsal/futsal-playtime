@@ -51,7 +51,7 @@ const file = {
 };
 eq(checkFile(file), null, 'ファイルの形 OK');
 eq(checkFile({ app: 'other', teams: [] }), 'このアプリのバックアップファイルではありません', 'ほかのファイル');
-eq(fileCounts(file), { teams: 2, players: 4, activities: 2, matches: 4, ops: 4, events: 1, fixlog: 1 }, '数');
+eq(fileCounts(file), { teams: 2, players: 4, activities: 2, matches: 4, ops: 4, events: 1, fixlog: 1, scfiles: 0 }, '数');
 const cloud = { teams: {
   T: { data: { name: 'チーム' }, players: { p1: { last: 'A2' }, pDel: { deleted: true }, pNew: { last: 'あとで追加' } }, activities: { a1: {}, aDel: { deleted: true } },
     matches: { m1: { activityId: 'a1' }, mDel: { deleted: true }, mNew: { activityId: 'a1' } },

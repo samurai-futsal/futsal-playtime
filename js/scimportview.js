@@ -1,17 +1,17 @@
 // Sportscode からの取り込み画面（試合ページ「Sportscodeから取り込み」）。読み方は scimport.js。
 // ファイル（XML か CSV）を選ぶ → Kick Off でピリオドを決める → 件数と得点を確かめる → 取り込む（前回 Sportscode から取り込んだ分だけ置き換える）。
-import { S, watchOps, watchEvents, opts, teamSettings, saveEvent, put, teamPath } from './store.js';
+import { S, watchOps, watchEvents, opts, teamSettings, saveEvent, put, teamPath, watchScFiles, saveScFile } from './store.js';
 import { replay, periodLabel } from './engine.js';
 import { matchModel, toRunning, periodSig } from './model.js';
 import { KIND, checkOf, cardIssues, OPP_OG, UNKNOWN } from './events.js';
 import { ppWindows } from './teamstats.js';
-import { parseSC, buildImportFiles, kickOffs, periodFromName, DEFAULT_LEAD, LEAD_LABEL } from './scimport.js';
+import { parseSC, buildImportFiles, kickOffs, periodFromName, DEFAULT_LEAD, LEAD_LABEL, eventCodeCount } from './scimport.js';
 import { playOpsFromSC } from './scplay.js';
 import { addOp } from './store.js';
 import { PERIODS } from './engine.js';
 import { esc, toast, confirmBox } from './ui.js';
 import { render } from './views.js';
-import { scBaseline, scPlanFor, scApplyPlans, scPreviewFix, totalsOf, scNm } from './fix.js';
+import { scBaseline, scPlanFor, scApplyPlans, scPreviewFix, scOrigin, totalsOf, scNm } from './fix.js';
 
 let guarded = false;
 const fresh = (m) => ({ m, files: [], shift: {} });
@@ -145,166 +145,222 @@ export function vScImport(m) {
     <div class="sipick"><label class="filebtn btn pri">ファイルを選ぶ（XML・CSV）<input type="file" id="siFile" accept=".xml,.csv,.XML,.CSV,text/xml,text/csv,application/xml" multiple hidden></label>
     <div class="sidrop" id="siDrop"><b>ここにファイルをドラッグ＆ドロップ</b><span>XML・CSV　2つ同時でも大丈夫です</span></div></div>${fileList}</div>`;
   if (!started.length) { const b = buildPlay(m, st); return { active: 'acts', html: `<div class="scw siw">${crumb}<h1>Sportscodeから取り込み</h1><p class="mu">この試合は MATCH PLAY の記録がありません。Sportscode で書き出した XML か CSV から、まず出場・交代・時計の記録を作り、続けてイベント（シュート、ゾーン進入、FINISH SET PLAY、リカバリー・ロスト、ファール）を取り込みます。</p>${pick}${b.html}</div>`, bind: (root) => { bindFiles(root); b.bind(root); } }; }
-  if (false) return { active: 'acts', html: `<div class="scw">${crumb}${intro}<div class="card empty">MATCH PLAY でキックオフを押したピリオドがありません。時計の記録を使うので、先に MATCH PLAY の記録が必要です。</div></div>` };
-  const done = importedByPeriod(evC.list, M);
-  const doneHtml = done.length ? `<div class="card sidone"><h3>取り込み済み</h3>${done.map((g) => `<div class="sidrow"><b>${g.label}</b><span class="sifn">${g.name ? `📄 ${esc(g.name)}` : '<span class="mu">Sportscodeから取り込み（ファイル名の記録なし）</span>'}</span><span>${g.n}件</span><span class="mu sm">${g.t ? `${dt(g.t)} に取り込み` : ''}</span><button class="btn sm danger" data-impdel="${g.key}">この取り込みを消す</button></div>`).join('')}
-    <p class="mu sm">違うファイルに変えるときは、下でそのピリオドのファイルを読み込んで取り込みます（取り込み済みの分と置き換わります）。消しても、アプリで入力したイベントと MATCH PLAY の記録は残ります。</p></div>` : '';
-  let body = '';
-  const files = st8.files.filter((f) => kickOffs(f.parsed.instances).length);
-  if (st8.files.length && !files.length) body = '<div class="card empty">読み込んだファイルには Kick Off の印がありません。前半・後半のキックオフに「Kick Off」を付けて書き出したファイルを選んでください。</div>';
-  else if (files.length) {
-    {
-      // Kick Off の順にピリオドを当てる。Kick Off が1つ（片方のピリオドだけのファイル）なら、ファイル名から推測して選んでおく。
-      // 推測できないときは、ピリオドを選ぶまで件数と置き換えの説明を出さない（SCI-01）
-      for (const f of files) {
-        const kos = kickOffs(f.parsed.instances);
-        if (f.assign.length !== kos.length) {
-          if (kos.length === 1) { const g = periodFromName(f.name); f.guess = started.some((p) => p.key === g) ? g : null; f.assign = [f.guess]; }
-          else { f.guess = null; f.assign = kos.map((_, i) => started[Math.min(started.length - 1, i)]?.key); }
-        }
-      }
-      const rows = files.flatMap((f) => kickOffs(f.parsed.instances).map((k, i) => ({ f, i, k, key: f.assign[i] })));
-      const many = files.length > 1;
-      const rowHtml = (r, need) => `<div class="sirow"><span class="sikick"><b>${many ? `${esc(r.f.name)}：` : ''}Kick Off ${r.i + 1}（動画 ${mmss(r.k.start * 1000)}）</b><span class="siar">→</span><select data-asg="${r.f.id}:${r.i}" class="${r.key ? '' : 'sineed'}">${r.key ? '' : '<option value="" selected disabled>選んでください</option>'}${started.map((x) => `<option value="${x.key}" ${x.key === r.key ? 'selected' : ''}>${x.label}</option>`).join('')}<option value="-" ${r.key === '-' ? 'selected' : ''}>使わない</option></select>${r.key && r.f.guess === r.key && kickOffs(r.f.parsed.instances).length === 1 ? '<span class="mu sm siguess">ファイル名から選びました</span>' : ''}</span>
-        ${need ? '' : `<label>全体をずらす（秒）<input data-sh="${r.key}" value="${st8.shift[r.key] ?? ''}" placeholder="0" inputmode="decimal"></label>`}</div>`;
-      const dupKeys = (() => { const ks = rows.map((r) => r.key).filter(Boolean); return [...new Set(ks.filter((k, i) => ks.indexOf(k) !== i))]; })();
-      if (rows.some((r) => !r.key) || dupKeys.length) {
-        const msg = dupKeys.length ? `<p class="siwarn">⚠ ${dupKeys.map((k) => periodLabel(k)).join('・')}が2つ以上の Kick Off で選ばれています。どれか1つにしてください。</p>`
-          : `<p class="mu sm">ファイル名からピリオドが分からなかった（または MATCH PLAY にそのピリオドの記録がない）ファイルがあります。ピリオドを選ぶと、取り込む件数が出ます。</p>`;
-        body = `<div class="card"><h3>2. どのピリオドのファイルですか？</h3>${rows.map((r) => rowHtml(r, true)).join('')}${msg}</div>`;
-      } else {
-      const lead = leadOf();
-      const inst = files.flatMap((f) => f.parsed.instances);
-      const goalTypes = opts('goalTypes', true).map((o) => ({ id: o.id, name: o.name }));
-      // ピリオドの範囲はプレーの瞬間（コードの開始＋リード）と Kick Off で分ける（記14）。ファイルが2つなら、ファイルごとに分けてからまとめる
-      // 出場・交代も XML で直す（2026-11-11。記録の修正から移した）：終わったピリオドで、XML に「#背番号」の行があるとき。初めはチェックを入れておく
-      const base = scBaseline(m);
-      const hasPl = (f, a, b) => f.parsed.instances.some((i) => /^#\s*\d+$/.test(i.code) && i.start >= a - 1 && i.start < b);
-      const scRows = files.flatMap((f) => { const kos = kickOffs(f.parsed.instances); return kos.map((k, i) => ({ key: f.assign[i], instances: f.parsed.instances, ko: k.start, to: kos[i + 1] ? kos[i + 1].start - 1 : 1e9, file: f.name })).filter((r) => r.key && r.key !== '-' && base.d.periods[r.key] && hasPl(f, r.ko, r.to)); });
-      const plans = scPlanFor(m, base, scRows);
-      st8.scPick = st8.scPick || {};
-      for (const [k, P] of Object.entries(plans)) if (st8.scPick[k] == null) st8.scPick[k] = P.ok && !P.errs.length;
-      const ks = Object.keys(plans).filter((k) => st8.scPick[k] && plans[k].ok && !plans[k].errs.length);
-      const fixX = ks.length ? scPreviewFix(m, base, ks, plans) : m.fix;
-      const Mx = ks.length ? matchModel(st, Date.now(), fixX) : M; const Rx = ks.length ? toRunning(Mx, st) : R;
-      st8.scPlan = { base, ks, plans }; st8.Mx = Mx;
-      const res = buildImportFiles(files.map((f) => ({ instances: f.parsed.instances, assign: f.assign })), { R: Rx, M: Mx, W: ppWindows(Mx), members: m.members || {}, players: S.players, goalTypes, lead, shift: st8.shift, scClocks: Object.fromEntries(Object.entries(fixX?.periods || {}).filter(([, fp]) => fp.sc).map(([k, fp]) => [k, fp.sc])) });
-      const periods = res.periods;
-      st8.res = res; st8.periods = periods;
-      const keys = new Set(periods.map((p) => p.key));
-      const old = evC.list.filter((e) => !e.deleted && isImp(e) && keys.has(e.period));
-      const edited = old.filter(isEdited);
-      const appMade = evC.list.filter((e) => !e.deleted && !isImp(e) && keys.has(e.period)).length;
-      // コードごとの長さが前回と違うものを知らせる（リードがずれている可能性）
-      const lens = {}; for (const i of inst) { const k = lenKey(i.code); if (k) (lens[k] = lens[k] || []).push(+(i.end - i.start).toFixed(1)); }
-      const mode = (a) => { const c = {}; let best = null; for (const v of a) { c[v] = (c[v] || 0) + 1; if (best == null || c[v] > c[best]) best = v; } return best; };
-      const nowLen = Object.fromEntries(Object.entries(lens).map(([k, a]) => [k, mode(a)]));
-      const prevLen = teamSettings().scLens || {};
-      const lenWarn = Object.entries(nowLen).filter(([k, v]) => prevLen[k] != null && Math.abs(prevLen[k] - v) >= 0.5).map(([k, v]) => `${LEN_NAME[k]}の長さが${prevLen[k]}秒 → ${v}秒に変わっています。下の「コードごとの前後の秒数」を確かめてください`);
-      st8.nowLen = nowLen;
-      const per = rows.map((r) => rowHtml(r, false)).join('');
-      const cnt = {}; for (const e of res.events) cnt[e.kind] = (cnt[e.kind] || 0) + 1;
-      const order = ['shot', 'szshot', 'goal', 'z4', 'sz', 'fspat', 'oshot', 'oszshot', 'conc', 'oz4', 'osz', 'fspdf', 'rec', 'lost', 'foul', 'fouled'];
-      const cntT = `<div class="sicnt">${order.filter((k) => cnt[k]).map((k) => `<span class="${KIND[k].team === 'opp' ? 'o' : 'w'}">${KIND[k].label}<b>${cnt[k]}</b></span>`).join('')}</div>`;
-      const nm = (pid) => (pid === OPP_OG ? '相手OG' : pid && pid !== UNKNOWN ? `${m.members?.[pid]?.no ?? ''} ${S.players.find((p) => p.id === pid)?.last || ''}` : '');
-      const gn = (id) => goalTypes.find((g) => g.id === id)?.name || '';
-      const goals = res.events.filter((e) => e.kind === 'goal' || e.kind === 'conc');
-      const gT = goals.length ? `<table class="sctb"><tr><th></th><th>時刻（経過）</th><th>残り</th><th>得点者</th><th>得点の種類</th></tr>${goals.map((e) => { const p = M.periods.find((x) => x.key === e.period); return `<tr><td class="${e.kind === 'goal' ? 'w' : 'o'}">${e.kind === 'goal' ? '得点' : '失点'}</td><td>${p?.label || ''} ${mmss(e.at)}</td><td>${mmss((p?.len || 0) - e.at)}</td><td>${esc(nm(e.pid))}</td><td>${e.gtype ? esc(gn(e.gtype)) : '<span class="mu">未入力</span>'}</td></tr>`; }).join('')}</table><p class="mu sm">試合の時刻（スコアボードの残り時間）と合っているか確かめてください。ずれているときは「全体をずらす」で直します</p>` : '<p class="mu sm">得点・失点はありません</p>';
-      const warn = [
-        ...lenWarn,
-        ...(res.unknownCodes.length ? [`読まないコード：${res.unknownCodes.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}`] : []),
-        ...(res.unknownLabels.length ? [`読まないラベルのグループ：${res.unknownLabels.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}`] : []),
-        ...(res.unmatched.length ? [`試合メンバーに見つからない選手（同じ名字が2人いる・名前の一部だけ合うときも、選手は空けて取り込みます）：${res.unmatched.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}`] : []),
-        ...(res.warnings || []).map(([w, n]) => `${esc(w)}：${n}件`),
-        ...(res.events.some((e) => /同じグループに2つ以上/.test(e.impWhy || '')) ? [`同じグループに2つ以上のラベルが付いたイベント：${res.events.filter((e) => /同じグループに2つ以上/.test(e.impWhy || '')).length}件（1つ目のラベルで取り込み、「要確認」にします。イベント入力で確かめてください）`] : []),
-      ];
-      const leadT = `<table class="sctb"><tr><th>コード</th><th>コードの開始から何秒後がプレーの瞬間か</th></tr>${Object.keys(DEFAULT_LEAD).map((k) => `<tr><td>${LEAD_LABEL[k]}</td><td><input data-ld="${k}" value="${lead[k]}" inputmode="decimal"> 秒</td></tr>`).join('')}</table>`;
-      // ピリオドと時刻はアプリが自動で合わせる（ファイル名→ピリオド、Kick Off の印＋MATCH PLAY の時計→試合の時刻）。
-      // ふだんは1行だけ出し、直す欄は「ずれているとき」を開いたときだけ（2026-10-17）
-      const shifted = rows.some((r) => +st8.shift[r.key]);
-      const auto = rows.map((r) => `${files.length > 1 || kickOffs(r.f.parsed.instances).length > 1 ? `${esc(r.f.name)}${kickOffs(r.f.parsed.instances).length > 1 ? ` の Kick Off ${r.i + 1}` : ''} → ` : ''}${periodLabel(r.key)}${+st8.shift[r.key] ? `（${st8.shift[r.key]}秒ずらす）` : ''}`).join('、');
-      const adj = `<details class="siadj" id="siAdj" ${st8.adjOpen || shifted ? 'open' : ''}><summary>ピリオドや時刻を直す（ずれているときだけ）</summary>${per}
-        <p class="mu sm">時刻は、ファイルの Kick Off の印をキックオフとして、MATCH PLAY の時計の記録（時計が止まっていた時間も含む）から自動で直しています。Sportscode で Kick Off の印を付けた位置がずれていたときだけ、「全体をずらす」で直します。</p></details>`;
-      const scHtml = scSection(m, base, plans);
-      body = `<div class="card"><h3>2. ピリオドと時刻合わせ</h3><p class="siauto">✓ ピリオドと時刻は自動で合わせました：${auto}</p>${adj}</div>
-        ${scHtml}
-        <div class="card"><h3>${scHtml ? '4' : '3'}. 取り込むイベント ${res.events.length}件</h3>${ks.length ? `<p class="siauto">✓ ${ks.map(periodLabel).join('・')}は、XML で直した出場と同じ時計（XML の時計）で時刻を決めます。交代の前後3秒以内と、時計が止まっている間に交代があったイベントは「要確認」にします</p>` : ''}${cntT}${gT}
-          ${res.near?.length ? `<div class="sinear">ℹ 名前が少し違いますが、名字で合わせました（違っていたら、選手の登録か Sportscode のラベルを直して取り込み直してください）：${res.near.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}</div>` : ''}
-          ${warn.length ? `<div class="siwarn">${warn.map((w) => `<div>⚠ ${w}</div>`).join('')}</div>` : ''}
-          <p class="mu sm">${(() => { const done = importedByPeriod(evC.list, M).filter((g) => keys.has(g.key)); const nw = [...keys].map((k) => `${periodLabel(k)}：${esc(rows.find((r) => r.key === k)?.f.name || '')}（${res.events.filter((e) => e.period === k).length}件）`).join('、');
-            return done.length ? `取り込み済みの ${done.map((g) => `${g.label}：${g.name ? esc(g.name) : 'ファイル名の記録なし'}（${g.n}件）`).join('、')} を、${nw} に置き換えます` : `${nw} を取り込みます`; })()}${edited.length ? `（そのうち <b>${edited.length}件はアプリで直してあります</b>）` : ''}。アプリで入力したイベント ${appMade}件と MATCH PLAY の記録はそのまま残ります。アシスト・進入の方法などファイルにない項目は未入力のまま残るので、あとでイベント入力で埋められます。</p>
-          <div class="row end">${ks.length ? `<button class="btn" id="siPlayOnly">出場・交代だけ直す（イベントはそのまま）</button>` : ''}<button class="btn pri" id="siGo" ${res.events.length ? '' : 'disabled'}>${ks.length ? `${ks.map(periodLabel).join('・')}の出場を直して、イベントを取り込む（${res.events.length}件）` : `取り込む（${res.events.length}件）`}</button></div></div>
-        <details class="card"><summary><b>コードごとの前後の秒数</b>　チームで覚えます</summary>${leadT}<p class="mu sm">秒数を直したあとは、もう一度「取り込む」（置き換え）を押すと時刻がすべて直ります</p></details>`;
-      st8.old = old; st8.edited = edited;
-      }
-    }
-  }
-  return {
-    active: 'acts', html: `<div class="scw siw">${crumb}${intro}${doneHtml}${pick}${body}</div>`,
-    bind: (root) => {
-      bindFiles(root);
-      const ad = root.querySelector('#siAdj'); if (ad) ad.addEventListener('toggle', () => { st8.adjOpen = ad.open; });
-      root.querySelectorAll('[data-impdel]').forEach((b) => b.onclick = async () => {
-        const k = b.dataset.impdel; const list = evC.list.filter((e) => !e.deleted && isImp(e) && e.period === k); const ed = list.filter(isEdited).length;
-        if (!(await confirmBox({ title: `${periodLabel(k)}の取り込みを消しますか？`, body: `<p>${periodLabel(k)}で Sportscode から取り込んだイベント ${list.length}件を消します。${ed ? `<b>そのうち ${ed}件はアプリで直してあります。</b>` : ''}アプリで入力したイベントと MATCH PLAY の記録は消えません。</p>`, ok: '消す', danger: true }))) return;
-        for (const e of list) saveEvent(m.id, { ...e, deleted: true });
-        toast(`${periodLabel(k)}の取り込み ${list.length}件を消しました`); render();
+  return vFiles(m, { st, M, R, evC, crumb });
+}
+
+
+// ============ ファイルと使い道（2026-11-11 作り直し） ============
+// ピリオドごとに「出場・交代の元」（MATCH PLAY か、ファイル1つ）と「イベントの元」（ファイル1つか、なし）を決める。
+// 取り込んだファイルは試合に残す（scfiles）。表のプルダウンで使い道を変えると、下に「何が替わるか」を出し、「変更を反映」で反映する。
+// 新しいファイルを足すと、終わったピリオドで #背番号 の行があれば出場・交代に、イベントのコードがあればイベントに、初めから選んでおく。
+// 取り込んだイベントをアプリで直していても、入れ直すと直しは消える（置き換える前に件数を知らせる。2026-11-11 決定）。
+let fu = { m: null, target: {}, shift: {}, adjOpen: false };
+const pcache = new Map();
+const instOf = (f) => { const k = f.id + ':' + (f.t || ''); if (!pcache.has(k)) { let a = []; try { a = JSON.parse(f.data || '[]').map(([code, start, end, labels]) => ({ code, start, end, labels: labels || [] })); } catch {} pcache.set(k, a); } return pcache.get(k); };
+const packInst = (list) => JSON.stringify(list.map((i) => [i.code, +(+i.start).toFixed(3), +(+i.end).toFixed(3), ...(i.labels?.length ? [i.labels] : [])]));
+const hasPlayRows = (inst, a, b) => inst.some((i) => /^#\s*\d+$/.test(i.code) && i.start >= a - 1 && i.start < b);
+function defaultAssign(inst, name, keys) {
+  const kos = kickOffs(inst); if (kos.length === 1) { const g = periodFromName(name); return [keys.includes(g) ? g : keys[0] || '-']; }
+  let n = 0; return kos.map((k, i) => { const b = kos[i + 1] ? kos[i + 1].start - 1 : 1e9; const evN = inst.filter((x) => x.start >= k.start - 1 && x.start < b).length; if (!evN) return '-'; return keys[n++] || '-'; });
+}
+// そのファイルの、そのピリオドの範囲（Kick Off の順で決めたもの）
+function rangeOf(f, key) {
+  const inst = instOf(f); const kos = kickOffs(inst); const i = (f.assign || []).indexOf(key); if (i < 0 || !kos[i]) return null;
+  return { ko: kos[i].start, to: kos[i + 1] ? kos[i + 1].start - 1 : 1e9, i };
+}
+function loadFiles(m, list, keys, doneKeys) {
+  const all = [...list]; const ok = all.filter((x) => /\.(xml|csv)$/i.test(x.name));
+  if (!ok.length) { toast('XML か CSV のファイルを選んでください'); return; }
+  if (ok.length < all.length) toast(`XML・CSV 以外の ${all.length - ok.length}つのファイルは読み込みませんでした`);
+  Promise.all(ok.map((file) => file.text().then((text) => ({ name: file.name, parsed: parseSC(text) })))).then((add) => {
+    const have = watchScFiles(m.id).list.filter((f) => !f.deleted);
+    for (const a of add) {
+      if (!kickOffs(a.parsed.instances).length) { toast(`${a.name}：Kick Off の印がないので使えません`); continue; }
+      const data = packInst(a.parsed.instances);
+      if (data.length > 900000) { toast(`${a.name}：ファイルが大きすぎて残せません`); continue; }
+      const same = have.find((f) => f.name === a.name);
+      const assign = defaultAssign(a.parsed.instances, a.name, keys);
+      const f = saveScFile(m.id, { id: same?.id, name: a.name, kind: a.parsed.kind, data, assign, addedAt: Date.now(), deleted: false });
+      // 初めの使い道：終わったピリオドで #背番号 の行があれば出場・交代、イベントのコードがあればイベント
+      const inst = a.parsed.instances; const kos = kickOffs(inst);
+      assign.forEach((k, i) => {
+        if (!k || k === '-') return; const r = { ko: kos[i].start, to: kos[i + 1] ? kos[i + 1].start - 1 : 1e9 };
+        const t = (fu.target[k] = fu.target[k] || {});
+        if (doneKeys.includes(k) && hasPlayRows(inst, r.ko, r.to)) t.play = f.id;
+        if (inst.some((x) => x.start >= r.ko - 1 && x.start < r.to && eventCodeCount([x]))) t.ev = f.id;
       });
-      root.querySelectorAll('[data-asg]').forEach((sel) => sel.onchange = () => { const [fid, i] = sel.dataset.asg.split(':'); const x = st8.files.find((y) => y.id === fid); if (x) { x.assign[+i] = sel.value; x.guess = null; } render(); });
-      root.querySelectorAll('[data-scpick]').forEach((c) => c.onchange = () => { st8.scPick[c.dataset.scpick] = c.checked; render(); });
-      root.querySelectorAll('[data-sh]').forEach((i) => i.onchange = () => { const v = i.value.trim(); st8.shift[i.dataset.sh] = v === '' ? 0 : +v || 0; render(); });
+    }
+    render();
+  });
+}
+function vFiles(m, { st, M, R, evC, crumb }) {
+  if (fu.m !== m.id) fu = { m: m.id, target: {}, shift: {}, adjOpen: false };
+  const fC = watchScFiles(m.id);
+  const files = fC.list.filter((f) => !f.deleted).sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+  const byId = Object.fromEntries(files.map((f) => [f.id, f]));
+  const started = M.periods.filter((p) => st.periods[p.key]?.kickT != null);
+  const keys = started.map((p) => p.key);
+  const base = scBaseline(m); const doneKeys = keys.filter((k) => base.d.periods[k]);
+  const org = m.fix ? scOrigin(m, base) : null;
+  const sigOf = (fp) => JSON.stringify([fp.lineup, (fp.ev || []).map((e) => [e.kind, e.seat, Math.round(e.at / 1000), e.in || null]).sort(), (fp.pp || []).map((x) => [x.team, Math.round(x.from / 1000), Math.round(x.to / 1000)])]);
+  const live = evC.list.filter((e) => !e.deleted);
+  const fileByName = (n) => files.find((f) => f.name === n);
+  // 今の使い道
+  const cur = {};
+  for (const k of keys) {
+    const fp = m.fix?.periods?.[k];
+    const play = fp?.sc ? (byId[fp.sc.fileId]?.id || fileByName(fp.sc.file)?.id || `name:${fp.sc.file}`) : 'mp';
+    const imp = live.filter((e) => e.period === k && isImp(e));
+    const names = [...new Set(imp.map((e) => (e.impFileId && byId[e.impFileId] ? e.impFileId : fileByName(e.impFile)?.id || `name:${e.impFile || ''}`)))];
+    cur[k] = { play, ev: imp.length ? names[0] : 'none', evN: imp.length, evEdited: imp.filter(isEdited).length, appN: live.filter((e) => e.period === k && !isImp(e)).length, manual: !!fp && !fp.sc && !!org?.periods?.[k] && sigOf(fp) !== sigOf(org.periods[k]) };
+  }
+  // 目標（表で選んだもの）。選べないもの（消したファイルなど）は今のままにする
+  const tgt = {};
+  for (const k of keys) {
+    const t = fu.target[k] || {}; const c = cur[k];
+    const playOk = (v) => v === 'mp' || (byId[v] && doneKeys.includes(k) && (() => { const r = rangeOf(byId[v], k); return r && hasPlayRows(instOf(byId[v]), r.ko, r.to); })());
+    const evOk = (v) => v === 'none' || (byId[v] && rangeOf(byId[v], k));
+    tgt[k] = { play: t.play != null && playOk(t.play) ? t.play : c.play, ev: t.ev != null && evOk(t.ev) ? t.ev : c.ev };
+  }
+  const label = (v, k) => (v === 'mp' ? (cur[k].manual && cur[k].play === 'mp' ? 'MATCH PLAY（手で直した記録）' : 'MATCH PLAY') : v === 'none' ? 'なし' : byId[v] ? byId[v].name : `${String(v).replace(/^name:/, '') || 'ファイル名の記録なし'}（ファイルは残っていません）`);
+  // 替わるもの
+  const playCh = keys.filter((k) => tgt[k].play !== cur[k].play);
+  const evRedo = keys.filter((k) => tgt[k].ev !== cur[k].ev || (playCh.includes(k) && byId[tgt[k].ev]));
+  const plansF = scPlanFor(m, base, playCh.filter((k) => byId[tgt[k].play]).map((k) => { const f = byId[tgt[k].play]; const r = rangeOf(f, k); return { key: k, instances: instOf(f), ko: r.ko, to: r.to, file: f.name }; }));
+  const plans = {};
+  for (const k of playCh) { if (tgt[k].play === 'mp') plans[k] = { mp: true, ok: true, errs: [], file: 'MATCH PLAY', cur: base.d.periods[k] }; else if (plansF[k]) { plans[k] = plansF[k]; if (plansF[k].ok) plansF[k].fp.sc.fileId = tgt[k].play; } }
+  const badPlay = playCh.filter((k) => !plans[k] || !plans[k].ok || plans[k].errs.length);
+  const ksPlay = playCh.filter((k) => !badPlay.includes(k));
+  const fixX = ksPlay.length ? scPreviewFix(m, base, ksPlay, plans) : m.fix;
+  const Mx = ksPlay.length ? matchModel(st, Date.now(), fixX) : M; const Rx = ksPlay.length ? toRunning(Mx, st) : R;
+  // イベント：替えるピリオドの分だけ、ファイルごとに取り込む
+  const lead = leadOf(); const goalTypes = opts('goalTypes', true).map((o) => ({ id: o.id, name: o.name }));
+  const evFiles = [...new Set(evRedo.map((k) => tgt[k].ev).filter((v) => byId[v]))];
+  const ruler = {}; // ピリオド → 'xml'（出場と同じ XML の時計）| 'same'（別のファイルだが同じ動画）| 'mp'（MATCH PLAY の時計）
+  const scClocks = {};
+  for (const k of evRedo) {
+    const f = byId[tgt[k].ev]; if (!f) continue; const sc = fixX?.periods?.[k]?.sc; const r = rangeOf(f, k);
+    if (sc && (sc.fileId === f.id || sc.file === f.name)) { ruler[k] = 'xml'; scClocks[k] = sc; }
+    else if (sc && r && Math.abs(sc.ko - r.ko) < 2) { ruler[k] = 'same'; scClocks[k] = sc; }
+    else ruler[k] = sc ? 'diff' : 'mp';
+  }
+  const res = evFiles.length ? buildImportFiles(evFiles.map((id) => ({ instances: instOf(byId[id]), assign: (byId[id].assign || []).map((k) => (evRedo.includes(k) && tgt[k].ev === id ? k : '-')), fid: id })), { R: Rx, M: Mx, W: ppWindows(Mx), members: m.members || {}, players: S.players, goalTypes, lead, shift: fu.shift, scClocks }) : null;
+  const newEv = res ? res.events : [];
+  const oldEv = live.filter((e) => evRedo.includes(e.period) && isImp(e));
+  const editedOld = oldEv.filter(isEdited);
+  fu.calc = { base, plans, ksPlay, Mx, newEv, oldEv, editedOld, evRedo, tgt, byId };
+
+  // ---------- 画面 ----------
+  const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML・CSV を取り込んで、ピリオドごとに<b>出場・交代</b>と<b>イベント</b>に使います。表で「どのファイルを何に使うか」を選ぶと、下に何が替わるかが出るので、確かめてから「変更を反映」を押します。選んだ所しか替わりません。取り込んだファイルは試合に残るので、あとから使い道を変えられます。</p>`;
+  const opt = (v, txt, sel) => `<option value="${esc(v)}" ${sel ? 'selected' : ''}>${esc(txt)}</option>`;
+  const rows = keys.map((k) => {
+    const isDone = doneKeys.includes(k);
+    const playOpts = [opt('mp', 'MATCH PLAY' + (cur[k].manual && cur[k].play === 'mp' ? '（手で直した記録）' : ''), tgt[k].play === 'mp'), ...files.filter((f) => { const r = rangeOf(f, k); return r && hasPlayRows(instOf(f), r.ko, r.to); }).map((f) => opt(f.id, f.name, tgt[k].play === f.id))];
+    if (String(cur[k].play).startsWith('name:')) playOpts.push(opt(cur[k].play, label(cur[k].play, k), tgt[k].play === cur[k].play));
+    const evOpts = [opt('none', 'なし', tgt[k].ev === 'none'), ...files.filter((f) => rangeOf(f, k)).map((f) => opt(f.id, f.name, tgt[k].ev === f.id))];
+    if (String(cur[k].ev).startsWith('name:')) evOpts.push(opt(cur[k].ev, label(cur[k].ev, k), tgt[k].ev === cur[k].ev));
+    const chP = tgt[k].play !== cur[k].play, chE = evRedo.includes(k);
+    return `<tr><td class="l"><b>${periodLabel(k)}</b>${isDone ? '' : '<small class="mu">（試合中）</small>'}</td>
+      <td class="${chP ? 'ch' : ''}">${isDone ? `<select data-tp="${k}">${playOpts.join('')}</select>` : '<span class="mu">MATCH PLAY（ピリオドが終わると選べます）</span>'}${chP ? `<small class="was">今：${esc(label(cur[k].play, k))}</small>` : ''}</td>
+      <td class="${chE ? 'ch' : ''}"><select data-te="${k}">${evOpts.join('')}</select><small class="mu">${cur[k].evN ? `今 ${cur[k].evN}件` : ''}</small>${chE && tgt[k].ev === cur[k].ev ? '<small class="was">出場が替わるので、新しい時計で入れ直します</small>' : chE ? `<small class="was">今：${esc(label(cur[k].ev, k))}</small>` : ''}</td>
+      <td>${cur[k].appN}件</td></tr>`;
+  }).join('');
+  const table = `<div class="card"><h3>使い道（ピリオドごと）</h3><table class="fxtb sfu"><tr><th class="l"></th><th>出場・交代</th><th>イベント（ファイル）</th><th>アプリで入れたイベント</th></tr>${rows}</table>
+    <p class="mu sm">出場・交代は MATCH PLAY かファイル1つ、イベントはファイル1つか「なし」。アプリで入れたイベントは、ファイルを替えても残ります。</p></div>`;
+  // ファイルの一覧
+  const usedBy = (id) => keys.flatMap((k) => [cur[k].play === id ? `${periodLabel(k)}の出場・交代` : null, cur[k].ev === id ? `${periodLabel(k)}のイベント` : null]).filter(Boolean);
+  const fileRows = files.map((f) => {
+    const inst = instOf(f); const kos = kickOffs(inst); const used = usedBy(f.id);
+    const asg = kos.map((k, i) => `<span class="sfa">Kick Off ${i + 1}（動画 ${mmss(k.start * 1000)}）→ <select data-fa="${f.id}:${i}">${keys.map((x) => opt(x, periodLabel(x), (f.assign || [])[i] === x)).join('')}${opt('-', '使わない', (f.assign || [])[i] === '-')}</select></span>`).join('');
+    const playR = keys.filter((k) => { const r = rangeOf(f, k); return r && hasPlayRows(inst, r.ko, r.to); });
+    return `<div class="sff"><div class="sffh"><b>📄 ${esc(f.name)}</b><span class="mu sm">${f.kind === 'csv' ? 'CSV' : 'XML'}・${inst.length}件・${f.addedAt ? dt(f.addedAt) + ' に取り込み' : ''}</span>
+      <button class="btn sm danger" data-fdelx="${f.id}" ${used.length ? 'disabled title="使っているファイルは消せません。上の表で使い道を外してから消してください"' : ''}>× 消す</button></div>
+      <div class="mu sm">中身：${playR.length ? `#背番号の行あり（${playR.map(periodLabel).join('・')}）` : '#背番号の行なし'}・イベントのコード ${eventCodeCount(inst)}件　｜　使っている所：${used.length ? used.join('、') : 'なし'}</div><div class="sfas">${asg}</div></div>`;
+  }).join('');
+  const pick = `<div class="card"><h3>取り込んだファイル</h3>${fileRows || '<p class="mu">まだありません。</p>'}
+    <div class="sipick" style="margin-top:10px"><label class="filebtn btn pri">ファイルを足す（XML・CSV）<input type="file" id="sfFile" accept=".xml,.csv,.XML,.CSV,text/xml,text/csv,application/xml" multiple hidden></label>
+    <div class="sidrop" id="sfDrop"><b>ここにファイルをドラッグ＆ドロップ</b><span>前半・後半のファイルを一緒に入れられます</span></div></div>
+    <p class="mu sm">足したファイルは、終わったピリオドで #背番号 の行があれば出場・交代に、イベントのコードがあればイベントに、初めから選んでおきます（上の表で変えられます）。同じ名前のファイルを足すと、新しい中身に置き換わります。</p></div>`;
+  // 替わるもの
+  let change = '';
+  if (playCh.length || evRedo.length) {
+    const cfg = base.cfg; const origin = playCh.some((k) => tgt[k].play === 'mp') ? scOrigin(m, base) : null;
+    const pcards = playCh.map((k) => {
+      const P = plans[k]; const curP = base.d.periods[k];
+      if (!P) return `<div class="scper"><b>${periodLabel(k)}の出場・交代</b><div class="siwarn">⚠ このファイルから作れません</div></div>`;
+      if (!P.ok) return `<div class="scper"><b>${periodLabel(k)}の出場・交代</b><div class="siwarn">⚠ ${esc(P.err)}</div>${P.missing?.length ? `<div class="siwarn">⚠ 試合メンバーにない背番号：${P.missing.map((n) => '#' + n).join('・')}</div>` : ''}</div>`;
+      const nf = P.mp ? origin.periods[k] : P.fp;
+      const A = totalsOf(curP, k), B = totalsOf(nf, k);
+      const ids = [...new Set([...Object.keys(A), ...Object.keys(B)])].sort((a, b) => (cfg.members?.[a]?.pos === 'GK') - (cfg.members?.[b]?.pos === 'GK') || (parseInt(cfg.members?.[a]?.no, 10) || 999) - (parseInt(cfg.members?.[b]?.no, 10) || 999));
+      const trs = ids.map((pid) => { const a = A[pid] || 0, b = B[pid] || 0, df = b - a; return `<tr class="${Math.abs(df) >= 20000 ? 'scbig' : ''}"><td class="l">${scNm(cfg, pid)}</td><td>${mmss(a)}</td><td><b>${mmss(b)}</b></td><td class="${df > 0 ? 'up' : df < 0 ? 'dn' : ''}">${Math.abs(df) < 1000 ? '±0' : (df > 0 ? '+' : '−') + mmss(Math.abs(df))}</td></tr>`; }).join('');
+      return `<div class="scper on"><b>${periodLabel(k)}の出場・交代：${esc(label(cur[k].play, k))} → ${esc(label(tgt[k].play, k))}</b>
+        ${P.mp ? `<div class="mu sm">MATCH PLAY で記録したままの形に戻します${cur[k].manual ? '（手で直した分も戻ります）' : ''}。</div>` : `<div class="scsum"><span>XML の時計 <b>${mmss(P.play * 1000)}</b> → ${mmss(curP.len || curP.elapsed)} に合わせる</span><span>交代 ${curP.ev.filter((e) => e.kind === 'sub').length}回 → <b>${P.fp.ev.filter((e) => e.kind === 'sub').length}回</b></span><span>GK：${P.gkFromXml ? 'XML の行' : '今の記録の GK（XML の FP の人数から）'}</span></div>${P.warn.map((w) => `<div class="fxinfo">ℹ ${esc(w)}</div>`).join('')}`}
+        ${P.errs.length ? `<div class="fxerr"><b>このままでは替えられません</b><ul>${P.errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
+        <details open><summary>選手ごとの出場時間（今／替えたあと／差）</summary><table class="fxtb sctb"><tr><th class="l">選手</th><th>今</th><th>替えたあと</th><th>差</th></tr>${trs}</table></details></div>`;
+    }).join('');
+    const cnt = {}; for (const e of newEv) cnt[e.kind] = (cnt[e.kind] || 0) + 1;
+    const order = ['shot', 'szshot', 'goal', 'z4', 'sz', 'fspat', 'oshot', 'oszshot', 'conc', 'oz4', 'osz', 'fspdf', 'rec', 'lost', 'foul', 'fouled'];
+    const ecards = evRedo.map((k) => {
+      const n = newEv.filter((e) => e.period === k).length, o = oldEv.filter((e) => e.period === k).length, ed = editedOld.filter((e) => e.period === k).length;
+      const rl = ruler[k] === 'xml' ? '出場と同じ XML の時計で時刻を決めます（ぴったりそろいます）' : ruler[k] === 'same' ? '出場のファイルと同じ動画なので、出場の XML の時計で時刻を決めます' : ruler[k] === 'diff' ? '⚠ 出場のファイルと動画が違うので、MATCH PLAY の時計で時刻を決めます（誰が出ていたときかがずれることがあります）' : 'MATCH PLAY の時計で時刻を決めます';
+      return `<div class="scper on"><b>${periodLabel(k)}のイベント：${esc(label(cur[k].ev, k))}（${o}件） → ${esc(label(tgt[k].ev, k))}（${n}件）</b>${tgt[k].ev !== 'none' ? `<div class="mu sm">${rl}</div>` : ''}${ed ? `<div class="siwarn">⚠ 今のイベントのうち <b>${ed}件はアプリで直してあります</b>。替えると、その直しは消えます。</div>` : ''}</div>`;
+    }).join('');
+    const warn = res ? [
+      ...(res.unknownCodes.length ? [`読まないコード：${res.unknownCodes.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}`] : []),
+      ...(res.unmatched.length ? [`試合メンバーに見つからない選手：${res.unmatched.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}`] : []),
+      ...(res.warnings || []).map(([w, n]) => `${esc(w)}：${n}件`),
+      ...(newEv.some((e) => /同じグループに2つ以上/.test(e.impWhy || '')) ? [`同じグループに2つ以上のラベルが付いたイベント：${newEv.filter((e) => /同じグループに2つ以上/.test(e.impWhy || '')).length}件（「要確認」にします）`] : []),
+    ] : [];
+    const chk = newEv.filter((e) => e.impWhy && !/同じグループに2つ以上/.test(e.impWhy)).length;
+    const nm = (pid) => (pid === OPP_OG ? '相手OG' : pid && pid !== UNKNOWN ? `${m.members?.[pid]?.no ?? ''} ${S.players.find((p) => p.id === pid)?.last || ''}` : '');
+    const goals = newEv.filter((e) => e.kind === 'goal' || e.kind === 'conc');
+    const gT = goals.length ? `<table class="sctb"><tr><th></th><th>時刻（経過）</th><th>残り</th><th>得点者</th></tr>${goals.map((e) => { const p = Mx.periods.find((x) => x.key === e.period); return `<tr><td class="${e.kind === 'goal' ? 'w' : 'o'}">${e.kind === 'goal' ? '得点' : '失点'}</td><td>${p?.label || ''} ${mmss(e.at)}</td><td>${mmss((p?.len || 0) - e.at)}</td><td>${esc(nm(e.pid))}</td></tr>`; }).join('')}</table>` : '';
+    const can = !badPlay.length;
+    change = `<div class="card sfch"><h3>替わるもの</h3>${pcards}${ecards}
+      ${newEv.length ? `<div class="sicnt">${order.filter((k) => cnt[k]).map((k) => `<span class="${KIND[k].team === 'opp' ? 'o' : 'w'}">${KIND[k].label}<b>${cnt[k]}</b></span>`).join('')}</div>${gT}` : ''}
+      ${chk ? `<p class="mu sm">交代の前後3秒以内と、時計が止まっている間に交代があったイベント ${chk}件は「要確認」にします（動画で確かめて「このままにする」）。</p>` : ''}
+      ${warn.length ? `<div class="siwarn">${warn.map((w) => `<div>⚠ ${w}</div>`).join('')}</div>` : ''}
+      <div class="row end" style="gap:10px"><button class="btn" id="sfReset">選び直す（今のままに戻す）</button><button class="btn pri" id="sfGo" ${can ? '' : 'disabled'}>変更を反映</button></div></div>`;
+  }
+  const leadT = `<details class="card"><summary><b>コードごとの前後の秒数</b>　チームで覚えます</summary><table class="sctb"><tr><th>コード</th><th>コードの開始から何秒後がプレーの瞬間か</th></tr>${Object.keys(DEFAULT_LEAD).map((k) => `<tr><td>${LEAD_LABEL[k]}</td><td><input data-ld="${k}" value="${lead[k]}" inputmode="decimal"> 秒</td></tr>`).join('')}</table>
+    <p class="mu sm">MATCH PLAY の時計で入れるときだけ：<span>${keys.map((k) => `${periodLabel(k)} <input data-sh="${k}" value="${fu.shift[k] ?? ''}" placeholder="0" inputmode="decimal" style="width:4em"> 秒ずらす`).join('　')}</span></p></details>`;
+  return {
+    active: 'acts', html: `<div class="scw siw">${crumb}${intro}${table}${change}${pick}${leadT}</div>`,
+    bind: (root) => {
+      root.querySelectorAll('[data-tp]').forEach((s2) => s2.onchange = () => { (fu.target[s2.dataset.tp] = fu.target[s2.dataset.tp] || {}).play = s2.value; render(); });
+      root.querySelectorAll('[data-te]').forEach((s2) => s2.onchange = () => { (fu.target[s2.dataset.te] = fu.target[s2.dataset.te] || {}).ev = s2.value; render(); });
+      root.querySelectorAll('[data-fa]').forEach((s2) => s2.onchange = () => { const [id, i] = s2.dataset.fa.split(':'); const f = byId[id]; if (!f) return; const a = [...(f.assign || [])]; a[+i] = s2.value; saveScFile(m.id, { ...f, assign: a }); render(); });
+      root.querySelectorAll('[data-fdelx]').forEach((b) => b.onclick = async () => { const f = byId[b.dataset.fdelx]; if (!f) return; if (!(await confirmBox({ title: 'ファイルを消しますか？', body: `<p>${esc(f.name)} をこの試合から消します。今の記録（出場・イベント）は変わりません。</p>`, ok: '消す', danger: true }))) return; saveScFile(m.id, { id: f.id, name: f.name, deleted: true, data: '' }); for (const k of keys) { const t = fu.target[k]; if (t?.play === f.id) delete t.play; if (t?.ev === f.id) delete t.ev; } render(); });
+      root.querySelectorAll('[data-sh]').forEach((i) => i.onchange = () => { const v = i.value.trim(); fu.shift[i.dataset.sh] = v === '' ? 0 : +v || 0; render(); });
       root.querySelectorAll('[data-ld]').forEach((i) => i.onchange = () => { const L = { ...(teamSettings().scLead || {}) }; L[i.dataset.ld] = +i.value || 0; put(teamPath(), { settings: { ...(S.team?.settings || {}), scLead: L } }); if (S.team) S.team.settings = { ...(S.team.settings || {}), scLead: L }; render(); });
-      const po = root.querySelector('#siPlayOnly');
-      if (po) po.onclick = async () => {
-        const plan = st8.scPlan; if (!plan?.ks.length) return;
-        if (!(await confirmBox({ title: '出場・交代だけ直しますか？', body: `<p>${plan.ks.map(periodLabel).join('・')}の出場・交代を XML から作り直します。イベントは取り込まず、今のまま残します。</p><p>今のイベントは前の時計で入っているので、交代の前後のイベントは誰が出ていたときかがずれることがあります（あとで同じ XML でイベントを取り込み直せば、そろいます）。「記録の修正」の「1つ戻す」で戻せます。</p>`, ok: '出場・交代だけ直す' }))) return;
-        scApplyPlans(m, plan.base, plan.ks, plan.plans);
-        toast(`${plan.ks.map(periodLabel).join('・')}の出場・交代を直しました`);
-        st8 = fresh(m.id);
-        location.hash = `#/m/${m.id}/review`;
-      };
-      const go = root.querySelector('#siGo');
+      const fi = root.querySelector('#sfFile'); if (fi) fi.onchange = () => { if (fi.files?.length) loadFiles(m, fi.files, keys, doneKeys); fi.value = ''; };
+      const dz = root.querySelector('#sfDrop');
+      if (dz) {
+        let depth = 0; const hasFile = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+        dz.addEventListener('dragenter', (e) => { if (!hasFile(e)) return; e.preventDefault(); depth++; dz.classList.add('over'); });
+        dz.addEventListener('dragover', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+        dz.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) dz.classList.remove('over'); });
+        dz.addEventListener('drop', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.stopPropagation(); depth = 0; dz.classList.remove('over'); if (e.dataTransfer.files?.length) loadFiles(m, e.dataTransfer.files, keys, doneKeys); });
+      }
+      if (!guarded) { guarded = true; for (const t of ['dragover', 'drop']) document.addEventListener(t, (e) => { if (location.hash.includes('/scimport') && [...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); if (t === 'drop' && !e.target.closest?.('#siDrop,#sfDrop')) toast('点線の枠の中に落としてください'); } }); }
+      const rs = root.querySelector('#sfReset'); if (rs) rs.onclick = () => { fu.target = {}; render(); };
+      const go = root.querySelector('#sfGo');
       if (go) go.onclick = async () => {
-        if (st8.edited?.length && !(await confirmBox({ title: '取り込み直しますか？', body: `前回取り込んだイベントのうち ${st8.edited.length}件は、アプリで直してあります。置き換えると、その直しは消えます。`, ok: '置き換える', danger: true }))) return;
-        const plan = st8.scPlan;
-        if (plan?.ks.length) scApplyPlans(m, plan.base, plan.ks, plan.plans); // 先に出場・交代を直す（イベントは直したあとの記録で確かめる）
-        const M = st8.Mx || M0;
-        for (const e of st8.old || []) saveEvent(m.id, { ...e, deleted: true });
-        // seq＝取り込んだ時刻＋順番（同じ秒のイベントも取り込んだ順に並ぶ。記14）
+        const c = fu.calc; if (!c) return;
+        const lines = [...c.ksPlay.map((k) => `${periodLabel(k)}の出場・交代 → ${esc(label(c.tgt[k].play, k))}`), ...c.evRedo.map((k) => `${periodLabel(k)}のイベント → ${esc(label(c.tgt[k].ev, k))}`)];
+        if (!(await confirmBox({ title: '変更を反映しますか？', body: `<ul>${lines.map((l) => `<li>${l}</li>`).join('')}</ul>${c.editedOld.length ? `<p><b>アプリで直した取り込みのイベント ${c.editedOld.length}件の直しは消えます。</b></p>` : ''}<p>出場・交代は「記録の修正」の「1つ戻す」で戻せます。</p>`, ok: '反映する', danger: c.editedOld.length > 0 }))) return;
+        if (c.ksPlay.length) scApplyPlans(m, c.base, c.ksPlay, c.plans);
+        for (const e of c.oldEv) saveEvent(m.id, { ...e, deleted: true });
         const t = Date.now(); let n = 0, chk = 0;
-        const oldIds = new Set((st8.old || []).map((e) => e.id));
+        const oldIds = new Set(c.oldEv.map((e) => e.id));
         const kept = evC.list.filter((e) => !e.deleted && !oldIds.has(e.id));
-        const fileOf = Object.fromEntries(st8.files.flatMap((f) => (f.assign || []).filter(Boolean).map((k) => [k, f.name])));
-        const evs = st8.res.events.map((e, i) => { const ev = { ...e, imp: t, impFile: fileOf[e.period] || '', seq: t + i, id: `sc${t.toString(36)}_${i}` }; delete ev.check; return ev; });
-        const cards = cardIssues([...kept, ...evs], M.periods.map((p) => p.key));
-        for (const ev of evs) { const c = checkOf(M, ev, cards); ev.check = c.check; if (c.why) ev.checkWhy = c.why; if (ev.check) chk++; saveEvent(m.id, ev); n++; }
-        put(teamPath(), { settings: { ...(S.team?.settings || {}), scLens: { ...(teamSettings().scLens || {}), ...st8.nowLen } } });
-        toast(`${plan?.ks.length ? `${plan.ks.map(periodLabel).join('・')}の出場を直し、` : ''}${n}件を取り込みました${chk ? `（要確認 ${chk}件）` : ''}`);
-        st8 = fresh(m.id);
-        location.hash = `#/m/${m.id}/review`;
+        const evs = c.newEv.map((e, i) => { const f = c.byId[c.tgt[e.period].ev]; const ev = { ...e, imp: t, impFile: f?.name || '', impFileId: f?.id, seq: t + i, id: `sc${t.toString(36)}_${i}` }; delete ev.check; return ev; });
+        const cards = cardIssues([...kept, ...evs], c.Mx.periods.map((p) => p.key));
+        for (const ev of evs) { const r = checkOf(c.Mx, ev, cards); ev.check = r.check; if (r.why) ev.checkWhy = r.why; if (ev.check) chk++; saveEvent(m.id, ev); n++; }
+        fu.target = {};
+        toast(`反映しました${c.ksPlay.length ? `（出場・交代 ${c.ksPlay.map(periodLabel).join('・')}）` : ''}${n ? `（イベント ${n}件${chk ? `・要確認 ${chk}件` : ''}）` : ''}`);
+        render();
       };
     },
   };
-}
-
-// 出場・交代を XML で直す（取り込みの「3」。2026-11-11）
-function scSection(m, base, plans) {
-  const keys = Object.keys(plans); if (!keys.length) return '';
-  const cfg = base.cfg; const lenOfP = (fp) => fp.len || fp.elapsed;
-  const cards = keys.map((x) => {
-    const P = plans[x]; const cur = P.cur;
-    if (!P.ok) return `<div class="scper"><b>${periodLabel(x)}</b><div class="siwarn">⚠ ${esc(P.err)}</div>${P.missing?.length ? `<div class="siwarn">⚠ 試合メンバーにない背番号：${P.missing.map((n) => '#' + n).join('・')}</div>` : ''}</div>`;
-    const A = totalsOf(cur, x), B = totalsOf(P.fp, x);
-    const ids = [...new Set([...Object.keys(A), ...Object.keys(B)])].sort((a, b) => (cfg.members?.[a]?.pos === 'GK') - (cfg.members?.[b]?.pos === 'GK') || (parseInt(cfg.members?.[a]?.no, 10) || 999) - (parseInt(cfg.members?.[b]?.no, 10) || 999));
-    const subsA = cur.ev.filter((e) => e.kind === 'sub').length, subsB = P.fp.ev.filter((e) => e.kind === 'sub').length;
-    const trs = ids.map((pid) => { const a = A[pid] || 0, b = B[pid] || 0, df = b - a; return `<tr class="${Math.abs(df) >= 20000 ? 'scbig' : ''}"><td class="l">${scNm(cfg, pid)}</td><td>${mmss(a)}</td><td><b>${mmss(b)}</b></td><td class="${df > 0 ? 'up' : df < 0 ? 'dn' : ''}">${Math.abs(df) < 1000 ? '±0' : (df > 0 ? '+' : '−') + mmss(Math.abs(df))}</td></tr>`; }).join('');
-    const on = st8.scPick[x] && !P.errs.length;
-    return `<div class="scper ${on ? 'on' : ''}"><label class="scpick"><input type="checkbox" data-scpick="${x}" ${on ? 'checked' : ''} ${P.errs.length ? 'disabled' : ''}><b>${periodLabel(x)}</b>の出場・交代を XML で直す</label>
-      <div class="scsum"><span>📄 ${esc(P.file)}</span><span>XML の時計 <b>${mmss(P.play * 1000)}</b> → ${mmss(lenOfP(cur))} に合わせる</span><span>交代 ${subsA}回 → <b>${subsB}回</b></span><span>GK：${P.gkFromXml ? 'XML の行' : '今の記録の GK（XML の FP の人数から）'}</span></div>
-      ${P.warn.map((w) => `<div class="fxinfo">ℹ ${esc(w)}</div>`).join('')}${P.errs.length ? `<div class="fxerr"><b>このままでは直せません</b><ul>${P.errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
-      <details ${on ? 'open' : ''}><summary>選手ごとの出場時間（今の記録／XML／差）</summary><table class="fxtb sctb"><tr><th class="l">選手</th><th>今の記録</th><th>XML</th><th>差</th></tr>${trs}</table><p class="mu sm">差が20秒以上の選手は色を付けています。</p></details></div>`;
-  }).join('');
-  return `<div class="card"><h3>3. 出場・交代も XML で直す</h3><p class="mu sm">XML の「#背番号」の行（その選手がピッチにいて時計が動いている間）から、出場・交代の記録を作り直します。試合後に正しいデータで置き換えるためのものです。チェックを外すと、出場・交代は今の記録のまま、イベントだけを取り込みます。直したあとも「記録の修正」の「1つ戻す」で戻せ、細かい所は記録の修正で直せます。</p>
-    <ul class="mu sm scnote"><li>時計：XML の行を重ねた「時計が動いていた区間」で数え、ピリオドの長さに合わせて全体を同じ割合で少しだけ縮めます（XML はタグのずれで十数秒長くなりやすいため）。選手全員の合計は、ピリオドの長さ×5人になります</li>
-    <li>GK：XML に GK の行がなければ、XML で FP が 4人の時間は GK がいて、FP が 5人の時間は GK を下げていた（パワープレー）とします。どの GK かは今の記録から決めます</li></ul>${cards}</div>`;
 }

@@ -498,6 +498,30 @@ export function addFixLog(matchId, rec) {
   emit();
 }
 
+// ---------- 取り込んだ Sportscode のファイル（teams/{t}/matches/{m}/scfiles/{id}。2026-11-11） ----------
+// 中身（インスタンス）は JSON の文字列で持つ（あとから「出場は前のファイルに戻す」などを、選び直さずにできるように）。
+// { name, kind:'xml'|'csv', data:'[...]', assign:[Kick Off の順のピリオド], addedAt, dev, deleted }
+const scfCache = {};
+export function watchScFiles(matchId) {
+  if (scfCache[matchId]) return scfCache[matchId];
+  const c = (scfCache[matchId] = { list: [], ready: false });
+  const { onSnapshot, collection } = F.fsM;
+  onSnapshot(collection(F.db, 'teams', S.teamId, 'matches', matchId, 'scfiles'), {}, (snap) => {
+    c.list = snap.docs.map((d) => ({ id: d.id, ...d.data() })); c.ready = true; emitSoon();
+  }, onErr);
+  return c;
+}
+export function saveScFile(matchId, f) {
+  const id = f.id || newId();
+  const data = { ...f, id, dev: deviceId(), t: Date.now() };
+  for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
+  const c = watchScFiles(matchId); c.list = [...c.list.filter((x) => x.id !== id), data];
+  const { setDoc, doc } = F.fsM;
+  setDoc(doc(F.db, 'teams', S.teamId, 'matches', matchId, 'scfiles', id), data).catch(onErr);
+  emit();
+  return data;
+}
+
 // ---------- イベント（teams/{t}/matches/{m}/events/{id}、spec 6章・13章） ----------
 // 1件ずつの文書。直すときは上書き、消すときは deleted:true（ほかの端末にも消したことが届く）。
 const evCache = (KINDS.ev.cache = {});

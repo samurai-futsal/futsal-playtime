@@ -53,6 +53,8 @@ const CODE = {
   'ファウル': 'foul', 'ファール': 'foul', '被ファウル': 'fouled', '被ファール': 'fouled',
 };
 // 取り込まない（知らせもしない）コード：出場の行と攻撃・守備の時間のコード
+// イベントとして読むコードの数（ファイルの中身を見せるため。2026-11-11）
+export const eventCodeCount = (instances) => instances.filter((i) => CODE[i.code]).length;
 const IGNORE = (c) => /^#\s*\d+/.test(c) || /^(AT|DF)_/.test(c) || c === 'Kick Off' || c === 'KICK OFF';
 export const KNOWN_GROUPS = ['シュート分類', 'スコアゾーン進入人数', 'スコアゾーン進入', '局面', '選手', 'シュート選手', 'ゾーン4進入選手', 'スコアゾーン進入選手', '出し手', '受け手', '進入方法', 'セットプレー分類', 'セットの種類', 'ゾーン', 'カード', 'アシスト', '得点の種類', 'タイムコード', '5x4', 'フィニッシュゾーン結末', 'デュエル選手'];
 const PHASE = { 定位置: 'pos', セットプレー: 'set', トランジション: 'trans', GK活用: 'gk', 特殊局面: 'special', PK: 'set', 第2PK: 'set' };

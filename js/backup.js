@@ -102,7 +102,7 @@ export function promptBackup(reason = '') {
 }
 
 // ---------- ファイルから戻す（未1） ----------
-const LABEL = { teams: 'チーム', players: '選手', activities: '活動', matches: '試合', ops: '交代・時計の記録', events: 'イベント', fixlog: '記録の修正の履歴' };
+const LABEL = { teams: 'チーム', players: '選手', activities: '活動', matches: '試合', ops: '交代・時計の記録', events: 'イベント', fixlog: '記録の修正の履歴', scfiles: 'Sportscodeのファイル' };
 const countTable = (c) => `<table class="rstab">${Object.keys(LABEL).map((k) => `<tr><th>${LABEL[k]}</th><td>${c[k]}${k === 'players' ? '人' : '件'}</td></tr>`).join('')}</table>`;
 
 export async function restoreFromFile(f) {
