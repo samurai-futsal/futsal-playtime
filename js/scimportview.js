@@ -251,7 +251,7 @@ function vFiles(m, { st, M, R, evC, crumb }) {
   fu.calc = { base, plans, ksPlay, Mx, newEv, oldEv, editedOld, evRedo, tgt, byId };
 
   // ---------- 画面 ----------
-  const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML・CSV を取り込んで、ピリオドごとに<b>出場・交代</b>と<b>イベント</b>に使います。表で「どのファイルを何に使うか」を選ぶと、下に何が替わるかが出るので、確かめてから「変更を反映」を押します。選んだ所しか替わりません。取り込んだファイルは試合に残るので、あとから使い道を変えられます。</p>`;
+  const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML・CSV を取り込んで、ピリオドごとに<b>出場・交代</b>と<b>イベント</b>に使います。ファイルを足して、「どのファイルを何に使うか」を選ぶと、その下に何が替わるかが出るので、確かめてから「変更を反映」を押します。選んだ所しか替わりません。取り込んだファイルは試合に残るので、あとから使い道を変えられます。</p>`;
   const opt = (v, txt, sel) => `<option value="${esc(v)}" ${sel ? 'selected' : ''}>${esc(txt)}</option>`;
   const rows = keys.map((k) => {
     const isDone = doneKeys.includes(k);
@@ -265,7 +265,7 @@ function vFiles(m, { st, M, R, evC, crumb }) {
       <td class="${chE ? 'ch' : ''}"><select data-te="${k}">${evOpts.join('')}</select><small class="mu">${cur[k].evN ? `今 ${cur[k].evN}件` : ''}</small>${chE && tgt[k].ev === cur[k].ev ? '<small class="was">出場が替わるので、新しい時計で入れ直します</small>' : chE ? `<small class="was">今：${esc(label(cur[k].ev, k))}</small>` : ''}</td>
       <td>${cur[k].appN}件</td></tr>`;
   }).join('');
-  const table = `<div class="card"><h3>使い道（ピリオドごと）</h3><table class="fxtb sfu"><tr><th class="l"></th><th>出場・交代</th><th>イベント（ファイル）</th><th>アプリで入れたイベント</th></tr>${rows}</table>
+  const table = `<div class="card"><h3>2. 使い道（ピリオドごと）</h3><table class="fxtb sfu"><tr><th class="l"></th><th>出場・交代</th><th>イベント（ファイル）</th><th>アプリで入れたイベント</th></tr>${rows}</table>
     <p class="mu sm">出場・交代は MATCH PLAY かファイル1つ、イベントはファイル1つか「なし」。アプリで入れたイベントは、ファイルを替えても残ります。</p></div>`;
   // ファイルの一覧
   const usedBy = (id) => keys.flatMap((k) => [cur[k].play === id ? `${periodLabel(k)}の出場・交代` : null, cur[k].ev === id ? `${periodLabel(k)}のイベント` : null]).filter(Boolean);
@@ -277,10 +277,10 @@ function vFiles(m, { st, M, R, evC, crumb }) {
       <button class="btn sm danger" data-fdelx="${f.id}" ${used.length ? 'disabled title="使っているファイルは消せません。上の表で使い道を外してから消してください"' : ''}>× 消す</button></div>
       <div class="mu sm">中身：${playR.length ? `#背番号の行あり（${playR.map(periodLabel).join('・')}）` : '#背番号の行なし'}・イベントのコード ${eventCodeCount(inst)}件　｜　使っている所：${used.length ? used.join('、') : 'なし'}</div><div class="sfas">${asg}</div></div>`;
   }).join('');
-  const pick = `<div class="card"><h3>取り込んだファイル</h3>${fileRows || '<p class="mu">まだありません。</p>'}
+  const pick = `<div class="card"><h3>1. 取り込んだファイル</h3>${fileRows || '<p class="mu">まだありません。</p>'}
     <div class="sipick" style="margin-top:10px"><label class="filebtn btn pri">ファイルを足す（XML・CSV）<input type="file" id="sfFile" accept=".xml,.csv,.XML,.CSV,text/xml,text/csv,application/xml" multiple hidden></label>
     <div class="sidrop" id="sfDrop"><b>ここにファイルをドラッグ＆ドロップ</b><span>前半・後半のファイルを一緒に入れられます</span></div></div>
-    <p class="mu sm">足したファイルは、終わったピリオドで #背番号 の行があれば出場・交代に、イベントのコードがあればイベントに、初めから選んでおきます（上の表で変えられます）。同じ名前のファイルを足すと、新しい中身に置き換わります。</p></div>`;
+    <p class="mu sm">足したファイルは、終わったピリオドで #背番号 の行があれば出場・交代に、イベントのコードがあればイベントに、初めから選んでおきます（下の「2. 使い道」で変えられます）。同じ名前のファイルを足すと、新しい中身に置き換わります。</p></div>`;
   // 替わるもの
   let change = '';
   if (playCh.length || evRedo.length) {
@@ -316,7 +316,7 @@ function vFiles(m, { st, M, R, evC, crumb }) {
     const goals = newEv.filter((e) => e.kind === 'goal' || e.kind === 'conc');
     const gT = goals.length ? `<table class="sctb"><tr><th></th><th>時刻（経過）</th><th>残り</th><th>得点者</th></tr>${goals.map((e) => { const p = Mx.periods.find((x) => x.key === e.period); return `<tr><td class="${e.kind === 'goal' ? 'w' : 'o'}">${e.kind === 'goal' ? '得点' : '失点'}</td><td>${p?.label || ''} ${mmss(e.at)}</td><td>${mmss((p?.len || 0) - e.at)}</td><td>${esc(nm(e.pid))}</td></tr>`; }).join('')}</table>` : '';
     const can = !badPlay.length;
-    change = `<div class="card sfch"><h3>替わるもの</h3>${pcards}${ecards}
+    change = `<div class="card sfch"><h3>3. 替わるもの</h3>${pcards}${ecards}
       ${newEv.length ? `<div class="sicnt">${order.filter((k) => cnt[k]).map((k) => `<span class="${KIND[k].team === 'opp' ? 'o' : 'w'}">${KIND[k].label}<b>${cnt[k]}</b></span>`).join('')}</div>${gT}` : ''}
       ${chk ? `<p class="mu sm">交代の前後3秒以内と、時計が止まっている間に交代があったイベント ${chk}件は「要確認」にします（動画で確かめて「このままにする」）。</p>` : ''}
       ${warn.length ? `<div class="siwarn">${warn.map((w) => `<div>⚠ ${w}</div>`).join('')}</div>` : ''}
@@ -325,7 +325,7 @@ function vFiles(m, { st, M, R, evC, crumb }) {
   const leadT = `<details class="card"><summary><b>コードごとの前後の秒数</b>　チームで覚えます</summary><table class="sctb"><tr><th>コード</th><th>コードの開始から何秒後がプレーの瞬間か</th></tr>${Object.keys(DEFAULT_LEAD).map((k) => `<tr><td>${LEAD_LABEL[k]}</td><td><input data-ld="${k}" value="${lead[k]}" inputmode="decimal"> 秒</td></tr>`).join('')}</table>
     <p class="mu sm">MATCH PLAY の時計で入れるときだけ：<span>${keys.map((k) => `${periodLabel(k)} <input data-sh="${k}" value="${fu.shift[k] ?? ''}" placeholder="0" inputmode="decimal" style="width:4em"> 秒ずらす`).join('　')}</span></p></details>`;
   return {
-    active: 'acts', html: `<div class="scw siw">${crumb}${intro}${table}${change}${pick}${leadT}</div>`,
+    active: 'acts', html: `<div class="scw siw">${crumb}${intro}${pick}${table}${change}${leadT}</div>`,
     bind: (root) => {
       root.querySelectorAll('[data-tp]').forEach((s2) => s2.onchange = () => { (fu.target[s2.dataset.tp] = fu.target[s2.dataset.tp] || {}).play = s2.value; render(); });
       root.querySelectorAll('[data-te]').forEach((s2) => s2.onchange = () => { (fu.target[s2.dataset.te] = fu.target[s2.dataset.te] || {}).ev = s2.value; render(); });
