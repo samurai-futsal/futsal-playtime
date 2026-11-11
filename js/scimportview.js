@@ -11,6 +11,7 @@ import { addOp } from './store.js';
 import { PERIODS } from './engine.js';
 import { esc, toast, confirmBox } from './ui.js';
 import { render } from './views.js';
+import { scBaseline, scPlanFor, scApplyPlans, scPreviewFix, totalsOf, scNm } from './fix.js';
 
 let guarded = false;
 const fresh = (m) => ({ m, files: [], shift: {} });
@@ -133,10 +134,10 @@ export function vScImport(m) {
   if (!opsC.ready && !opsC.list.length) return { active: 'acts', html: '<p class="mu pad">読み込み中…</p>' };
   const cfg = { times: m.times || {}, members: m.members || {}, timesFixed: !!m.timesFixed, setplayAuto: teamSettings().setplayAuto || 60 };
   const st = replay(opsC.list, cfg); st.sig = periodSig(opsC.list);
-  const M = matchModel(st, Date.now(), m.fix); const R = toRunning(M, st);
+  const M = matchModel(st, Date.now(), m.fix); const R = toRunning(M, st); const M0 = M;
   const started = M.periods.filter((p) => st.periods[p.key]?.kickT != null);
   const crumb = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › Sportscodeから取り込み</div>`;
-  const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML か CSV を選ぶと、イベント入力に自動で記録します（シュート、ゾーン進入、FINISH SET PLAY（SETPLAY）、リカバリー・ロスト（ROBO・PERDIDA）、ファール（ファウル））。時刻は Kick Off の印と MATCH PLAY の時計の記録から試合の時計に直します。出場（#背番号の行）は取り込みません（MATCH PLAY の記録を使います）。</p>${Object.values(m.fix?.periods || {}).some((fp) => fp.sc) ? `<div class="fxinfo">ℹ ${Object.entries(m.fix.periods).filter(([, fp]) => fp.sc).map(([k]) => periodLabel(k)).join('・')}は「記録の修正」で Sportscode の XML（${esc([...new Set(Object.values(m.fix.periods).filter((fp) => fp.sc).map((fp) => fp.sc.file))].join('、'))}）から直してあるので、同じ XML を取り込むと、その XML の時計で時刻を決めます（イベントと出場がそろいます）。交代の前後3秒以内のイベントと、時計が止まっている間に交代があったイベントには「要確認」を付けます。</div>` : ''}`;
+  const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML か CSV を選ぶと、イベント入力に自動で記録します（シュート、ゾーン進入、FINISH SET PLAY（SETPLAY）、リカバリー・ロスト（ROBO・PERDIDA）、ファール（ファウル））。時刻は Kick Off の印と MATCH PLAY の時計の記録から試合の時計に直します。試合が終わったピリオドは、ファイルの「#背番号」の行から出場・交代も一緒に直せます（下の「3」。チェックを外せば、出場・交代は MATCH PLAY の記録のまま）。</p>${Object.values(m.fix?.periods || {}).some((fp) => fp.sc) ? `<div class="fxinfo">ℹ ${Object.entries(m.fix.periods).filter(([, fp]) => fp.sc).map(([k]) => periodLabel(k)).join('・')}は「記録の修正」で Sportscode の XML（${esc([...new Set(Object.values(m.fix.periods).filter((fp) => fp.sc).map((fp) => fp.sc.file))].join('、'))}）から直してあるので、同じ XML を取り込むと、その XML の時計で時刻を決めます（イベントと出場がそろいます）。交代の前後3秒以内のイベントと、時計が止まっている間に交代があったイベントには「要確認」を付けます。</div>` : ''}`;
   // ファイルを選ぶ（ボタン）と、ドラッグ＆ドロップの枠を分ける。読み込んだファイルは一覧に出し、1つずつ消せる（2026-10-17）
   const fileList = st8.files.length ? `<div class="sifiles">${st8.files.map((f) => { const k = kickOffs(f.parsed.instances).length;
     return `<div class="sifile"><span class="sifn">📄 ${esc(f.name)}</span><span class="mu sm">${f.parsed.kind === 'csv' ? 'CSV' : 'XML'}・${f.parsed.instances.length}件・Kick Off ${k}つ</span>${k ? '' : '<span class="tag warn">Kick Off の印がないので取り込めません</span>'}<button class="btn sm danger" data-fdel="${f.id}">× 消す</button></div>`; }).join('')}</div>` : '';
@@ -176,7 +177,18 @@ export function vScImport(m) {
       const inst = files.flatMap((f) => f.parsed.instances);
       const goalTypes = opts('goalTypes', true).map((o) => ({ id: o.id, name: o.name }));
       // ピリオドの範囲はプレーの瞬間（コードの開始＋リード）と Kick Off で分ける（記14）。ファイルが2つなら、ファイルごとに分けてからまとめる
-      const res = buildImportFiles(files.map((f) => ({ instances: f.parsed.instances, assign: f.assign })), { R, M, W: ppWindows(M), members: m.members || {}, players: S.players, goalTypes, lead, shift: st8.shift, scClocks: Object.fromEntries(Object.entries(m.fix?.periods || {}).filter(([, fp]) => fp.sc).map(([k, fp]) => [k, fp.sc])) });
+      // 出場・交代も XML で直す（2026-11-11。記録の修正から移した）：終わったピリオドで、XML に「#背番号」の行があるとき。初めはチェックを入れておく
+      const base = scBaseline(m);
+      const hasPl = (f, a, b) => f.parsed.instances.some((i) => /^#\s*\d+$/.test(i.code) && i.start >= a - 1 && i.start < b);
+      const scRows = files.flatMap((f) => { const kos = kickOffs(f.parsed.instances); return kos.map((k, i) => ({ key: f.assign[i], instances: f.parsed.instances, ko: k.start, to: kos[i + 1] ? kos[i + 1].start - 1 : 1e9, file: f.name })).filter((r) => r.key && r.key !== '-' && base.d.periods[r.key] && hasPl(f, r.ko, r.to)); });
+      const plans = scPlanFor(m, base, scRows);
+      st8.scPick = st8.scPick || {};
+      for (const [k, P] of Object.entries(plans)) if (st8.scPick[k] == null) st8.scPick[k] = P.ok && !P.errs.length;
+      const ks = Object.keys(plans).filter((k) => st8.scPick[k] && plans[k].ok && !plans[k].errs.length);
+      const fixX = ks.length ? scPreviewFix(m, base, ks, plans) : m.fix;
+      const Mx = ks.length ? matchModel(st, Date.now(), fixX) : M; const Rx = ks.length ? toRunning(Mx, st) : R;
+      st8.scPlan = { base, ks, plans }; st8.Mx = Mx;
+      const res = buildImportFiles(files.map((f) => ({ instances: f.parsed.instances, assign: f.assign })), { R: Rx, M: Mx, W: ppWindows(Mx), members: m.members || {}, players: S.players, goalTypes, lead, shift: st8.shift, scClocks: Object.fromEntries(Object.entries(fixX?.periods || {}).filter(([, fp]) => fp.sc).map(([k, fp]) => [k, fp.sc])) });
       const periods = res.periods;
       st8.res = res; st8.periods = periods;
       const keys = new Set(periods.map((p) => p.key));
@@ -213,13 +225,15 @@ export function vScImport(m) {
       const auto = rows.map((r) => `${files.length > 1 || kickOffs(r.f.parsed.instances).length > 1 ? `${esc(r.f.name)}${kickOffs(r.f.parsed.instances).length > 1 ? ` の Kick Off ${r.i + 1}` : ''} → ` : ''}${periodLabel(r.key)}${+st8.shift[r.key] ? `（${st8.shift[r.key]}秒ずらす）` : ''}`).join('、');
       const adj = `<details class="siadj" id="siAdj" ${st8.adjOpen || shifted ? 'open' : ''}><summary>ピリオドや時刻を直す（ずれているときだけ）</summary>${per}
         <p class="mu sm">時刻は、ファイルの Kick Off の印をキックオフとして、MATCH PLAY の時計の記録（時計が止まっていた時間も含む）から自動で直しています。Sportscode で Kick Off の印を付けた位置がずれていたときだけ、「全体をずらす」で直します。</p></details>`;
+      const scHtml = scSection(m, base, plans);
       body = `<div class="card"><h3>2. ピリオドと時刻合わせ</h3><p class="siauto">✓ ピリオドと時刻は自動で合わせました：${auto}</p>${adj}</div>
-        <div class="card"><h3>3. 取り込むイベント ${res.events.length}件</h3>${cntT}${gT}
+        ${scHtml}
+        <div class="card"><h3>${scHtml ? '4' : '3'}. 取り込むイベント ${res.events.length}件</h3>${ks.length ? `<p class="siauto">✓ ${ks.map(periodLabel).join('・')}は、XML で直した出場と同じ時計（XML の時計）で時刻を決めます。交代の前後3秒以内と、時計が止まっている間に交代があったイベントは「要確認」にします</p>` : ''}${cntT}${gT}
           ${res.near?.length ? `<div class="sinear">ℹ 名前が少し違いますが、名字で合わせました（違っていたら、選手の登録か Sportscode のラベルを直して取り込み直してください）：${res.near.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}</div>` : ''}
           ${warn.length ? `<div class="siwarn">${warn.map((w) => `<div>⚠ ${w}</div>`).join('')}</div>` : ''}
           <p class="mu sm">${(() => { const done = importedByPeriod(evC.list, M).filter((g) => keys.has(g.key)); const nw = [...keys].map((k) => `${periodLabel(k)}：${esc(rows.find((r) => r.key === k)?.f.name || '')}（${res.events.filter((e) => e.period === k).length}件）`).join('、');
             return done.length ? `取り込み済みの ${done.map((g) => `${g.label}：${g.name ? esc(g.name) : 'ファイル名の記録なし'}（${g.n}件）`).join('、')} を、${nw} に置き換えます` : `${nw} を取り込みます`; })()}${edited.length ? `（そのうち <b>${edited.length}件はアプリで直してあります</b>）` : ''}。アプリで入力したイベント ${appMade}件と MATCH PLAY の記録はそのまま残ります。アシスト・進入の方法などファイルにない項目は未入力のまま残るので、あとでイベント入力で埋められます。</p>
-          <div class="row end"><button class="btn pri" id="siGo" ${res.events.length ? '' : 'disabled'}>取り込む（${res.events.length}件）</button></div></div>
+          <div class="row end"><button class="btn pri" id="siGo" ${res.events.length ? '' : 'disabled'}>${ks.length ? `${ks.map(periodLabel).join('・')}の出場を直して、イベントを取り込む（${res.events.length}件）` : `取り込む（${res.events.length}件）`}</button></div></div>
         <details class="card"><summary><b>コードごとの前後の秒数</b>　チームで覚えます</summary>${leadT}<p class="mu sm">秒数を直したあとは、もう一度「取り込む」（置き換え）を押すと時刻がすべて直ります</p></details>`;
       st8.old = old; st8.edited = edited;
       }
@@ -237,11 +251,15 @@ export function vScImport(m) {
         toast(`${periodLabel(k)}の取り込み ${list.length}件を消しました`); render();
       });
       root.querySelectorAll('[data-asg]').forEach((sel) => sel.onchange = () => { const [fid, i] = sel.dataset.asg.split(':'); const x = st8.files.find((y) => y.id === fid); if (x) { x.assign[+i] = sel.value; x.guess = null; } render(); });
+      root.querySelectorAll('[data-scpick]').forEach((c) => c.onchange = () => { st8.scPick[c.dataset.scpick] = c.checked; render(); });
       root.querySelectorAll('[data-sh]').forEach((i) => i.onchange = () => { const v = i.value.trim(); st8.shift[i.dataset.sh] = v === '' ? 0 : +v || 0; render(); });
       root.querySelectorAll('[data-ld]').forEach((i) => i.onchange = () => { const L = { ...(teamSettings().scLead || {}) }; L[i.dataset.ld] = +i.value || 0; put(teamPath(), { settings: { ...(S.team?.settings || {}), scLead: L } }); if (S.team) S.team.settings = { ...(S.team.settings || {}), scLead: L }; render(); });
       const go = root.querySelector('#siGo');
       if (go) go.onclick = async () => {
         if (st8.edited?.length && !(await confirmBox({ title: '取り込み直しますか？', body: `前回取り込んだイベントのうち ${st8.edited.length}件は、アプリで直してあります。置き換えると、その直しは消えます。`, ok: '置き換える', danger: true }))) return;
+        const plan = st8.scPlan;
+        if (plan?.ks.length) scApplyPlans(m, plan.base, plan.ks, plan.plans); // 先に出場・交代を直す（イベントは直したあとの記録で確かめる）
+        const M = st8.Mx || M0;
         for (const e of st8.old || []) saveEvent(m.id, { ...e, deleted: true });
         // seq＝取り込んだ時刻＋順番（同じ秒のイベントも取り込んだ順に並ぶ。記14）
         const t = Date.now(); let n = 0, chk = 0;
@@ -252,10 +270,32 @@ export function vScImport(m) {
         const cards = cardIssues([...kept, ...evs], M.periods.map((p) => p.key));
         for (const ev of evs) { const c = checkOf(M, ev, cards); ev.check = c.check; if (c.why) ev.checkWhy = c.why; if (ev.check) chk++; saveEvent(m.id, ev); n++; }
         put(teamPath(), { settings: { ...(S.team?.settings || {}), scLens: { ...(teamSettings().scLens || {}), ...st8.nowLen } } });
-        toast(`${n}件を取り込みました${chk ? `（要確認 ${chk}件）` : ''}`);
+        toast(`${plan?.ks.length ? `${plan.ks.map(periodLabel).join('・')}の出場を直し、` : ''}${n}件を取り込みました${chk ? `（要確認 ${chk}件）` : ''}`);
         st8 = fresh(m.id);
         location.hash = `#/m/${m.id}/review`;
       };
     },
   };
+}
+
+// 出場・交代を XML で直す（取り込みの「3」。2026-11-11）
+function scSection(m, base, plans) {
+  const keys = Object.keys(plans); if (!keys.length) return '';
+  const cfg = base.cfg; const lenOfP = (fp) => fp.len || fp.elapsed;
+  const cards = keys.map((x) => {
+    const P = plans[x]; const cur = P.cur;
+    if (!P.ok) return `<div class="scper"><b>${periodLabel(x)}</b><div class="siwarn">⚠ ${esc(P.err)}</div>${P.missing?.length ? `<div class="siwarn">⚠ 試合メンバーにない背番号：${P.missing.map((n) => '#' + n).join('・')}</div>` : ''}</div>`;
+    const A = totalsOf(cur, x), B = totalsOf(P.fp, x);
+    const ids = [...new Set([...Object.keys(A), ...Object.keys(B)])].sort((a, b) => (cfg.members?.[a]?.pos === 'GK') - (cfg.members?.[b]?.pos === 'GK') || (parseInt(cfg.members?.[a]?.no, 10) || 999) - (parseInt(cfg.members?.[b]?.no, 10) || 999));
+    const subsA = cur.ev.filter((e) => e.kind === 'sub').length, subsB = P.fp.ev.filter((e) => e.kind === 'sub').length;
+    const trs = ids.map((pid) => { const a = A[pid] || 0, b = B[pid] || 0, df = b - a; return `<tr class="${Math.abs(df) >= 20000 ? 'scbig' : ''}"><td class="l">${scNm(cfg, pid)}</td><td>${mmss(a)}</td><td><b>${mmss(b)}</b></td><td class="${df > 0 ? 'up' : df < 0 ? 'dn' : ''}">${Math.abs(df) < 1000 ? '±0' : (df > 0 ? '+' : '−') + mmss(Math.abs(df))}</td></tr>`; }).join('');
+    const on = st8.scPick[x] && !P.errs.length;
+    return `<div class="scper ${on ? 'on' : ''}"><label class="scpick"><input type="checkbox" data-scpick="${x}" ${on ? 'checked' : ''} ${P.errs.length ? 'disabled' : ''}><b>${periodLabel(x)}</b>の出場・交代を XML で直す</label>
+      <div class="scsum"><span>📄 ${esc(P.file)}</span><span>XML の時計 <b>${mmss(P.play * 1000)}</b> → ${mmss(lenOfP(cur))} に合わせる</span><span>交代 ${subsA}回 → <b>${subsB}回</b></span><span>GK：${P.gkFromXml ? 'XML の行' : '今の記録の GK（XML の FP の人数から）'}</span></div>
+      ${P.warn.map((w) => `<div class="fxinfo">ℹ ${esc(w)}</div>`).join('')}${P.errs.length ? `<div class="fxerr"><b>このままでは直せません</b><ul>${P.errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
+      <details ${on ? 'open' : ''}><summary>選手ごとの出場時間（今の記録／XML／差）</summary><table class="fxtb sctb"><tr><th class="l">選手</th><th>今の記録</th><th>XML</th><th>差</th></tr>${trs}</table><p class="mu sm">差が20秒以上の選手は色を付けています。</p></details></div>`;
+  }).join('');
+  return `<div class="card"><h3>3. 出場・交代も XML で直す</h3><p class="mu sm">XML の「#背番号」の行（その選手がピッチにいて時計が動いている間）から、出場・交代の記録を作り直します。試合後に正しいデータで置き換えるためのものです。チェックを外すと、出場・交代は今の記録のまま、イベントだけを取り込みます。直したあとも「記録の修正」の「1つ戻す」で戻せ、細かい所は記録の修正で直せます。</p>
+    <ul class="mu sm scnote"><li>時計：XML の行を重ねた「時計が動いていた区間」で数え、ピリオドの長さに合わせて全体を同じ割合で少しだけ縮めます（XML はタグのずれで十数秒長くなりやすいため）。選手全員の合計は、ピリオドの長さ×5人になります</li>
+    <li>GK：XML に GK の行がなければ、XML で FP が 4人の時間は GK がいて、FP が 5人の時間は GK を下げていた（パワープレー）とします。どの GK かは今の記録から決めます</li></ul>${cards}</div>`;
 }

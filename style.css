@@ -1684,3 +1684,5 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:2px 6px;border
 .scdone{border:2px solid #2E9E5B;background:#F2FBF5}
 .scdrop{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:2px dashed #B9C3D3;border-radius:12px;padding:18px;background:#F8FAFD;transition:background .15s,border-color .15s}
 .scdrop.over{border-color:#2F6FD6;background:#EAF2FF}
+.siw .scper{padding:12px 14px;border-radius:10px;margin:10px 0;border:2px solid #E3E8F0}.siw .scper.on{border-color:#2F6FD6}
+.fxtabs .fxlink{margin-left:auto;color:#2F6FD6;text-decoration:none;font-weight:700}

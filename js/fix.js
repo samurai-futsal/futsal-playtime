@@ -11,12 +11,10 @@ import { keypadHTML, bindKeypad } from './keypad.js';
 import { render, setLeaveGuard } from './views.js';
 import { devName } from './matchplay.js';
 import { KIND } from './events.js';
-import { parseSC, kickOffs, periodFromName } from './scimport.js';
 import { scFixPeriod, totalsOf } from './scfix.js';
-import { handOffScFiles } from './scimportview.js';
 
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-const TABS = [['sub', '交代'], ['lineup', 'スタメン'], ['eject', '退場・空席'], ['pp', 'パワープレー'], ['sc', 'Sportscodeから直す'], ['info', '試合情報'], ['log', '履歴']];
+const TABS = [['sub', '交代'], ['lineup', 'スタメン'], ['eject', '退場・空席'], ['pp', 'パワープレー'], ['info', '試合情報'], ['log', '履歴']];
 const key = (m) => `fpt.fix.${m.id}`;
 let ui = { tab: 'sub', period: null };
 
@@ -104,9 +102,9 @@ export function vFix(m) {
     ${clockNote(m, st, sig, k)}
     ${strayNote(m)}
     ${errs.length ? `<div class="fxerr"><b>記録に矛盾があります</b><ul>${errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
-    <div class="fxtabs">${TABS.map(([t, l]) => `<button class="fxtab ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${l}</button>`).join('')}</div>`;
+    <div class="fxtabs">${TABS.map(([t, l]) => `<button class="fxtab ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${l}</button>`).join('')}<a class="fxtab fxlink" href="#/m/${m.id}/scimport" title="Sportscode の XML から出場・交代とイベントをまとめて直す">Sportscodeから直す ›</a></div>`;
 
-  const body = { sub: tabSub, lineup: tabLineup, eject: tabEject, pp: tabPP, sc: tabSc, info: tabInfo, log: tabLog }[ui.tab](m, d, k, fp, cfg);
+  const body = { sub: tabSub, lineup: tabLineup, eject: tabEject, pp: tabPP, info: tabInfo, log: tabLog }[ui.tab](m, d, k, fp, cfg);
   return {
     active: 'acts',
     html: `${crumb}<h1>記録の修正</h1><p class="mu">交代・退場などの直しは「反映」を押した時点で、スタメンと試合情報は変えた時点で試合の記録になり、マッチレビューと分析にすぐ反映されます。「1つ戻す」も押した時点で記録に反映されます。時刻は残り時間（スコアボードと同じ）で、経過時間を小さく添えています。</p>${head}<div class="fxbody">${body}</div>`,
@@ -380,30 +378,15 @@ function bindFix(root, m, d, k, cfg, st, sig) {
     if (b.dataset.ppdel) { const x = fp.pp.find((y) => y.id === b.dataset.ppdel); return commit('パワープレー', `5×4（${x.team === 'own' ? '自' : '相手'}）残り${rem(fp, x.from)}〜${rem(fp, x.to)} を削除`, () => { fp.pp = fp.pp.filter((y) => y.id !== x.id); }); }
     if (b.id === 'fxAddPP') return ppModal(fp, null, commit);
     if (b.id === 'fxUndo') return undoOne(m);
-    if (b.id === 'scApply') return scApply(m, d, cfg);
-    if (b.dataset.scdel) { scUi.files = scUi.files.filter((x) => x.id !== b.dataset.scdel); return render(); }
-    if (b.id === 'scEv') { handOffScFiles(m.id, scUi.files); location.hash = `#/m/${m.id}/scimport`; return; }
     if (b.id === 'fiLen') return changeLen(m, d);
     if (b.dataset.goto) return goTo(m, d, b.dataset.goto);
   });
-  // Sportscodeから直す：ファイルをドラッグ＆ドロップ（PC。2026-11-11）
-  const dz = root.querySelector('#scDrop');
-  if (dz) {
-    let depth = 0; const hasFile = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
-    dz.addEventListener('dragenter', (e) => { if (!hasFile(e)) return; e.preventDefault(); depth++; dz.classList.add('over'); });
-    dz.addEventListener('dragover', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
-    dz.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) dz.classList.remove('over'); });
-    dz.addEventListener('drop', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.stopPropagation(); depth = 0; dz.classList.remove('over'); if (e.dataTransfer.files?.length) scLoad(e.dataTransfer.files); });
-  }
-  if (!scGuard) { scGuard = true; for (const ty of ['dragover', 'drop']) document.addEventListener(ty, (e) => { if (/\/fix$/.test(location.hash) && [...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); if (ty === 'drop' && !e.target.closest?.('#scDrop')) toast(ui.tab === 'sc' ? '点線の枠の中に落としてください' : '「Sportscodeから直す」のタブを開いて、点線の枠の中に落としてください'); } }); }
   root.addEventListener('change', (e) => {
     const t = e.target;
     if (t.dataset.lu != null) { const i = +t.dataset.lu; const old = fp.lineup[i]; commit('スタメン', `枠${i + 1}のスタメン ${plain(cfg, old)} → ${plain(cfg, t.value)}`, () => { fp.lineup[i] = t.value; }); }
     if (t.dataset.info) { const f = t.dataset.info; const lab = { date: '日付', opponent: '対戦相手', category: '試合の区分', kickoff: 'キックオフ時刻', venue: '会場', memo: 'メモ' }[f]; const old = d.info[f]; if ((f === 'date' || f === 'opponent') && !t.value.trim()) { toast('日付と対戦相手は空にできません'); t.value = old; return; } if (old !== t.value) commit('試合情報', `${lab} ${old || '（なし）'} → ${t.value || '（なし）'}`, () => { d.info[f] = t.value; }); }
     if (t.id === 'fxLogType') { ui.logType = t.value; render(); }
-    if (t.id === 'scFile' && t.files?.length) { scLoad(t.files); t.value = ''; }
-    if (t.dataset.scasg) { const [fid, i] = t.dataset.scasg.split(':'); const f = scUi.files.find((x) => x.id === fid); if (f) { f.assign[+i] = t.value; scUi.done = null; render(); } }
-    if (t.dataset.scpick) { scUi.pick[t.dataset.scpick] = t.checked; render(); }
+
   });
 }
 
@@ -621,85 +604,42 @@ function ppModal(fp, id, commit) {
   };
 }
 
-// ---------- Sportscodeから直す（2026-11-11） ----------
-// XML（または CSV）の「#背番号」の行から、選んだピリオドの出場・交代を作り直す。反映は1つの直しとして履歴に残り、「1つ戻す」で戻せる。
-// GK とパワープレーは scfix.js の決め方（XML に GK の行がなければ、XML で FP が 5人の時間をパワープレーとする）
-let scUi = { m: null, files: [], pick: {}, done: null }; let scSeq = 0; let scGuard = false;
-function scLoad(fileList) {
-  const all = [...fileList]; const list = all.filter((x) => /\.(xml|csv)$/i.test(x.name));
-  if (!list.length) { toast('XML か CSV のファイルを選んでください'); return; }
-  if (list.length < all.length) toast(`XML・CSV 以外の ${all.length - list.length}つのファイルは読み込みませんでした`);
-  Promise.all(list.map((f) => f.text().then((text) => ({ id: 'x' + (++scSeq), name: f.name, parsed: parseSC(text), assign: null })))).then((add) => { scUi.files = [...scUi.files.filter((x) => !add.some((a) => a.name === x.name)), ...add]; scUi.done = null; render(); });
+// ---------- Sportscodeから直す（2026-11-11。画面は「Sportscodeから取り込み」のページ。ここは記録の部分） ----------
+// 今の記録（修正が有効なピリオドは修正、ほかは MATCH PLAY）
+export function scBaseline(m) {
+  const opsC = watchOps(m.id); const cfg = cfgOf(m);
+  const st = replay(opsC.list, cfg); const sig = periodSig(opsC.list); st.sig = sig;
+  return { d: baseline(m, st, sig), st, sig, cfg };
 }
-function scPlans(m, d, cfg) {
-  const keys = Object.keys(d.periods);
+// rows：[{ key, instances, ko, to, file }] → { ピリオド: 作り直した結果（scFixPeriod）＋ errs（矛盾）, cur（今の記録）}
+export function scPlanFor(m, base, rows) {
   const byNo = Object.fromEntries(Object.entries(m.members || {}).filter(([, v]) => v.no != null && v.no !== '').map(([pid, v]) => [String(v.no), pid]));
-  const isGK = (pid) => cfg.members?.[pid]?.pos === 'GK';
-  const rows = []; const plans = {};
-  for (const f of scUi.files) {
-    const kos = kickOffs(f.parsed.instances);
-    const hasPl = (a, b) => f.parsed.instances.some((i) => /^#\s*\d+$/.test(i.code) && i.start >= a - 1 && i.start < b);
-    if (!f.assign || f.assign.length !== kos.length) { let n = 0; const used = new Set(scUi.files.filter((x) => x !== f && x.assign).flatMap((x) => x.assign)); const free = keys.filter((k) => !used.has(k)); f.assign = kos.map((k, i) => { if (!hasPl(k.start, kos[i + 1] ? kos[i + 1].start - 1 : 1e9)) return '-'; if (kos.length === 1) { const g = periodFromName(f.name); return g && keys.includes(g) ? g : free[0] || '-'; } return free[n++] || '-'; }); }
-    kos.forEach((k, i) => {
-      const key = f.assign[i]; rows.push({ f, i, k, key });
-      if (!key || key === '-' || !d.periods[key]) return;
-      const cur = d.periods[key];
-      plans[key] = { file: f.name, ...scFixPeriod({ instances: f.parsed.instances, per: { key, ko: k.start, to: kos[i + 1] ? kos[i + 1].start - 1 : 1e9 }, byNo, isGK, cur, len: lenOf(cur), file: f.name }) };
-    });
+  const isGK = (pid) => base.cfg.members?.[pid]?.pos === 'GK';
+  const plans = {};
+  for (const r of rows) {
+    const cur = base.d.periods[r.key]; if (!cur) continue;
+    const P = scFixPeriod({ instances: r.instances, per: { key: r.key, ko: r.ko, to: r.to }, byNo, isGK, cur, len: lenOf(cur), file: r.file });
+    plans[r.key] = { ...P, file: r.file, cur, errs: P.ok ? checkFix(P.fp, base.cfg, '', bannedBefore(base.d, r.key)) : [] };
   }
-  return { rows, plans, keys };
+  return plans;
 }
-function tabSc(m, d, k, fp, cfg) {
-  if (scUi.m !== m.id) scUi = { m: m.id, files: [], pick: {}, done: null };
-  const intro = `<div class="card"><h2 class="h" style="margin-top:0">Sportscodeから直す</h2>
-    <p class="mu">Sportscode の XML（または CSV）の「#背番号」の行（その選手がピッチにいて時計が動いている間）から、出場・交代の記録を作り直します。試合中の記録をあとで正しいデータに置き換えるためのものです。比べて確かめてから、直すピリオドを選んで反映します。反映したあとも「1つ戻す」「履歴」で戻せ、ほかのタブで細かく直せます。</p>
-    <ul class="mu sm scnote"><li>時計：XML の行を重ねた「時計が動いていた区間」で数え、ピリオドの長さ（${mmss(lenOf(fp))}）に合わせて少しだけ伸び縮みさせます（XML はタグのずれで十数秒長くなりやすいため）</li>
-    <li>GK：XML に GK の行がなければ、XML で FP が 4人の時間は GK がいて、FP が 5人の時間は GK を下げていた（パワープレー）とします。どの GK かは今の記録から決めます</li>
-    <li>イベント（シュートなど）は変わりません。反映したあと、同じ XML からイベントを取り込み直すと、イベントの時刻も同じ時計でそろいます</li></ul>
-    <div class="scdrop" id="scDrop"><label class="btn pri">XML・CSV を選ぶ<input type="file" id="scFile" accept=".xml,.csv,text/xml,text/csv" multiple hidden></label><span class="mu">または、ここにファイルをドラッグ＆ドロップ（前半・後半のファイルを一緒に入れられます）</span></div>
-    ${scUi.files.length ? `<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${scUi.files.map((f) => `<span class="scf">${esc(f.name)}<button class="btn sm" data-scdel="${f.id}" aria-label="外す">×</button></span>`).join('')}</div>` : ''}</div>`;
-  if (!scUi.files.length) return intro;
-  const { rows, plans, keys } = scPlans(m, d, cfg);
-  if (!rows.length) return intro + '<div class="card"><div class="fxwarn">読み込んだファイルに Kick Off の印がありません。</div></div>';
-  const sel = (r) => `<select data-scasg="${r.f.id}:${r.i}">${keys.map((x) => `<option value="${x}" ${x === r.key ? 'selected' : ''}>${periodLabel(x)}</option>`).join('')}<option value="-" ${r.key === '-' ? 'selected' : ''}>使わない</option></select>`;
-  const many = scUi.files.length > 1;
-  const asg = `<div class="card"><h3 class="h" style="margin-top:0">ピリオドの当て方</h3>${rows.map((r) => `<div class="scasg"><span>${many ? esc(r.f.name) + '：' : ''}Kick Off ${r.i + 1}（動画 ${mmss(r.k.start * 1000)}）</span><span>→</span>${sel(r)}</div>`).join('')}</div>`;
-  const used = rows.map((r) => r.key).filter((x) => x && x !== '-'); const dup = [...new Set(used.filter((x, i) => used.indexOf(x) !== i))];
-  if (dup.length) return intro + asg + `<div class="card"><div class="fxwarn">${dup.map(periodLabel).join('・')}が2つ以上の Kick Off で選ばれています。</div></div>`;
-  const pl = (pid) => plain(cfg, pid);
-  const cards = keys.filter((x) => plans[x]).map((x) => {
-    const P = plans[x]; const cur = d.periods[x];
-    if (!P.ok) return `<div class="card scper"><h3 class="h" style="margin-top:0">${periodLabel(x)}</h3><div class="fxerr">${esc(P.err)}</div>${P.missing?.length ? `<div class="fxwarn">試合メンバーにない背番号：${P.missing.map((n) => '#' + n).join('・')}</div>` : ''}</div>`;
-    if (scUi.pick[x] == null) scUi.pick[x] = true;
-    const errs = checkFix(P.fp, cfg, '', bannedBefore(d, x));
-    const A = totalsOf(cur, x), B = totalsOf(P.fp, x);
-    const ids = [...new Set([...Object.keys(A), ...Object.keys(B)])].sort((a, b) => (cfg.members?.[a]?.pos === 'GK') - (cfg.members?.[b]?.pos === 'GK') || (parseInt(cfg.members?.[a]?.no, 10) || 999) - (parseInt(cfg.members?.[b]?.no, 10) || 999));
-    const subsA = cur.ev.filter((e) => e.kind === 'sub').length, subsB = P.fp.ev.filter((e) => e.kind === 'sub').length;
-    const trs = ids.map((pid) => { const a = A[pid] || 0, b = B[pid] || 0, df = b - a; const big = Math.abs(df) >= 20000; return `<tr class="${big ? 'scbig' : ''}"><td class="l">${nm(cfg, pid)}</td><td>${mmss(a)}</td><td><b>${mmss(b)}</b></td><td class="${df > 0 ? 'up' : df < 0 ? 'dn' : ''}">${Math.abs(df) < 1000 ? '±0' : (df > 0 ? '+' : '−') + mmss(Math.abs(df))}</td></tr>`; }).join('');
-    return `<div class="card scper ${scUi.pick[x] ? 'on' : ''}"><label class="scpick"><input type="checkbox" data-scpick="${x}" ${scUi.pick[x] ? 'checked' : ''} ${errs.length ? 'disabled' : ''}><b>${periodLabel(x)}</b>を XML で直す</label>
-      <div class="scsum"><span>ファイル：${esc(P.file)}</span><span>XML の時計 <b>${mmss(P.play * 1000)}</b> → ${mmss(lenOf(cur))} に合わせる</span><span>交代 ${subsA}回 → <b>${subsB}回</b></span><span>GK：${P.gkFromXml ? 'XML の行' : '今の記録の GK（XML の FP の人数から）'}</span></div>
-      ${P.warn.map((w) => `<div class="fxinfo">ℹ ${esc(w)}</div>`).join('')}${errs.length ? `<div class="fxerr"><b>このままでは反映できません</b><ul>${errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
-      <table class="fxtb sctb"><tr><th class="l">選手</th><th>今の記録</th><th>XML</th><th>差</th></tr>${trs}</table>
-      <p class="mu sm">差が20秒以上の選手は色を付けています。</p></div>`;
-  }).join('');
-  const ready = keys.filter((x) => plans[x]?.ok && scUi.pick[x] && !checkFix(plans[x].fp, cfg, '', bannedBefore(d, x)).length);
-  const done = scUi.done ? `<div class="card scdone"><b>${scUi.done.map(periodLabel).join('・')}を XML で直しました。</b><p>イベント（シュートなど）も同じファイルから取り込み直すと、時刻が同じ時計でそろいます。</p><button class="btn pri" id="scEv">このファイルでイベントを取り込み直す ›</button></div>` : '';
-  return intro + asg + done + cards + (cards ? `<div class="card row between" style="align-items:center"><span class="mu">${ready.length ? `${ready.map(periodLabel).join('・')}を直します` : '直すピリオドを選んでください'}</span><button class="btn pri" id="scApply" ${ready.length ? '' : 'disabled'}>選んだピリオドを反映</button></div>` : '');
-}
-async function scApply(m, d, cfg) {
-  const { plans, keys } = scPlans(m, d, cfg);
-  const ks = keys.filter((x) => plans[x]?.ok && scUi.pick[x] && !checkFix(plans[x].fp, cfg, '', bannedBefore(d, x)).length);
+// 選んだピリオドを作り直した記録で置き換える（1つの直しとして履歴に残す。「1つ戻す」で戻せる）
+export function scApplyPlans(m, base, ks, plans) {
   if (!ks.length) return;
-  if (!(await confirmBox({ title: 'XML で記録を直しますか？', body: `<p>${ks.map(periodLabel).join('・')}の出場・交代を、${esc([...new Set(ks.map((x) => plans[x].file))].join('、'))} から作り直します。</p><p>イベントは変わりません。「1つ戻す」で元に戻せます。</p>`, ok: '反映する' }))) return;
-  const before = clone({ periods: d.periods, info: d.info });
+  ctx = { origin: baseline({ ...m, fix: null }, base.st, base.sig), st: base.st };
+  const d = base.d; const before = clone({ periods: d.periods, info: d.info });
   for (const x of ks) { const cur = d.periods[x]; d.periods[x] = { ...plans[x].fp, basis: cur.basis, len: cur.len }; }
   const t = Date.now();
   addFixLog(m.id, { kind: 'step', seq: t * 100, saveT: t, devName: devName(), type: 'Sportscode', text: `${ks.map(periodLabel).join('・')} の出場・交代を Sportscode（${[...new Set(ks.map((x) => plans[x].file))].join('、')}）から作り直した`, before });
   writeState(m, d);
-  scUi.done = ks;
-  toast('XML で記録を直しました');
-  render();
 }
+// 作り直したときの試合の記録（取り込む前に、イベントの時刻・件数を新しい記録で見せるため）
+export function scPreviewFix(m, base, ks, plans) {
+  const periods = { ...(m.fix?.periods || {}) };
+  for (const x of ks) periods[x] = { ...plans[x].fp, basis: base.d.periods[x].basis };
+  return { ...(m.fix || {}), periods };
+}
+export { totalsOf, plain as scPlain, nm as scNm };
 
 // XML で出場を直したピリオドに、XML の時計で取り込んでいないイベント（試合中にアプリで入れたものなど）が残っていたら知らせる（2026-11-11）
 export function strayCount(m) {
