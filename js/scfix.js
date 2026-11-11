@@ -8,16 +8,19 @@
 import { fixData } from './model.js';
 
 const J = 0.35;   // これより短い切れ目は時計が止まったとみなさない（秒）
-const R = (ms) => Math.round(ms / 1000) * 1000;
 const noOf = (code) => (String(code).match(/^#\s*(\d+)\s*$/) || [])[1];
 let nidN = 0; const nid = () => 'sc' + Date.now().toString(36) + (nidN++).toString(36);
 
 // XML の時計：動画の秒 → ピリオドの経過時間（ms）
-export function scClock(sc) {
+// 時刻は1秒に丸めず、ms のまま（XML のタイムラインと順番がぴったり同じになるように。2026-11-11）
+export function scClock(sc) { const f = scClockAt(sc); return (videoSec) => f(videoSec).ms; }
+// stop：その瞬間は時計が止まっていた（XML の行がどれもない）。止まっている間は、止まった瞬間の時計の値になる
+export function scClockAt(sc) {
   return (videoSec) => {
-    const v = videoSec - sc.ko; let run = 0;
-    for (const [s, e] of sc.segs) { if (v <= s) break; run += Math.min(v, e) - s; }
-    return Math.max(0, Math.min(sc.len, Math.round(run * 1000 * sc.scale)));
+    const v = videoSec - sc.ko; let run = 0, stop = true;
+    for (const [s, e] of sc.segs) { if (v <= s) break; run += Math.min(v, e) - s; if (v < e) stop = false; }
+    if (v <= 0) stop = false;
+    return { ms: Math.max(0, Math.min(sc.len, Math.round(run * 1000 * sc.scale))), stop };
   };
 }
 
@@ -43,9 +46,13 @@ export function scFixPeriod({ instances, per, byNo, isGK, cur, len, file = '' })
   const sc = { file, ko: +K.toFixed(3), segs: segsR, scale: len / (segsR.reduce((x, [s, e]) => x + e - s, 0) * 1000), len }; // 縮め方は、保存する区間（丸めたもの）から決める（終わりがちょうどピリオドの長さになるように）
   const clock = scClock(sc);
   // 1回の出場（間に時計が動いた時間がないインスタンスはつなぐ）
+  // 出場の始まり・終わりは、近くの「時計が動き出した・止まった瞬間」（J 秒以内）にそろえる。止まっている間の交代は、みな同じ時計の値になる
+  const snapS = (v) => { for (const [s0] of segs) if (Math.abs(v - s0) <= J) return s0; return v; };
+  const snapE = (v) => { for (const [, e0] of segs) if (Math.abs(v - e0) <= J) return e0; return v; };
   const stints = [];
-  for (const [pid, a] of by) { let c = a[0].slice(); for (const iv of a.slice(1)) { if (runIn(c[1], iv[0]) < 0.5) c[1] = iv[1]; else { stints.push({ pid, from: clock(c[0]), to: clock(c[1]) }); c = iv.slice(); } } stints.push({ pid, from: clock(c[0]), to: clock(c[1]) }); }
-  for (const s of stints) { s.from = R(s.from); s.to = R(s.to); if (s.from <= 1000) s.from = 0; if (s.to >= len - 1000) s.to = len; }
+  const add = (pid, a, b) => stints.push({ pid, from: clock(snapS(a)), to: clock(snapE(b)) });
+  for (const [pid, a] of by) { let c = a[0].slice(); for (const iv of a.slice(1)) { if (runIn(c[1], iv[0]) < 0.5) c[1] = iv[1]; else { add(pid, c[0], c[1]); c = iv.slice(); } } add(pid, c[0], c[1]); }
+  for (const s of stints) { if (s.from <= 1000) s.from = 0; if (s.to >= len - 1000) s.to = len; }
   let fps = stints.filter((s) => !isGK(s.pid) && s.to > s.from);
   let gks = stints.filter((s) => isGK(s.pid) && s.to > s.from);
   const gkFromXml = gks.length > 0;

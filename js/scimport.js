@@ -2,7 +2,7 @@
 // 画面を作らない純粋な処理：ファイルを読む → コードとラベルを対応表で読む → 動画の時刻を試合の時計に直す → イベントにする。
 // 出場（#背番号の行）と AT_／DF_ のコードは取り込まない（出場は MATCH PLAY の記録を使う）。読めなかったコード・ラベルは一覧で返す。
 import { OPP_OG, UNKNOWN, NO_ASSIST, goalTypeIdOf } from './events.js';
-import { scClock } from './scfix.js';
+import { scClockAt } from './scfix.js';
 
 // ---------- ファイルを読む ----------
 const unx = (s) => String(s ?? '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&').trim();
@@ -101,6 +101,9 @@ export function buildImportFiles(files, o) {
 // o = { instances, periods:[{key, ko（秒）, shift（秒）, from, to（このピリオドに入れる動画の範囲。秒）}], R（ランニングタイムの試合）, M, members, players, goalTypes:[{id,name}], lead, seqBase }
 // ピリオドの範囲（from・to）は、コードの開始ではなくプレーの瞬間（開始＋リード）で見る（前半の最後の数秒が後半に入らないように）
 // seqBase：入力の順（seq）の始まり。取り込む時刻を入れると、同じ秒のイベントも取り込んだ順に並ぶ（アプリで入れたものとも混ざらない）
+// XML の時計で取り込むときの決まり（2026-11-11）
+export const AFTER_STOP = new Set(['fspat', 'fspdf']); // 時計が止まっている間に交代があったら、交代で入った選手のものにするイベント
+export const NEAR_SUB = 3000; // 交代のこの前後（ms）のイベントに「要確認」を付ける
 export function buildImport(o) {
   const lead = { ...DEFAULT_LEAD, ...(o.lead || {}) };
   const unknownCodes = new Map(), unknownLabels = new Map(), unmatched = new Map(), warnings = new Map(), near = new Map();
@@ -138,9 +141,11 @@ export function buildImport(o) {
     const list = o.instances.filter((i) => { const t = tOf(i); return t >= per.from && t < per.to; }).sort((a, b) => tOf(a) - tOf(b) || a.start - b.start);
     const pend = o.M.periods.find((p) => p.key === per.key)?.elapsed ?? Infinity;
     // 出場の記録を同じ XML から作り直してあるピリオド（記録の修正「Sportscodeから直す」）は、その XML の時計で時刻を決める（イベントと出場がそろう。2026-11-11）
-    const scc = o.scClocks?.[per.key]; const xmlClock = scc && Math.abs(scc.ko - per.ko) < 30 ? scClock(scc) : null;
+    const scc = o.scClocks?.[per.key]; const xmlClock = scc && Math.abs(scc.ko - per.ko) < 30 ? scClockAt(scc) : null;
+    // 交代の瞬間（出場の始まり・終わり）：XML の時計のときは、近いイベント・時計が止まっている間の交代に「要確認」を付ける
+    const bnd = xmlClock ? [...new Set((o.M.stints || []).filter((x) => x.period === per.key).flatMap((x) => [x.from > 0 ? x.from : null, x.to < pend ? x.to : null]).filter((x) => x != null))] : [];
     const toAt = (videoSec) => {
-      if (xmlClock) return Math.max(0, Math.min(pend, Math.round(xmlClock(videoSec - (+per.shift || 0)) / 1000) * 1000));
+      if (xmlClock) return Math.max(0, Math.min(pend, xmlClock(videoSec - (+per.shift || 0)).ms)); // 1秒に丸めない
       const rel = Math.max(0, (videoSec - per.ko - (+per.shift || 0)) * 1000);
       const el = o.R.elOfRel ? o.R.elOfRel(per.key, rel) : rel;
       return Math.max(0, Math.min(pend, Math.round(el / 1000) * 1000)); // 時計が0:00になったあとのプレーは、ピリオドの最後に数える
@@ -155,6 +160,16 @@ export function buildImport(o) {
       const first = (...gs) => { for (const g of gs) if (L[g]?.length) { used.add(g); return L[g][0]; } return null; };
       const t = i.start + lead[leadKey(kind)];
       const ev = { id: null, period: per.key, at: toAt(t), seq: ++seq, src: 'sportscode', kind };
+      if (xmlClock) {
+        ev.scRuler = scc.file || 'xml';
+        const { stop } = xmlClock(t - (+per.shift || 0));
+        const subHere = stop && bnd.some((b) => Math.abs(b - ev.at) <= 1);
+        // 時計が止まっている間のイベント：再開のプレー（FINISH SET PLAY）は交代で入った選手、ほかは止まる前に出ていた選手のものにする
+        if (subHere && AFTER_STOP.has(kind)) ev.at += 1;
+        const nearSub = !subHere && bnd.some((b) => Math.abs(b - ev.at) <= NEAR_SUB);
+        if (subHere) ev.impWhy = `時計が止まっている間に交代があったイベント（${AFTER_STOP.has(kind) ? '交代で入った選手' : '止まる前に出ていた選手'}として数えています。動画で確かめてください）`;
+        else if (nearSub) ev.impWhy = '交代の前後3秒以内のイベント（誰が出ていたときか、動画で確かめてください）';
+      }
       const who = (v, g) => { if (!v) return null; const pid = pidOf(v); if (!pid) unmatched.set(v, (unmatched.get(v) || 0) + 1); return pid; };
       const phase = first('局面'); const cls = phase ? phaseOf(phase) : null;
       if (['shot', 'szshot', 'oshot', 'oszshot'].includes(kind)) {
@@ -205,7 +220,7 @@ export function buildImport(o) {
         ev.card = !c ? 'none' : /2枚目/.test(c) ? (kind === 'fouled' ? 'y2' : 'yellow') : /イエロー/.test(c) ? 'yellow' : 'red';
       }
       const multi = [...used].filter((g) => (L[g] || []).length > 1);
-      if (multi.length) { ev.impWhy = `Sportscodeで同じグループに2つ以上のラベルがあります（${multi.map((g) => `${g}：${L[g].join('・')}`).join('、')}）`; ev.check = true; }
+      if (multi.length) { ev.impWhy = [ev.impWhy, `Sportscodeで同じグループに2つ以上のラベルがあります（${multi.map((g) => `${g}：${L[g].join('・')}`).join('、')}）`].filter(Boolean).join('／'); ev.check = true; }
       for (const k of Object.keys(ev)) if (ev[k] === undefined) delete ev[k];
       events.push(ev);
     }

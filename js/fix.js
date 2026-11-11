@@ -102,6 +102,7 @@ export function vFix(m) {
     <div class="fxsave"><button class="btn" id="fxUndo" ${canUndo ? '' : 'disabled'}>↶ 1つ戻す</button><button class="btn dangerline" data-goto="origin" ${activeSteps(m).length || legacyInEffect(m) ? '' : 'disabled'}>MATCH PLAYの記録に戻す</button></div></div>
     ${stale.length ? `<div class="fxwarn">MATCH PLAYの記録があとから変わったため（リセットなど）、${stale.join('・')}の修正は使われていません。もう一度直してください。</div>` : ''}
     ${clockNote(m, st, sig, k)}
+    ${strayNote(m)}
     ${errs.length ? `<div class="fxerr"><b>記録に矛盾があります</b><ul>${errs.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
     <div class="fxtabs">${TABS.map(([t, l]) => `<button class="fxtab ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${l}</button>`).join('')}</div>`;
 
@@ -682,4 +683,15 @@ async function scApply(m, d, cfg) {
   scUi.done = ks;
   toast('XML で記録を直しました');
   render();
+}
+
+// XML で出場を直したピリオドに、XML の時計で取り込んでいないイベント（試合中にアプリで入れたものなど）が残っていたら知らせる（2026-11-11）
+export function strayCount(m) {
+  const per = Object.entries(m.fix?.periods || {}).filter(([, fp]) => fp.sc).map(([k]) => k); if (!per.length) return [];
+  const list = watchEvents(m.id).list.filter((e) => !e.deleted && per.includes(e.period) && !e.scRuler);
+  return per.map((k) => ({ k, n: list.filter((e) => e.period === k).length })).filter((x) => x.n);
+}
+function strayNote(m) {
+  const s = strayCount(m); if (!s.length) return '';
+  return `<div class="fxwarn">⚠ XML で出場を直した${s.map((x) => `${periodLabel(x.k)}に、XML の時計で入れていないイベントが ${x.n}件`).join('、')}あります（試合中にアプリで入れたもの・前に取り込んだものなど）。出場と物差しが違うので、誰が出ていたときかがずれることがあります。同じ XML でイベントを取り込み直すとそろいます。</div>`;
 }
