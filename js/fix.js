@@ -386,12 +386,22 @@ function bindFix(root, m, d, k, cfg, st, sig) {
     if (b.id === 'fiLen') return changeLen(m, d);
     if (b.dataset.goto) return goTo(m, d, b.dataset.goto);
   });
+  // Sportscodeから直す：ファイルをドラッグ＆ドロップ（PC。2026-11-11）
+  const dz = root.querySelector('#scDrop');
+  if (dz) {
+    let depth = 0; const hasFile = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+    dz.addEventListener('dragenter', (e) => { if (!hasFile(e)) return; e.preventDefault(); depth++; dz.classList.add('over'); });
+    dz.addEventListener('dragover', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    dz.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) dz.classList.remove('over'); });
+    dz.addEventListener('drop', (e) => { if (!hasFile(e)) return; e.preventDefault(); e.stopPropagation(); depth = 0; dz.classList.remove('over'); if (e.dataTransfer.files?.length) scLoad(e.dataTransfer.files); });
+  }
+  if (!scGuard) { scGuard = true; for (const ty of ['dragover', 'drop']) document.addEventListener(ty, (e) => { if (/\/fix$/.test(location.hash) && [...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); if (ty === 'drop' && !e.target.closest?.('#scDrop')) toast(ui.tab === 'sc' ? '点線の枠の中に落としてください' : '「Sportscodeから直す」のタブを開いて、点線の枠の中に落としてください'); } }); }
   root.addEventListener('change', (e) => {
     const t = e.target;
     if (t.dataset.lu != null) { const i = +t.dataset.lu; const old = fp.lineup[i]; commit('スタメン', `枠${i + 1}のスタメン ${plain(cfg, old)} → ${plain(cfg, t.value)}`, () => { fp.lineup[i] = t.value; }); }
     if (t.dataset.info) { const f = t.dataset.info; const lab = { date: '日付', opponent: '対戦相手', category: '試合の区分', kickoff: 'キックオフ時刻', venue: '会場', memo: 'メモ' }[f]; const old = d.info[f]; if ((f === 'date' || f === 'opponent') && !t.value.trim()) { toast('日付と対戦相手は空にできません'); t.value = old; return; } if (old !== t.value) commit('試合情報', `${lab} ${old || '（なし）'} → ${t.value || '（なし）'}`, () => { d.info[f] = t.value; }); }
     if (t.id === 'fxLogType') { ui.logType = t.value; render(); }
-    if (t.id === 'scFile' && t.files?.length) { const list = [...t.files].filter((x) => /\.(xml|csv)$/i.test(x.name)); if (!list.length) { toast('XML か CSV のファイルを選んでください'); return; } Promise.all(list.map((f) => f.text().then((text) => ({ id: 'x' + (++scSeq), name: f.name, parsed: parseSC(text), assign: null })))).then((add) => { scUi.files = [...scUi.files.filter((x) => !add.some((a) => a.name === x.name)), ...add]; scUi.done = null; render(); }); }
+    if (t.id === 'scFile' && t.files?.length) { scLoad(t.files); t.value = ''; }
     if (t.dataset.scasg) { const [fid, i] = t.dataset.scasg.split(':'); const f = scUi.files.find((x) => x.id === fid); if (f) { f.assign[+i] = t.value; scUi.done = null; render(); } }
     if (t.dataset.scpick) { scUi.pick[t.dataset.scpick] = t.checked; render(); }
   });
@@ -614,7 +624,13 @@ function ppModal(fp, id, commit) {
 // ---------- Sportscodeから直す（2026-11-11） ----------
 // XML（または CSV）の「#背番号」の行から、選んだピリオドの出場・交代を作り直す。反映は1つの直しとして履歴に残り、「1つ戻す」で戻せる。
 // GK とパワープレーは scfix.js の決め方（XML に GK の行がなければ、XML で FP が 5人の時間をパワープレーとする）
-let scUi = { m: null, files: [], pick: {}, done: null }; let scSeq = 0;
+let scUi = { m: null, files: [], pick: {}, done: null }; let scSeq = 0; let scGuard = false;
+function scLoad(fileList) {
+  const all = [...fileList]; const list = all.filter((x) => /\.(xml|csv)$/i.test(x.name));
+  if (!list.length) { toast('XML か CSV のファイルを選んでください'); return; }
+  if (list.length < all.length) toast(`XML・CSV 以外の ${all.length - list.length}つのファイルは読み込みませんでした`);
+  Promise.all(list.map((f) => f.text().then((text) => ({ id: 'x' + (++scSeq), name: f.name, parsed: parseSC(text), assign: null })))).then((add) => { scUi.files = [...scUi.files.filter((x) => !add.some((a) => a.name === x.name)), ...add]; scUi.done = null; render(); });
+}
 function scPlans(m, d, cfg) {
   const keys = Object.keys(d.periods);
   const byNo = Object.fromEntries(Object.entries(m.members || {}).filter(([, v]) => v.no != null && v.no !== '').map(([pid, v]) => [String(v.no), pid]));
@@ -640,8 +656,8 @@ function tabSc(m, d, k, fp, cfg) {
     <ul class="mu sm scnote"><li>時計：XML の行を重ねた「時計が動いていた区間」で数え、ピリオドの長さ（${mmss(lenOf(fp))}）に合わせて少しだけ伸び縮みさせます（XML はタグのずれで十数秒長くなりやすいため）</li>
     <li>GK：XML に GK の行がなければ、XML で FP が 4人の時間は GK がいて、FP が 5人の時間は GK を下げていた（パワープレー）とします。どの GK かは今の記録から決めます</li>
     <li>イベント（シュートなど）は変わりません。反映したあと、同じ XML からイベントを取り込み直すと、イベントの時刻も同じ時計でそろいます</li></ul>
-    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center"><label class="btn pri">XML・CSV を選ぶ<input type="file" id="scFile" accept=".xml,.csv,text/xml,text/csv" multiple hidden></label>
-    ${scUi.files.map((f) => `<span class="scf">${esc(f.name)}<button class="btn sm" data-scdel="${f.id}" aria-label="外す">×</button></span>`).join('')}</div></div>`;
+    <div class="scdrop" id="scDrop"><label class="btn pri">XML・CSV を選ぶ<input type="file" id="scFile" accept=".xml,.csv,text/xml,text/csv" multiple hidden></label><span class="mu">または、ここにファイルをドラッグ＆ドロップ（前半・後半のファイルを一緒に入れられます）</span></div>
+    ${scUi.files.length ? `<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${scUi.files.map((f) => `<span class="scf">${esc(f.name)}<button class="btn sm" data-scdel="${f.id}" aria-label="外す">×</button></span>`).join('')}</div>` : ''}</div>`;
   if (!scUi.files.length) return intro;
   const { rows, plans, keys } = scPlans(m, d, cfg);
   if (!rows.length) return intro + '<div class="card"><div class="fxwarn">読み込んだファイルに Kick Off の印がありません。</div></div>';
