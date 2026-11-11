@@ -53,5 +53,27 @@ const setup = (p) => {
   const r = playOpsFromSC({ files: [{ name: 'a.xml', instances: p.instances, periods: [{ key: '1H', ko: kos[0].start, to: kos[1].start }] }], byNo, lenMs: 1200000 });
   ok(r.missing.includes('15'), 'missing number is reported');
 }
+// 記録の修正「Sportscodeから直す」（js/scfix.js。2026-11-11）
+{
+  const { scFixPeriod, scClock, totalsOf } = await import('../js/scfix.js');
+  const { replayToFix, checkFix } = await import('../js/model.js');
+  const p = load('sc_full.xml'); const kos = kickOffs(p.instances); const { byNo, members } = setup(p);
+  const r0 = playOpsFromSC({ files: [{ name: 'a.xml', instances: p.instances, periods: [{ key: '1H', ko: kos[0].start, to: kos[1].start - 1 }] }], byNo, lenMs: 1200000 });
+  const { st } = run(r0.ops, members); const cur = replayToFix(st, '1H');
+  const isGK = (pid) => members[pid]?.pos === 'GK';
+  const r = scFixPeriod({ instances: p.instances, per: { key: '1H', ko: kos[0].start, to: kos[1].start - 1 }, byNo, isGK, cur, len: 1200000, file: 'a.xml' });
+  ok(r.ok, 'scfix builds the period');
+  ok(!checkFix(r.fp, { members }).length, 'no contradictions in the rebuilt period');
+  const A = totalsOf(cur, '1H'), B = totalsOf(r.fp, '1H');
+  for (const pid of Object.keys(A)) near(B[pid] || 0, A[pid], 2000, `scfix matches the XML-built record for ${pid}`);
+  const fpSum = Object.entries(B).filter(([pid]) => !isGK(pid)).reduce((a, [, t]) => a + t, 0);
+  near(fpSum, 4 * 1200000, 2000, 'FP total = 4 × period length');
+  const c = scClock(r.fp.sc); ok(c(r.fp.sc.ko) === 0 && c(1e9) === 1200000, 'XML clock runs from 0 to the period length');
+  // GK の行がないとき：今の記録の GK、FP が 5人の時間はパワープレー
+  const noGk = p.instances.filter((i) => !/^#\s*(1|2)$/.test(i.code));
+  const r2 = scFixPeriod({ instances: noGk, per: { key: '1H', ko: kos[0].start, to: kos[1].start - 1 }, byNo, isGK, cur, len: 1200000 });
+  ok(r2.ok && !r2.gkFromXml, 'without GK rows the GK comes from the current record');
+  const B2 = totalsOf(r2.fp, '1H'); near(Object.entries(B2).filter(([pid]) => isGK(pid)).reduce((a, [, t]) => a + t, 0), 1200000, 2000, 'GK covers the whole period when XML has 4 FPs');
+}
 console.log(`scplay: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

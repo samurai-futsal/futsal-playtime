@@ -32,6 +32,11 @@ function importedByPeriod(list, M) {
   return M.periods.filter((p) => by.has(p.key)).map((p) => { const g = by.get(p.key); return { key: p.key, label: p.label, ...g, name: [...g.files.keys()].join('・') || '' }; });
 }
 // ファイルを選ぶ・ドラッグ＆ドロップ・一覧から消す（イベントの取り込みと、記録を作る画面の両方）
+// 記録の修正「Sportscodeから直す」で読み込んだファイルを、そのままイベントの取り込みに渡す（選び直さなくてよいように。2026-11-11）
+export function handOffScFiles(mId, files) {
+  st8 = fresh(mId);
+  st8.files = files.map((f) => ({ id: 'f' + (++fileSeq), name: f.name, parsed: f.parsed, assign: [], guess: null }));
+}
 function bindFiles(root) {
   const f = root.querySelector('#siFile');
   // 読み込んだファイルは一覧に足す（同じ名前のファイルは新しいほうに置き換える）。XML・CSV 以外は読まずに知らせる
@@ -131,7 +136,7 @@ export function vScImport(m) {
   const M = matchModel(st, Date.now(), m.fix); const R = toRunning(M, st);
   const started = M.periods.filter((p) => st.periods[p.key]?.kickT != null);
   const crumb = `<div class="crumb"><a class="btn sm mpback" href="#/m/${m.id}">‹ 試合ページ</a><a href="#/m/${m.id}">vs ${esc(m.opponent)}</a> › Sportscodeから取り込み</div>`;
-  const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML か CSV を選ぶと、イベント入力に自動で記録します（シュート、ゾーン進入、FINISH SET PLAY（SETPLAY）、リカバリー・ロスト（ROBO・PERDIDA）、ファール（ファウル））。時刻は Kick Off の印と MATCH PLAY の時計の記録から試合の時計に直します。出場（#背番号の行）は取り込みません（MATCH PLAY の記録を使います）。</p>`;
+  const intro = `<h1>Sportscodeから取り込み</h1><p class="mu">Sportscode で書き出した XML か CSV を選ぶと、イベント入力に自動で記録します（シュート、ゾーン進入、FINISH SET PLAY（SETPLAY）、リカバリー・ロスト（ROBO・PERDIDA）、ファール（ファウル））。時刻は Kick Off の印と MATCH PLAY の時計の記録から試合の時計に直します。出場（#背番号の行）は取り込みません（MATCH PLAY の記録を使います）。</p>${Object.values(m.fix?.periods || {}).some((fp) => fp.sc) ? `<div class="fxinfo">ℹ ${Object.entries(m.fix.periods).filter(([, fp]) => fp.sc).map(([k]) => periodLabel(k)).join('・')}は「記録の修正」で Sportscode の XML（${esc([...new Set(Object.values(m.fix.periods).filter((fp) => fp.sc).map((fp) => fp.sc.file))].join('、'))}）から直してあるので、同じ XML を取り込むと、その XML の時計で時刻を決めます（イベントと出場がそろいます）。</div>` : ''}`;
   // ファイルを選ぶ（ボタン）と、ドラッグ＆ドロップの枠を分ける。読み込んだファイルは一覧に出し、1つずつ消せる（2026-10-17）
   const fileList = st8.files.length ? `<div class="sifiles">${st8.files.map((f) => { const k = kickOffs(f.parsed.instances).length;
     return `<div class="sifile"><span class="sifn">📄 ${esc(f.name)}</span><span class="mu sm">${f.parsed.kind === 'csv' ? 'CSV' : 'XML'}・${f.parsed.instances.length}件・Kick Off ${k}つ</span>${k ? '' : '<span class="tag warn">Kick Off の印がないので取り込めません</span>'}<button class="btn sm danger" data-fdel="${f.id}">× 消す</button></div>`; }).join('')}</div>` : '';
@@ -171,7 +176,7 @@ export function vScImport(m) {
       const inst = files.flatMap((f) => f.parsed.instances);
       const goalTypes = opts('goalTypes', true).map((o) => ({ id: o.id, name: o.name }));
       // ピリオドの範囲はプレーの瞬間（コードの開始＋リード）と Kick Off で分ける（記14）。ファイルが2つなら、ファイルごとに分けてからまとめる
-      const res = buildImportFiles(files.map((f) => ({ instances: f.parsed.instances, assign: f.assign })), { R, M, W: ppWindows(M), members: m.members || {}, players: S.players, goalTypes, lead, shift: st8.shift });
+      const res = buildImportFiles(files.map((f) => ({ instances: f.parsed.instances, assign: f.assign })), { R, M, W: ppWindows(M), members: m.members || {}, players: S.players, goalTypes, lead, shift: st8.shift, scClocks: Object.fromEntries(Object.entries(m.fix?.periods || {}).filter(([, fp]) => fp.sc).map(([k, fp]) => [k, fp.sc])) });
       const periods = res.periods;
       st8.res = res; st8.periods = periods;
       const keys = new Set(periods.map((p) => p.key));

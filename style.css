@@ -1672,3 +1672,13 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:2px 6px;border
 .frtb td.w{color:#1F5FBF}.frtb td.o{color:#C8312B}.frtb td.cc{background:#FDF0EE}.frtb tr.tm td{background:#F6F8FB;font-weight:700}
 .frsw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .ptip{white-space:pre-line}
+/* ---------- 記録の修正：Sportscodeから直す（2026-11-11） ---------- */
+.scnote{margin:6px 0 12px;padding-left:18px;line-height:1.6}
+.scf{display:inline-flex;align-items:center;gap:6px;background:#EEF2F8;border-radius:999px;padding:3px 4px 3px 12px;font-size:13px;font-weight:700}
+.scasg{display:flex;align-items:center;gap:10px;margin:6px 0;flex-wrap:wrap}
+.scper{border:2px solid transparent}.scper.on{border-color:#2F6FD6}
+.scpick{display:flex;align-items:center;gap:8px;font-size:17px;margin-bottom:8px;cursor:pointer}.scpick input{width:20px;height:20px}
+.scsum{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:#4A5468;margin-bottom:8px}
+.sctb{max-width:560px}.sctb th,.sctb td{text-align:center}.sctb .l{text-align:left}
+.sctb td.up{color:#1F7A44;font-weight:700}.sctb td.dn{color:#C8312B;font-weight:700}.sctb tr.scbig td{background:#FFF6E6}.scasg select{width:auto;min-width:8em}
+.scdone{border:2px solid #2E9E5B;background:#F2FBF5}

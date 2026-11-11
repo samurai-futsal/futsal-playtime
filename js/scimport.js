@@ -2,6 +2,7 @@
 // 画面を作らない純粋な処理：ファイルを読む → コードとラベルを対応表で読む → 動画の時刻を試合の時計に直す → イベントにする。
 // 出場（#背番号の行）と AT_／DF_ のコードは取り込まない（出場は MATCH PLAY の記録を使う）。読めなかったコード・ラベルは一覧で返す。
 import { OPP_OG, UNKNOWN, NO_ASSIST, goalTypeIdOf } from './events.js';
+import { scClock } from './scfix.js';
 
 // ---------- ファイルを読む ----------
 const unx = (s) => String(s ?? '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&').trim();
@@ -136,7 +137,10 @@ export function buildImport(o) {
   for (const per of o.periods) {
     const list = o.instances.filter((i) => { const t = tOf(i); return t >= per.from && t < per.to; }).sort((a, b) => tOf(a) - tOf(b) || a.start - b.start);
     const pend = o.M.periods.find((p) => p.key === per.key)?.elapsed ?? Infinity;
+    // 出場の記録を同じ XML から作り直してあるピリオド（記録の修正「Sportscodeから直す」）は、その XML の時計で時刻を決める（イベントと出場がそろう。2026-11-11）
+    const scc = o.scClocks?.[per.key]; const xmlClock = scc && Math.abs(scc.ko - per.ko) < 30 ? scClock(scc) : null;
     const toAt = (videoSec) => {
+      if (xmlClock) return Math.max(0, Math.min(pend, Math.round(xmlClock(videoSec - (+per.shift || 0)) / 1000) * 1000));
       const rel = Math.max(0, (videoSec - per.ko - (+per.shift || 0)) * 1000);
       const el = o.R.elOfRel ? o.R.elOfRel(per.key, rel) : rel;
       return Math.max(0, Math.min(pend, Math.round(el / 1000) * 1000)); // 時計が0:00になったあとのプレーは、ピリオドの最後に数える
