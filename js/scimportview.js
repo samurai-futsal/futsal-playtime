@@ -216,7 +216,7 @@ export function vScImport(m) {
         ...(res.unknownLabels.length ? [`読まないラベルのグループ：${res.unknownLabels.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}`] : []),
         ...(res.unmatched.length ? [`試合メンバーに見つからない選手（同じ名字が2人いる・名前の一部だけ合うときも、選手は空けて取り込みます）：${res.unmatched.map(([c, n]) => `${esc(c)}（${n}）`).join('、')}`] : []),
         ...(res.warnings || []).map(([w, n]) => `${esc(w)}：${n}件`),
-        ...(res.events.some((e) => e.impWhy) ? [`同じグループに2つ以上のラベルが付いたイベント：${res.events.filter((e) => e.impWhy).length}件（1つ目のラベルで取り込み、「要確認」にします。イベント入力で確かめてください）`] : []),
+        ...(res.events.some((e) => /同じグループに2つ以上/.test(e.impWhy || '')) ? [`同じグループに2つ以上のラベルが付いたイベント：${res.events.filter((e) => /同じグループに2つ以上/.test(e.impWhy || '')).length}件（1つ目のラベルで取り込み、「要確認」にします。イベント入力で確かめてください）`] : []),
       ];
       const leadT = `<table class="sctb"><tr><th>コード</th><th>コードの開始から何秒後がプレーの瞬間か</th></tr>${Object.keys(DEFAULT_LEAD).map((k) => `<tr><td>${LEAD_LABEL[k]}</td><td><input data-ld="${k}" value="${lead[k]}" inputmode="decimal"> 秒</td></tr>`).join('')}</table>`;
       // ピリオドと時刻はアプリが自動で合わせる（ファイル名→ピリオド、Kick Off の印＋MATCH PLAY の時計→試合の時刻）。
@@ -233,7 +233,7 @@ export function vScImport(m) {
           ${warn.length ? `<div class="siwarn">${warn.map((w) => `<div>⚠ ${w}</div>`).join('')}</div>` : ''}
           <p class="mu sm">${(() => { const done = importedByPeriod(evC.list, M).filter((g) => keys.has(g.key)); const nw = [...keys].map((k) => `${periodLabel(k)}：${esc(rows.find((r) => r.key === k)?.f.name || '')}（${res.events.filter((e) => e.period === k).length}件）`).join('、');
             return done.length ? `取り込み済みの ${done.map((g) => `${g.label}：${g.name ? esc(g.name) : 'ファイル名の記録なし'}（${g.n}件）`).join('、')} を、${nw} に置き換えます` : `${nw} を取り込みます`; })()}${edited.length ? `（そのうち <b>${edited.length}件はアプリで直してあります</b>）` : ''}。アプリで入力したイベント ${appMade}件と MATCH PLAY の記録はそのまま残ります。アシスト・進入の方法などファイルにない項目は未入力のまま残るので、あとでイベント入力で埋められます。</p>
-          <div class="row end"><button class="btn pri" id="siGo" ${res.events.length ? '' : 'disabled'}>${ks.length ? `${ks.map(periodLabel).join('・')}の出場を直して、イベントを取り込む（${res.events.length}件）` : `取り込む（${res.events.length}件）`}</button></div></div>
+          <div class="row end">${ks.length ? `<button class="btn" id="siPlayOnly">出場・交代だけ直す（イベントはそのまま）</button>` : ''}<button class="btn pri" id="siGo" ${res.events.length ? '' : 'disabled'}>${ks.length ? `${ks.map(periodLabel).join('・')}の出場を直して、イベントを取り込む（${res.events.length}件）` : `取り込む（${res.events.length}件）`}</button></div></div>
         <details class="card"><summary><b>コードごとの前後の秒数</b>　チームで覚えます</summary>${leadT}<p class="mu sm">秒数を直したあとは、もう一度「取り込む」（置き換え）を押すと時刻がすべて直ります</p></details>`;
       st8.old = old; st8.edited = edited;
       }
@@ -254,6 +254,15 @@ export function vScImport(m) {
       root.querySelectorAll('[data-scpick]').forEach((c) => c.onchange = () => { st8.scPick[c.dataset.scpick] = c.checked; render(); });
       root.querySelectorAll('[data-sh]').forEach((i) => i.onchange = () => { const v = i.value.trim(); st8.shift[i.dataset.sh] = v === '' ? 0 : +v || 0; render(); });
       root.querySelectorAll('[data-ld]').forEach((i) => i.onchange = () => { const L = { ...(teamSettings().scLead || {}) }; L[i.dataset.ld] = +i.value || 0; put(teamPath(), { settings: { ...(S.team?.settings || {}), scLead: L } }); if (S.team) S.team.settings = { ...(S.team.settings || {}), scLead: L }; render(); });
+      const po = root.querySelector('#siPlayOnly');
+      if (po) po.onclick = async () => {
+        const plan = st8.scPlan; if (!plan?.ks.length) return;
+        if (!(await confirmBox({ title: '出場・交代だけ直しますか？', body: `<p>${plan.ks.map(periodLabel).join('・')}の出場・交代を XML から作り直します。イベントは取り込まず、今のまま残します。</p><p>今のイベントは前の時計で入っているので、交代の前後のイベントは誰が出ていたときかがずれることがあります（あとで同じ XML でイベントを取り込み直せば、そろいます）。「記録の修正」の「1つ戻す」で戻せます。</p>`, ok: '出場・交代だけ直す' }))) return;
+        scApplyPlans(m, plan.base, plan.ks, plan.plans);
+        toast(`${plan.ks.map(periodLabel).join('・')}の出場・交代を直しました`);
+        st8 = fresh(m.id);
+        location.hash = `#/m/${m.id}/review`;
+      };
       const go = root.querySelector('#siGo');
       if (go) go.onclick = async () => {
         if (st8.edited?.length && !(await confirmBox({ title: '取り込み直しますか？', body: `前回取り込んだイベントのうち ${st8.edited.length}件は、アプリで直してあります。置き換えると、その直しは消えます。`, ok: '置き換える', danger: true }))) return;
