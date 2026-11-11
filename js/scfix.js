@@ -13,12 +13,14 @@ let nidN = 0; const nid = () => 'sc' + Date.now().toString(36) + (nidN++).toStri
 
 // XML の時計：動画の秒 → ピリオドの経過時間（ms）
 // 時刻は1秒に丸めず、ms のまま（XML のタイムラインと順番がぴったり同じになるように。2026-11-11）
+// 時計が動いていた区間は、平らな配列 [始まり, 終わり, 始まり, 終わり, …] で持つ（Firestore は配列の中の配列を保存できないため。2026-11-11）
+export const segPairs = (a) => { if (!a?.length) return []; if (Array.isArray(a[0])) return a; const o = []; for (let i = 0; i + 1 < a.length; i += 2) o.push([a[i], a[i + 1]]); return o; };
 export function scClock(sc) { const f = scClockAt(sc); return (videoSec) => f(videoSec).ms; }
 // stop：その瞬間は時計が止まっていた（XML の行がどれもない）。止まっている間は、止まった瞬間の時計の値になる
 export function scClockAt(sc) {
   return (videoSec) => {
     const v = videoSec - sc.ko; let run = 0, stop = true;
-    for (const [s, e] of sc.segs) { if (v <= s) break; run += Math.min(v, e) - s; if (v < e) stop = false; }
+    for (const [s, e] of segPairs(sc.segs)) { if (v <= s) break; run += Math.min(v, e) - s; if (v < e) stop = false; }
     if (v <= 0) stop = false;
     return { ms: Math.max(0, Math.min(sc.len, Math.round(run * 1000 * sc.scale))), stop };
   };
@@ -43,7 +45,7 @@ export function scFixPeriod({ instances, per, byNo, isGK, cur, len, file = '' })
   const runIn = (a, b) => segs.reduce((x, [s, e]) => x + Math.max(0, Math.min(e, b) - Math.max(s, a)), 0);
   const play = runIn(K, E); const scale = len / (play * 1000);
   const segsR = segs.map(([s, e]) => [+(s - K).toFixed(2), +(e - K).toFixed(2)]);
-  const sc = { file, ko: +K.toFixed(3), segs: segsR, scale: len / (segsR.reduce((x, [s, e]) => x + e - s, 0) * 1000), len }; // 縮め方は、保存する区間（丸めたもの）から決める（終わりがちょうどピリオドの長さになるように）
+  const sc = { file, ko: +K.toFixed(3), segs: segsR.flat(), scale: len / (segsR.reduce((x, [s, e]) => x + e - s, 0) * 1000), len }; // 縮め方は、保存する区間（丸めたもの）から決める（終わりがちょうどピリオドの長さになるように）
   const clock = scClock(sc);
   // 1回の出場（間に時計が動いた時間がないインスタンスはつなぐ）
   // 出場の始まり・終わりは、近くの「時計が動き出した・止まった瞬間」（J 秒以内）にそろえる。止まっている間の交代は、みな同じ時計の値になる

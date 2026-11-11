@@ -63,6 +63,8 @@ const setup = (p) => {
   const isGK = (pid) => members[pid]?.pos === 'GK';
   const r = scFixPeriod({ instances: p.instances, per: { key: '1H', ko: kos[0].start, to: kos[1].start - 1 }, byNo, isGK, cur, len: 1200000, file: 'a.xml' });
   ok(r.ok, 'scfix builds the period');
+  const nested = (v) => Array.isArray(v) ? v.some((x) => Array.isArray(x) || nested(x)) : v && typeof v === 'object' ? Object.values(v).some(nested) : false;
+  ok(!nested(r.fp), 'rebuilt period has no nested arrays (Firestore cannot save them)');
   ok(!checkFix(r.fp, { members }).length, 'no contradictions in the rebuilt period');
   const A = totalsOf(cur, '1H'), B = totalsOf(r.fp, '1H');
   for (const pid of Object.keys(A)) near(B[pid] || 0, A[pid], 2000, `scfix matches the XML-built record for ${pid}`);
